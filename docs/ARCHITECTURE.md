@@ -41,14 +41,20 @@ Core differentiator: an automated **consistency checker** (static analysis over 
 
 ## 3. Repo map `DRAFT`
 ```text
-apps/
-  web/          React editor
-  server/       API + Hocuspocus
+.editorconfig
+.gitattributes
+.gitignore
+.nvmrc
+eslint.config.mjs
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+README.md
+tsconfig.base.json
+turbo.json
 packages/
-  schema/       Zod types: Node, Edge, Variable, Entity, Relation
-  dsl/          parser + typechecker for conditions/effects
-  checker/      graph analysis (pure)
-  export/       versioned JSON export
+  schema/       Zod types: FlowNode, FlowEdge, Project
+  checker/      Graph analysis (pure): findUnreachableNodes + tests
 docs/
   RULES.md  ARCHITECTURE.md  context/
 .agent/workflows/

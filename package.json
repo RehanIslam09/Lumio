@@ -1,0 +1,19 @@
+{
+  "name": "narrative-design-platform",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.8.1",
+  "scripts": {
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "check": "turbo typecheck lint test"
+  },
+  "devDependencies": {
+    "eslint": "10.12.0",
+    "turbo": "2.11.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "5.0.3"
+  }
+}
