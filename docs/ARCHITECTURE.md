@@ -53,8 +53,8 @@ README.md
 tsconfig.base.json
 turbo.json
 packages/
-  schema/       Zod types: FlowNode, FlowEdge, Project
-  checker/      Graph analysis (pure): findUnreachableNodes + tests
+  schema/       Zod types: FlowNode, FlowEdge, Project, Issue
+  checker/      Graph analysis (pure): findUnreachableNodes, findNodesThatCannotReachEnd, check + tests
 docs/
   RULES.md  ARCHITECTURE.md  context/
 .agent/workflows/
@@ -82,8 +82,8 @@ Small expression language for edge conditions and effects. Grammar, types, and o
 Pure function: `check(project) -> Issue[]`. Runs in a Web Worker (live) and on the server (pre-export).
 | Rule | Algorithm | Phase |
 |---|---|---|
-| Unreachable nodes | BFS/DFS from start nodes | v1 |
-| Dead ends / unintended loops | out-degree, Tarjan SCC | v1 |
+| Unreachable from start (`unreachable-from-start`) | Forward BFS from start nodes | v1 (implemented) |
+| Cannot reach end (`cannot-reach-end`) | Reverse BFS from end nodes (covers dead ends and trap cycles; Tarjan SCC postponed) | v1 (implemented) |
 | Undefined variables | symbol table over parsed DSL | v1 |
 | Dead effects (set, never read) | def-use analysis | v2 |
 | Conflicting or impossible conditions | path-sensitive state/interval analysis | v2 |

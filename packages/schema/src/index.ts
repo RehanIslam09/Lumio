@@ -24,3 +24,21 @@ export const ProjectSchema = z.object({
   edges: z.array(FlowEdgeSchema),
 });
 export type Project = z.infer<typeof ProjectSchema>;
+
+export const IssueRuleIdSchema = z.enum([
+  "unreachable-from-start",
+  "cannot-reach-end",
+]);
+export type IssueRuleId = z.infer<typeof IssueRuleIdSchema>;
+
+export const IssueSeveritySchema = z.enum(["error", "warning"]);
+export type IssueSeverity = z.infer<typeof IssueSeveritySchema>;
+
+export const IssueSchema = z.object({
+  ruleId: IssueRuleIdSchema,
+  severity: IssueSeveritySchema,
+  nodeId: z.string(),
+  message: z.string(),
+});
+export type Issue = z.infer<typeof IssueSchema>;
+

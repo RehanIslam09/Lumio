@@ -1,28 +1,28 @@
-import type { Project } from "@repo/schema";
+import type { Issue, Project } from "@repo/schema";
+
+type TraversalDirection = "forward" | "reverse";
 
 /**
- * Finds all nodes in the project that cannot be reached from any 'start' node.
- *
- * Rules:
- * - Edges referencing nonexistent nodes are ignored.
- * - Result contains unreachable node IDs in the same order as project.nodes.
- * - Result contains no duplicates.
- * - If there are no 'start' nodes, all node IDs are returned.
- * - 'start' nodes are never reported as unreachable.
+ * Internal helper to find nodes that cannot be reached (or cannot reach)
+ * a seed set of nodes ('start' or 'end'), traversing edges in forward or reverse.
  */
-export function findUnreachableNodes(project: Project): string[] {
+function findUnconnectedNodes(
+  project: Project,
+  seedType: "start" | "end",
+  direction: TraversalDirection,
+): string[] {
   const existingNodeIds = new Set<string>();
-  const startNodeIds: string[] = [];
+  const seedNodeIds: string[] = [];
 
   for (const node of project.nodes) {
     existingNodeIds.add(node.id);
-    if (node.type === "start") {
-      startNodeIds.push(node.id);
+    if (node.type === seedType) {
+      seedNodeIds.push(node.id);
     }
   }
 
-  // If there are no start nodes, all node IDs are considered unreachable.
-  if (startNodeIds.length === 0) {
+  // If there are no seed nodes of the given type, all node IDs are returned.
+  if (seedNodeIds.length === 0) {
     return project.nodes.map((node) => node.id);
   }
 
@@ -30,18 +30,20 @@ export function findUnreachableNodes(project: Project): string[] {
   const adjacency = new Map<string, string[]>();
   for (const edge of project.edges) {
     if (existingNodeIds.has(edge.from) && existingNodeIds.has(edge.to)) {
-      const neighbors = adjacency.get(edge.from);
+      const source = direction === "forward" ? edge.from : edge.to;
+      const target = direction === "forward" ? edge.to : edge.from;
+      const neighbors = adjacency.get(source);
       if (neighbors) {
-        neighbors.push(edge.to);
+        neighbors.push(target);
       } else {
-        adjacency.set(edge.from, [edge.to]);
+        adjacency.set(source, [target]);
       }
     }
   }
 
-  // Traverse the graph via BFS starting from all start nodes.
-  const visited = new Set<string>(startNodeIds);
-  const queue: string[] = [...startNodeIds];
+  // Traverse the graph via BFS starting from all seed nodes.
+  const visited = new Set<string>(seedNodeIds);
+  const queue: string[] = [...seedNodeIds];
 
   while (queue.length > 0) {
     const current = queue.shift();
@@ -62,13 +64,77 @@ export function findUnreachableNodes(project: Project): string[] {
     }
   }
 
-  // Return unreachable nodes in project.nodes order, excluding start nodes.
-  const unreachableNodeIds: string[] = [];
+  // Return unvisited nodes in project.nodes order, excluding seedType nodes.
+  const result: string[] = [];
   for (const node of project.nodes) {
-    if (node.type !== "start" && !visited.has(node.id)) {
-      unreachableNodeIds.push(node.id);
+    if (node.type !== seedType && !visited.has(node.id)) {
+      result.push(node.id);
     }
   }
 
-  return unreachableNodeIds;
+  return result;
 }
+
+/**
+ * Finds all nodes in the project that cannot be reached from any 'start' node.
+ *
+ * Rules:
+ * - Edges referencing nonexistent nodes are ignored.
+ * - Result contains unreachable node IDs in the same order as project.nodes.
+ * - Result contains no duplicates.
+ * - If there are no 'start' nodes, all node IDs are returned.
+ * - 'start' nodes are never reported as unreachable.
+ */
+export function findUnreachableNodes(project: Project): string[] {
+  return findUnconnectedNodes(project, "start", "forward");
+}
+
+/**
+ * Finds all nodes in the project from which no 'end' node is reachable.
+ *
+ * Rules:
+ * - Uses reverse BFS from all end nodes over edges between existing nodes.
+ * - End nodes are never reported.
+ * - If there are no end nodes, all node IDs are returned.
+ * - Result order = project.nodes order, no duplicates.
+ * - Edges referencing nonexistent nodes are ignored.
+ */
+export function findNodesThatCannotReachEnd(project: Project): string[] {
+  return findUnconnectedNodes(project, "end", "reverse");
+}
+
+/**
+ * Consistency checker entry point running static analysis rules over the project flow graph.
+ *
+ * Ordering:
+ * - Grouped by project.nodes order, then rule order ('unreachable-from-start' first).
+ */
+export function check(project: Project): Issue[] {
+  const unreachableSet = new Set(findUnreachableNodes(project));
+  const cannotReachEndSet = new Set(findNodesThatCannotReachEnd(project));
+
+  const issues: Issue[] = [];
+
+  for (const node of project.nodes) {
+    if (unreachableSet.has(node.id)) {
+      issues.push({
+        ruleId: "unreachable-from-start",
+        severity: "warning",
+        nodeId: node.id,
+        message: `Node "${node.title}" cannot be reached from any start node.`,
+      });
+    }
+
+    if (cannotReachEndSet.has(node.id)) {
+      issues.push({
+        ruleId: "cannot-reach-end",
+        severity: "error",
+        nodeId: node.id,
+        message: `Node "${node.title}" cannot reach any end node.`,
+      });
+    }
+  }
+
+  return issues;
+}
+

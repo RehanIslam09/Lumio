@@ -24,6 +24,51 @@
 
 ## Entries
 
+### W-003 | 2026-10-03 | Checker v1 structure: Issue model, check() entry point, second rule
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement Issue model, cannot-reach-end rule, and check entry point`
+- **Goal:** Add Issue schema/type in @repo/schema, implement findNodesThatCannotReachEnd and check() in @repo/checker with unit and fast-check property tests, and update architecture docs.
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added IssueRuleIdSchema, IssueSeveritySchema, IssueSchema and their inferred types
+  - `packages/checker/src/index.ts`: added internal shared BFS helper, exported findNodesThatCannotReachEnd and check()
+  - `packages/checker/src/index.test.ts`: kept 11 existing tests unchanged, added 8 unit tests for findNodesThatCannotReachEnd, 4 unit tests for check(), and 2 property tests (differential fixpoint and invariants)
+  - `docs/ARCHITECTURE.md`: updated Repo map and Section 6 consistency checker table noting Tarjan SCC postponement
+  - `docs/context/recent-work.md`: logged entry W-003
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `IssueRuleIdSchema: z.ZodEnum<["unreachable-from-start", "cannot-reach-end"]>`
+    - `type IssueRuleId = "unreachable-from-start" | "cannot-reach-end"`
+    - `IssueSeveritySchema: z.ZodEnum<["error", "warning"]>`
+    - `type IssueSeverity = "error" | "warning"`
+    - `IssueSchema: z.ZodObject<{ ruleId: IssueRuleIdSchema, severity: IssueSeveritySchema, nodeId: z.ZodString, message: z.ZodString }>`
+    - `type Issue = { ruleId: IssueRuleId; severity: IssueSeverity; nodeId: string; message: string; }`
+  - `@repo/checker`:
+    - `findUnreachableNodes(project: Project): string[]` (retained)
+    - `findNodesThatCannotReachEnd(project: Project): string[]`
+    - `check(project: Project): Issue[]`
+- **Decisions and why:**
+  - Consolidated BFS traversal into an internal unexported helper `findUnconnectedNodes` to avoid code duplication across rules while preserving purity and package boundaries (R3.4, R4.1).
+  - Preserved `project.nodes` ordering and eliminated duplicates by filtering existing nodes directly.
+  - Implemented Property test A with an independent naive fixpoint iterative edge saturation algorithm in the test file to ensure true differential testing against the BFS implementation (R5.2).
+  - Postponed Tarjan SCC per ARCHITECTURE section 6 update since `cannot-reach-end` covers dead ends and trap cycles.
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force` -> pass
+    ```text
+    @repo/checker:lint: $ eslint .
+    @repo/schema:typecheck: $ tsc --noEmit
+    @repo/schema:lint: $ eslint .
+    @repo/checker:typecheck: $ tsc --noEmit
+    @repo/checker:test: $ vitest run
+    ✓ src/index.test.ts (25 tests) 44ms
+    Tasks: 5 successful, 5 total
+    Cached: 0 cached, 5 total
+    Time: 1.613s
+    ```
+- **Known issues / debt:** none
+- **Next steps:**
+  - Implement undefined variable checking rule when DSL expression package is designed.
+
 ### W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-001 promotion at commit 5296eec`
