@@ -24,6 +24,35 @@
 
 ## Entries
 
+### W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-001 promotion at commit 5296eec`
+- **Goal:** Promote walking skeleton commit `5296eec` as first stable baseline (`stable-001`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-001 (commit 5296eec) baseline, gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-002 documenting the promotion
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-001 5296eec57cf865bf7a8069e06fed4f040a5947ab`).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass
+    ```text
+    @repo/checker:lint: $ eslint .
+    @repo/schema:typecheck: $ tsc --noEmit
+    @repo/schema:lint: $ eslint .
+    @repo/checker:typecheck: $ tsc --noEmit
+    @repo/checker:test: $ vitest run
+    ✓ src/index.test.ts (11 tests) 26ms
+    Tasks: 5 successful, 5 total
+    Cached: 0 cached, 5 total
+    Time: 1.577s
+    ```
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-001 5296eec57cf865bf7a8069e06fed4f040a5947ab`.
+
 ### W-001 | 2026-10-03 | Monorepo bootstrap and pure packages skeleton
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `chore: bootstrap monorepo skeleton with schema and checker packages`
