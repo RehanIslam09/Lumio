@@ -46,9 +46,9 @@
 - **R5.5** Never mark a flaky test as skipped without logging it under Known issues.
 
 ## 6. Git
-- **R6.1** Work on a branch: `feat/<slug>` or `fix/<slug>`. Never commit to `main`.
-- **R6.2** Small commits, conventional messages (`feat:`, `fix:`, `test:`, `docs:`, `chore:`).
-- **R6.3** No force-push. No secrets, `.env`, or credentials in commits. Keep `.env.example` current.
+- **R6.1** The agent NEVER runs git commands that change state: no `add`, `commit`, `push`, `tag`, `branch`, `checkout`/`switch`, `merge`, `rebase`, `reset`, `stash`. Read-only commands (`status`, `diff`, `log`, `show`, `rev-parse`) are allowed. The user handles all version control manually.
+- **R6.2** At the end of a task, suggest a conventional commit message (`feat:`, `fix:`, `test:`, `docs:`, `chore:`) in the final report so the user can commit.
+- **R6.3** Never write secrets or credentials into any file. Keep `.env.example` current and make sure `.gitignore` covers `.env`.
 
 ## 7. Logging duty
 - **R7.1** Every task ends with an entry in `docs/context/recent-work.md` (format in that file).

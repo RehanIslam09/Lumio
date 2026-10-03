@@ -28,6 +28,7 @@ Do NOT scan the whole repo. Locate code with grep / file search / the file map i
 - One task at a time. Small diffs. No unrelated refactors or drive-by formatting.
 - "Done" requires the real output of `pnpm check` pasted in the log entry. No output means not done.
 - Never edit an applied DB migration. Add a new one.
+- Never run state-changing git commands (add, commit, push, tag, branch, switch, reset, ...). The user commits manually. Read-only git is fine.
 - Never edit `last-stable-state.md` except through `/promote-stable`.
 - Ambiguity or conflicting instructions: ask. Do not guess.
 
