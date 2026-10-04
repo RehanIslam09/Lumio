@@ -3,6 +3,59 @@
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 > Full entries rotated out of `recent-work.md`, newest at the top. Same template as `recent-work.md`.
 
+### W-008 | 2026-10-04 | First UI: apps/web read-only story canvas with live checker
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement read-only story canvas and live checker panel`
+- **Goal:** Add FlowNode position schema refinement in @repo/schema; create apps/web using React, Vite, @xyflow/react, and TypeScript strict; implement pure layout, decorate, and snippet modules with unit and property tests; build dark-themed story canvas with live checker diagnostics, edge snippet highlighting, click-to-focus, and syntax error toggle.
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added optional `position?: { x: number, y: number }` with finite refinement to `FlowNodeSchema`.
+  - `packages/checker/src/index.test.ts`: added schema unit tests for `FlowNode.position`.
+  - `pnpm-workspace.yaml`: added `'apps/*'` to `packages:`.
+  - `turbo.json`: added `"build"` task for apps/web.
+  - `package.json`: added root `"dev"` script (`pnpm --filter @repo/web dev`).
+  - `.gitignore`: added `*.tsbuildinfo`.
+  - `apps/web/package.json`: configured `@repo/web` with React 19.3, Vite 8.3, @xyflow/react 12.12, workspace dependencies, and pinned dev tools.
+  - `apps/web/tsconfig.json`: configured TypeScript extending root base with Bundler resolution and React JSX.
+  - `apps/web/vite.config.ts`: configured Vite with React plugin and Vitest node environment.
+  - `apps/web/eslint.config.mjs`: configured ESLint extending root config with `eslint-plugin-react-hooks`.
+  - `apps/web/src/vite-env.d.ts`: added Vite client type reference.
+  - `apps/web/src/lib/layout.ts` & `layout.test.ts`: implemented pure layered BFS node layout with orphan band and position preservation; unit & property tested.
+  - `apps/web/src/lib/decorate.ts` & `decorate.test.ts`: implemented issue categorization (node-level, edge-level, variable-level); unit & property tested.
+  - `apps/web/src/lib/snippet.ts` & `snippet.test.ts`: implemented code snippet extraction with clamped highlight span for edge issues; unit tested.
+  - `apps/web/src/demo/sampleProject.ts` & `sampleProject.test.ts`: created 15-node Genshin-style questline with 4 variables and deliberate issues triggering all checker rules, plus syntax error toggle.
+  - `apps/web/src/components/StoryNode.tsx`: custom React Flow node with type chips and error/warning count badges.
+  - `apps/web/src/components/IssuesPanel.tsx`: diagnostics panel grouped by Errors, Warnings, and Variables with snippet display and click-to-focus.
+  - `apps/web/src/App.tsx`: main application tying React Flow canvas and live checker together with click-to-focus and syntax toggle.
+  - `apps/web/src/main.tsx`, `apps/web/src/index.css`, `apps/web/index.html`: application entrypoint, dark mode styling tokens, and HTML shell.
+  - `docs/ARCHITECTURE.md`: updated Sections 2, 3, 4, and added Section 7 UI.
+  - `docs/context/recent-work.md`: logged entry W-008.
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `FlowNodePositionSchema: z.ZodObject<{ x: number, y: number }>`
+    - `type FlowNodePosition = { x: number; y: number; }`
+    - `FlowNodeSchema`: added optional `position?: FlowNodePosition` (finite coordinates).
+  - `@repo/web` (`apps/web`):
+    - `computeLayout(project: Project): Map<string, { x: number, y: number }>`
+    - `groupIssues(project: Project, issues: Issue[]): { byNode, byEdge, byVariable }`
+    - `getIssueSnippet(project: Project, issue: Issue): { text: string, start: number, end: number } | undefined`
+- **Decisions and why:**
+  - Added an interactive "Syntax error" toggle in the UI header to demonstrate both states: with syntax error OFF, all semantic and variable usage rules fire; with syntax error ON, `invalid-expression` fires and demonstrates the W-006 project-wide usage suppression rule.
+  - Implemented click-to-focus using `useReactFlow.fitView` targeting node/edge coordinates with smooth camera transitions and active selection outlines.
+  - Kept React components thin by extracting layout, issue grouping, and snippet extraction into pure, test-first utility modules.
+- **Assumptions / UNVERIFIED:**
+  - Automated browser rendering via `browser_subagent` could not complete due to Playwright driver download 404 in environment; dev server verified via HTTP 200 curl and exact manual verification steps provided.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 161 tests passing: 81 dsl, 59 checker, 21 web).
+  - `pnpm --filter @repo/web build` -> pass (built production bundle in 231ms).
+  - `pnpm why vite` -> 1 version (`vite@8.3.2`).
+- **Known issues / debt:**
+  - Web Worker: checker currently runs synchronously on main thread inside `useMemo`; worker offloading is a future task.
+  - Canvas is read-only (no editing, connecting, or dragging).
+  - No persistence (sample project loaded in memory).
+  - Own layout algorithm is basic (layered BFS without crossing minimization or custom curve routing).
+- **Next steps:**
+  - Implement canvas node/edge editing and interactive story authoring.
+
 ### W-007 | 2026-10-04 | Variable-usage analysis: initial values + usage rules (W-006 task spec)
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement variable usage analysis and initial values`

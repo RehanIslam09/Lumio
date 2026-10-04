@@ -24,6 +24,26 @@
 
 ## Entries
 
+### W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-005 promotion at commit 7d90978`
+- **Goal:** Promote commit `7d90978` as fifth stable baseline (`stable-005`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-005 baseline (commit 7d90978), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-016 documenting the promotion, rotated W-008 to archive
+  - `docs/context/work-archive.md`: archived full entry W-008 per R7.4 rolling window cap
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`).
+  - Rotated oldest full entry (W-008) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass (11/11 tasks successful across 4 packages, 258 tests passing: 81 dsl, 59 checker, 118 web).
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`.
+
 ### W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement file persistence with save, open, and editable project name`
@@ -330,60 +350,8 @@
   - User to tag commit with `git tag stable-003 98188eab06a64c5753e39418e89a431ffceeeded`.
   - User to commit docs and send "go" for task W-010.
 
-### W-008 | 2026-10-04 | First UI: apps/web read-only story canvas with live checker
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement read-only story canvas and live checker panel`
-- **Goal:** Add FlowNode position schema refinement in @repo/schema; create apps/web using React, Vite, @xyflow/react, and TypeScript strict; implement pure layout, decorate, and snippet modules with unit and property tests; build dark-themed story canvas with live checker diagnostics, edge snippet highlighting, click-to-focus, and syntax error toggle.
-- **Files changed:**
-  - `packages/schema/src/index.ts`: added optional `position?: { x: number, y: number }` with finite refinement to `FlowNodeSchema`.
-  - `packages/checker/src/index.test.ts`: added schema unit tests for `FlowNode.position`.
-  - `pnpm-workspace.yaml`: added `'apps/*'` to `packages:`.
-  - `turbo.json`: added `"build"` task for apps/web.
-  - `package.json`: added root `"dev"` script (`pnpm --filter @repo/web dev`).
-  - `.gitignore`: added `*.tsbuildinfo`.
-  - `apps/web/package.json`: configured `@repo/web` with React 19.3, Vite 8.3, @xyflow/react 12.12, workspace dependencies, and pinned dev tools.
-  - `apps/web/tsconfig.json`: configured TypeScript extending root base with Bundler resolution and React JSX.
-  - `apps/web/vite.config.ts`: configured Vite with React plugin and Vitest node environment.
-  - `apps/web/eslint.config.mjs`: configured ESLint extending root config with `eslint-plugin-react-hooks`.
-  - `apps/web/src/vite-env.d.ts`: added Vite client type reference.
-  - `apps/web/src/lib/layout.ts` & `layout.test.ts`: implemented pure layered BFS node layout with orphan band and position preservation; unit & property tested.
-  - `apps/web/src/lib/decorate.ts` & `decorate.test.ts`: implemented issue categorization (node-level, edge-level, variable-level); unit & property tested.
-  - `apps/web/src/lib/snippet.ts` & `snippet.test.ts`: implemented code snippet extraction with clamped highlight span for edge issues; unit tested.
-  - `apps/web/src/demo/sampleProject.ts` & `sampleProject.test.ts`: created 15-node Genshin-style questline with 4 variables and deliberate issues triggering all checker rules, plus syntax error toggle.
-  - `apps/web/src/components/StoryNode.tsx`: custom React Flow node with type chips and error/warning count badges.
-  - `apps/web/src/components/IssuesPanel.tsx`: diagnostics panel grouped by Errors, Warnings, and Variables with snippet display and click-to-focus.
-  - `apps/web/src/App.tsx`: main application tying React Flow canvas and live checker together with click-to-focus and syntax toggle.
-  - `apps/web/src/main.tsx`, `apps/web/src/index.css`, `apps/web/index.html`: application entrypoint, dark mode styling tokens, and HTML shell.
-  - `docs/ARCHITECTURE.md`: updated Sections 2, 3, 4, and added Section 7 UI.
-  - `docs/context/recent-work.md`: logged entry W-008.
-- **New/changed public APIs:**
-  - `@repo/schema`:
-    - `FlowNodePositionSchema: z.ZodObject<{ x: number, y: number }>`
-    - `type FlowNodePosition = { x: number; y: number; }`
-    - `FlowNodeSchema`: added optional `position?: FlowNodePosition` (finite coordinates).
-  - `@repo/web` (`apps/web`):
-    - `computeLayout(project: Project): Map<string, { x: number, y: number }>`
-    - `groupIssues(project: Project, issues: Issue[]): { byNode, byEdge, byVariable }`
-    - `getIssueSnippet(project: Project, issue: Issue): { text: string, start: number, end: number } | undefined`
-- **Decisions and why:**
-  - Added an interactive "Syntax error" toggle in the UI header to demonstrate both states: with syntax error OFF, all semantic and variable usage rules fire; with syntax error ON, `invalid-expression` fires and demonstrates the W-006 project-wide usage suppression rule.
-  - Implemented click-to-focus using `useReactFlow.fitView` targeting node/edge coordinates with smooth camera transitions and active selection outlines.
-  - Kept React components thin by extracting layout, issue grouping, and snippet extraction into pure, test-first utility modules.
-- **Assumptions / UNVERIFIED:**
-  - Automated browser rendering via `browser_subagent` could not complete due to Playwright driver download 404 in environment; dev server verified via HTTP 200 curl and exact manual verification steps provided.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 161 tests passing: 81 dsl, 59 checker, 21 web).
-  - `pnpm --filter @repo/web build` -> pass (built production bundle in 231ms).
-  - `pnpm why vite` -> 1 version (`vite@8.3.2`).
-- **Known issues / debt:**
-  - Web Worker: checker currently runs synchronously on main thread inside `useMemo`; worker offloading is a future task.
-  - Canvas is read-only (no editing, connecting, or dragging).
-  - No persistence (sample project loaded in memory).
-  - Own layout algorithm is basic (layered BFS without crossing minimization or custom curve routing).
-- **Next steps:**
-  - Implement canvas node/edge editing and interactive story authoring.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-008 | 2026-10-04 | First UI: apps/web read-only story canvas with live checker
 - W-007 | 2026-10-04 | Variable-usage analysis: initial values + usage rules (W-006 task spec)
 - W-006 | 2026-10-04 | Promote commit d9d7b35 as stable-002
 - W-005 | 2026-10-04 | DSL typechecker and checker rules: invalid-expression, undefined-variable, type-mismatch
