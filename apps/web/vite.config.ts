@@ -5,5 +5,6 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "node",
+    testTimeout: 30_000,
   },
 });

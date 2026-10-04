@@ -13,7 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { check } from "@repo/checker";
-import type { Issue, FlowNodeType, VariableType, Variable } from "@repo/schema";
+import type { Project, Issue, FlowNodeType, VariableType, Variable } from "@repo/schema";
 import { getSampleProjectWithSyntaxError } from "./demo/sampleProject.js";
 import { computeLayout } from "./lib/layout.js";
 import { groupIssues } from "./lib/decorate.js";
@@ -30,6 +30,14 @@ import {
   type EditorState,
   type EditorAction,
 } from "./editor/index.js";
+import {
+  serializeProject,
+  parseProjectFile,
+  checkFileSizeBytes,
+  fileNameFor,
+  isDirty,
+  makeEmptyProject,
+} from "./persistence/index.js";
 
 import {
   StoryNode,
@@ -242,12 +250,14 @@ function MainStudio() {
   const [editorState, setEditorState] = useState<EditorState>(() =>
     createEditor(getSampleProjectWithSyntaxError(false)),
   );
+  const [savedPresent, setSavedPresent] = useState<Project>(() => editorState.present);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selection, setSelected] = useState<Selection>(null);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [activeTab, setActiveTab] = useState<PanelTab>("issues");
 
   const project = editorState.present;
+  const dirty = isDirty(editorState, savedPresent);
 
   const dispatch = useCallback((action: EditorAction): boolean => {
     let success = false;
@@ -275,26 +285,106 @@ function MainStudio() {
   }, []);
 
   const handleReset = useCallback(() => {
-    if (canUndo(editorState)) {
+    if (isDirty(editorState, savedPresent)) {
       const ok = window.confirm("Reset project to sample? Unsaved changes will be lost.");
       if (!ok) return;
     }
-    setEditorState(createEditor(getSampleProjectWithSyntaxError(false)));
+    const sample = getSampleProjectWithSyntaxError(false);
+    setEditorState(createEditor(sample));
+    setSavedPresent(sample);
     setSelected(null);
     setSelectedIssue(null);
     setErrorMessage(null);
-  }, [editorState]);
+  }, [editorState, savedPresent]);
+
+  const handleNew = useCallback(() => {
+    if (isDirty(editorState, savedPresent)) {
+      const ok = window.confirm("Create new project? Unsaved changes will be lost.");
+      if (!ok) return;
+    }
+    const empty = makeEmptyProject(crypto.randomUUID(), "Untitled story");
+    setEditorState(createEditor(empty));
+    setSavedPresent(empty);
+    setSelected(null);
+    setSelectedIssue(null);
+    setErrorMessage(null);
+  }, [editorState, savedPresent]);
+
+  const handleSave = useCallback(() => {
+    const text = serializeProject(project, new Date().toISOString());
+    const fileName = fileNameFor(project.name);
+    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setSavedPresent(project);
+  }, [project]);
+
+  const handleOpen = useCallback(
+    (file: File) => {
+      const preSizeError = checkFileSizeBytes(file.size);
+      if (preSizeError && !preSizeError.ok) {
+        setErrorMessage(preSizeError.error.message);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text !== "string") {
+          setErrorMessage("Failed to read file as text.");
+          return;
+        }
+
+        const res = parseProjectFile(text);
+        if (!res.ok) {
+          let msg = res.error.message;
+          if (res.error.details.length > 0) {
+            msg += `:\n${res.error.details.join("\n")}`;
+          }
+          setErrorMessage(msg);
+          return;
+        }
+
+        if (isDirty(editorState, savedPresent)) {
+          const ok = window.confirm("Replace the current project? Unsaved changes will be lost.");
+          if (!ok) return;
+        }
+
+        setEditorState(createEditor(res.project));
+        setSavedPresent(res.project);
+        setSelected(null);
+        setSelectedIssue(null);
+
+        if (res.warnings.length > 0) {
+          setErrorMessage(`Project opened with warnings:\n${res.warnings.join("\n")}`);
+        } else {
+          setErrorMessage(null);
+        }
+      };
+      reader.onerror = () => {
+        setErrorMessage("Failed to read file: FileReader error.");
+      };
+      reader.readAsText(file);
+    },
+    [editorState, savedPresent],
+  );
 
   // Warning when leaving with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (canUndo(editorState)) {
+      if (isDirty(editorState, savedPresent)) {
         e.preventDefault();
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [editorState]);
+  }, [editorState, savedPresent]);
 
   // Consistency checker main-thread evaluation
   const issues = useMemo(() => check(project), [project]);
@@ -417,11 +507,16 @@ function MainStudio() {
     <div className="app-container">
       <Toolbar
         projectName={project.name}
+        isDirty={dirty}
         canUndo={canUndo(editorState)}
         canRedo={canRedo(editorState)}
         nodesCount={project.nodes.length}
         edgesCount={project.edges.length}
         varsCount={project.variables.length}
+        onRenameProject={(name) => dispatch({ type: "renameProject", name })}
+        onNew={handleNew}
+        onOpen={handleOpen}
+        onSave={handleSave}
         onAddNode={handleAddNode}
         onUndo={handleUndo}
         onRedo={handleRedo}

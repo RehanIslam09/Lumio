@@ -1,13 +1,20 @@
 import React from "react";
 import type { FlowNodeType } from "@repo/schema";
+import { FileActions } from "./FileActions.js";
+import { EditableTitle } from "./EditableTitle.js";
 
 interface ToolbarProps {
   projectName: string;
+  isDirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
   nodesCount: number;
   edgesCount: number;
   varsCount: number;
+  onRenameProject: (name: string) => void;
+  onNew: () => void;
+  onOpen: (file: File) => void;
+  onSave: () => void;
   onAddNode: (type: FlowNodeType) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -16,11 +23,16 @@ interface ToolbarProps {
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   projectName,
+  isDirty,
   canUndo,
   canRedo,
   nodesCount,
   edgesCount,
   varsCount,
+  onRenameProject,
+  onNew,
+  onOpen,
+  onSave,
   onAddNode,
   onUndo,
   onRedo,
@@ -30,8 +42,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     <header className="app-header">
       <div className="header-left">
         <div className="header-badge">Lumio Narrative Studio</div>
-        <h1 className="header-title">{projectName}</h1>
-        {canUndo && (
+        <h1 className="header-title">
+          <EditableTitle name={projectName} onRename={onRenameProject} />
+        </h1>
+        {isDirty && (
           <span className="unsaved-badge" title="You have unsaved changes in this session">
             Unsaved changes
           </span>
@@ -40,6 +54,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="header-right">
         <div className="toolbar-actions" role="toolbar" aria-label="Editor actions">
+          <FileActions onNew={onNew} onOpen={onOpen} onSave={onSave} />
+
           <div className="button-group" role="group" aria-label="Add nodes">
             <button
               type="button"
@@ -100,11 +116,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </button>
         </div>
 
-        <div className="stats-pill" aria-label="Project statistics">
+        <div className="stats-pill" title="Project entity counts">
           <span>{nodesCount} nodes</span>
-          <span>•</span>
+          <span className="stats-dot">•</span>
           <span>{edgesCount} edges</span>
-          <span>•</span>
+          <span className="stats-dot">•</span>
           <span>{varsCount} vars</span>
         </div>
       </div>

@@ -24,6 +24,66 @@
 
 ## Entries
 
+### W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement file persistence with save, open, and editable project name`
+- **Goal:** Implement pure persistence module (serialize, parse, slug, dirty, empty) with unit & property tests; wire New, Open, and Save to Toolbar with hidden file input and temporary object URL download; make project title editable; wire isDirty reference tracking to unsaved changes badge and beforeunload dialog.
+- **Files changed:**
+  - `apps/web/vite.config.ts`: configured testTimeout: 30_000 mirroring packages/dsl and packages/checker.
+  - `apps/web/src/persistence/types.ts`: created with persistence constants (MAX_FILE_BYTES = 5_000_000, CURRENT_SCHEMA_VERSION = 1, format = "lumio-project") and ParseFileResult error taxonomy.
+  - `apps/web/src/persistence/serialize.ts`: created pure `serializeProject` producing deterministic 2-space indented JSON with trailing newline.
+  - `apps/web/src/persistence/slug.ts`: created pure `fileNameFor` sanitizing project names to lowercase alphanumeric slugs capped at 60 characters with `.lumio.json` extension.
+  - `apps/web/src/persistence/dirty.ts`: created pure `isDirty` with strict reference equality comparison (`state.present !== saved`).
+  - `apps/web/src/persistence/empty.ts`: created pure `makeEmptyProject` producing minimal valid project with single start node.
+  - `apps/web/src/persistence/parse.ts`: created pure `parseProjectFile` and `checkFileSizeBytes` with byte size limit check, JSON parsing, format/version validation, version migration table, `ProjectSchema` validation, graph integrity validation, and unknown keys warning detection.
+  - `apps/web/src/persistence/index.ts`: exported public API for persistence module.
+  - `apps/web/src/persistence/persistence.test.ts`: created with 18 unit and property tests (round trip, determinism, byte size boundaries, error taxonomy, migration table, slug sanitization, dirty tracking, F1 generative round trip with intent resolver, F2 robustness).
+  - `apps/web/src/components/FileActions.tsx`: created with New, Open…, and Save buttons triggering hidden file input and temporary object URL download.
+  - `apps/web/src/components/EditableTitle.tsx`: created with inline editable project name adhering to draft-field blur/Enter commit and Escape revert pattern.
+  - `apps/web/src/components/Toolbar.tsx`: integrated FileActions and EditableTitle; wired isDirty to "Unsaved changes" indicator.
+  - `apps/web/src/App.tsx`: wired `savedPresent` baseline state, `dirty` calculation, `handleNew`, `handleOpen` (with pre-check and confirm), `handleSave` (with immediate baseline commit), and updated `beforeunload` warning.
+  - `apps/web/src/index.css`: styled editable header title and message bar multiline formatted text.
+  - `docs/ARCHITECTURE.md`: updated Repo map, Section 10 Persistence marked DECIDED.
+  - `docs/context/work-archive.md`: archived full entries W-007 and W-006.
+  - `docs/context/recent-work.md`: recorded entry W-015, kept 8 newest entries in rolling window.
+- **New/changed public APIs:**
+  - `apps/web/src/persistence/index.ts`:
+    - `MAX_FILE_BYTES: 5_000_000`, `CURRENT_SCHEMA_VERSION: 1`, `PROJECT_FORMAT: 'lumio-project'`
+    - `type ParseFileErrorCode = 'too-large' | 'not-json' | 'wrong-format' | 'unsupported-version' | 'invalid-project' | 'integrity'`
+    - `type ParseFileError = { code: ParseFileErrorCode; message: string; details: string[]; }`
+    - `type ParseFileResult = { ok: true; project: Project; warnings: string[] } | { ok: false; error: ParseFileError; }`
+    - `type SerializedProjectFile = { format: "lumio-project"; schemaVersion: number; exportedAt: string; project: Project; }`
+    - `serializeProject(project: Project, exportedAt: string): string`
+    - `parseProjectFile(text: string): ParseFileResult`
+    - `checkFileSizeBytes(bytes: number): ParseFileResult | null`
+    - `fileNameFor(projectName: string): string`
+    - `isDirty(state: EditorState, saved: Project): boolean`
+    - `makeEmptyProject(id: string, name: string): Project`
+    - `MIGRATIONS: Record<number, MigrationFn>`
+- **Decisions and why:**
+  - Strict isolation: persistence module is completely pure and imports only from `@repo/schema` and type-only `EditorState` from editor module (R2.4, R3.4, R4.1).
+  - Pre-checked `file.size` against `MAX_FILE_BYTES` in Open via shared pure `checkFileSizeBytes` helper to return identical error structure before file reading (addition 4).
+  - Saved baseline `savedPresent` is committed immediately upon triggering download. Noted that web browsers provide no callback or cancellation status for native save dialogs (addition 3).
+  - Unknown keys on project, nodes, edges, or variables are detected prior to Zod schema parsing and surfaced as non-fatal warnings in `MessageBar` (addition 5).
+  - `EditableTitle` synchronizes during render without `useEffect`, adhering to React 19 rules.
+  - F1 generator rewrite: replaced dynamic `fc.sample()` inside the loop with an intent generator inside `fc.property` and test-level resolver, speeding up F1 from 1420ms to 11ms alone.
+  - Added `testTimeout: 30_000` to `apps/web/vite.config.ts`, verified against installed Vitest 5.0.3 `config.d.BxjInJat.d.ts` types, mirroring packages/dsl and packages/checker.
+- **Assumptions / UNVERIFIED:**
+  - Browser native `<input type="file">` file picker dialog, `<a download>` trigger, and `window.confirm` dialogs require manual verification in browser.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 258 tests passing: 81 dsl, 59 checker, 118 web).
+  - `pnpm --filter @repo/web exec vitest run src/persistence/persistence.test.ts --reporter=verbose` -> pass (18/18 tests passing).
+  - `pnpm --filter @repo/web build` -> pass (built in 434ms, 0 errors).
+- **Known issues / debt:**
+  - Browser save dialog cancellation cannot be detected: `savedPresent` marks clean when download triggers even if user cancels native save dialog.
+  - Property tests take 1-3 s each under load; consider fewer runs for fast CI plus a slower nightly profile.
+  - No autosave or crash recovery (in-memory state lost on unconfirmed page reload).
+  - No repair of corrupt or imperfect files.
+  - Project file contains no canvas layout beyond explicit node positions.
+  - No import/export from third-party tools (Twine, Ink, Articy).
+- **Next steps:**
+  - User to execute manual test script and commit changes.
+
 ### W-014 | 2026-10-04 | Connections UX for apps/web: pure connections module, enlarged handles, navigation, and Inspector wiring
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add connections UX with enlarged handles, edge navigation, and inspector connections section`
@@ -323,63 +383,13 @@
 - **Next steps:**
   - Implement canvas node/edge editing and interactive story authoring.
 
-### W-007 | 2026-10-04 | Variable-usage analysis: initial values + usage rules (W-006 task spec)
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement variable usage analysis and initial values`
-- **Goal:** Add optional `initial` value refinement to `VariableSchema`, update `IssueSchema` with optional `nodeId`, `variableId`, and XOR refinement; implement pure `collectReads` and `collectEffectUsage` in `@repo/dsl`; implement `unused-variable`, `variable-never-written`, and `variable-never-read` rules in `@repo/checker`; validate with schema, unit, and property tests (U1, U2).
-- **Files changed:**
-  - `packages/schema/src/index.ts`: added optional `initial` with refinement to `VariableSchema`; added usage rule IDs to `IssueRuleIdSchema`; added optional `variableId`, made `nodeId` optional, and added XOR refinement to `IssueSchema`.
-  - `packages/dsl/src/usage.ts`: created pure AST traversal helpers `collectReads` (source order) and `collectEffectUsage` (compound operators `+=`/`-=` do not add target to reads).
-  - `packages/dsl/src/index.ts`: exported `usage.ts`.
-  - `packages/dsl/src/index.test.ts`: added unit tests for `collectReads` and `collectEffectUsage`.
-  - `packages/checker/src/index.ts`: parsed conditions/effects across all edges, suppressed usage issues on parse errors, deduplicated variable declarations by first-declared, and emitted usage issues in `project.variables` order.
-  - `packages/checker/src/index.test.ts`: adapted Property B for optional `nodeId` and XOR refinement, updated ordering test for variable-level issues, updated W-005 fixture to read `msg`, added schema refinement tests, rule unit tests, Property U1 differential test, and Property U2 robustness test.
-  - `docs/ARCHITECTURE.md`: updated Sections 4, 5, 6 with variable `initial`, DSL usage helpers, updated Issue shape, rules table, and known limitations.
-  - `docs/context/recent-work.md`: logged entry W-007.
-- **New/changed public APIs:**
-  - `@repo/schema`:
-    - `VariableSchema`: gains optional `initial?: number | string | boolean` with refinement ensuring type match and finite numbers.
-    - `IssueRuleIdSchema`: added `"unused-variable" | "variable-never-written" | "variable-never-read"`.
-    - `IssueSchema`: `nodeId` is now optional; added optional `variableId: string`; refined so exactly one of `nodeId` or `variableId` is present. Any consumer (e.g. future UI) must handle variable-level issues.
-  - `@repo/dsl`:
-    - `collectReads(expr: Expr): Identifier[]`
-    - `collectEffectUsage(effect: Effect): { write: Identifier; reads: Identifier[] }`
-  - `@repo/checker`:
-    - `check(project: Project): Issue[]` outputs node issues, edge issues, and variable-usage issues in `project.variables` order.
-- **Decisions and why:**
-  - `Issue.nodeId` made optional in favor of `variableId` with mutual exclusivity refinement (`(nodeId !== undefined) !== (variableId !== undefined)`). Variable-level issues do not attach to an arbitrary node.
-  - Reachability limitation: variable usage is counted across all edges in `project.edges`, even edges whose source node is unreachable from any start node or dangling edges. Pinned with dedicated unit test.
-  - Syntax error suppression: any parse error on any edge condition/effect suppresses all usage issues across the project to prevent cascading false positives. Pinned with unit test.
-  - First declared variable wins: duplicate variable names attribute usage to the first declaration without crashing or attributing to duplicates.
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (8/8 tasks successful across 3 packages, 137 tests passing: 81 dsl, 56 checker).
-- **Known issues / debt:** none
-- **Next steps:**
-  - Integrate AST evaluator or AST interpreter for playtest execution mode.
-
-### W-006 | 2026-10-04 | Promote commit d9d7b35 as stable-002
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-002 promotion at commit d9d7b35`
-- **Goal:** Promote commit `d9d7b35` as second stable baseline (`stable-002`) via `/promote-stable` workflow.
-- **Files changed:**
-  - `docs/context/last-stable-state.md`: updated to record stable-002 baseline (commit d9d7b35), gate result, capabilities, environment, and rollback instructions
-  - `docs/context/recent-work.md`: added entry W-006 documenting the promotion
-- **New/changed public APIs:** none
-- **Decisions and why:**
-  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
-  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-002 d9d7b35eef65a59abfdb4329f8dc5423177801e1`).
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm check -- --force` -> pass (8/8 tasks successful across 3 packages, 109 tests passing)
-- **Known issues / debt:** none
-- **Next steps:**
-  - User to tag commit with `git tag stable-002 d9d7b35eef65a59abfdb4329f8dc5423177801e1`.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-007 | 2026-10-04 | Variable-usage analysis: initial values + usage rules (W-006 task spec)
+- W-006 | 2026-10-04 | Promote commit d9d7b35 as stable-002
 - W-005 | 2026-10-04 | DSL typechecker and checker rules: invalid-expression, undefined-variable, type-mismatch
 - W-004 | 2026-10-03 | DSL v1: Schema additions + pure lexer & parser
 - W-003 | 2026-10-03 | Checker v1 structure: Issue model, check() entry point, second rule
 - W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
 - W-001 | 2026-10-03 | Monorepo bootstrap and pure packages skeleton
 - W-000 | 2026-10-01 | Agent operating docs created
+

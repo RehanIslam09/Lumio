@@ -14,8 +14,9 @@
 7. UI `DECIDED`
 8. Editor state `DECIDED`
 9. Realtime collaboration `DRAFT`
-10. Export format `TODO`
-11. Open questions
+10. Persistence `DECIDED`
+11. Export format `TODO`
+12. Open questions
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -55,7 +56,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure lib helpers (`src/lib/`), Inspector connection components, and sidebar tabs
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), and UI components
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -258,10 +259,36 @@ interface EditorError {
 ## 9. Realtime collaboration `DRAFT`
 Yjs documents per project/node, Hocuspocus server, awareness for cursors and presence. Persistence to Postgres via Hocuspocus extension. Auth on WebSocket connect (R8.1).
 
-## 10. Export format `TODO`
+## 10. Persistence `DECIDED`
+File-based project save and open workflow implemented via pure persistence module (`apps/web/src/persistence/`).
+- **File Format v1:**
+  - Structure: `{ format: "lumio-project", schemaVersion: 1, exportedAt: string, project: Project }`.
+  - Serialized as deterministic UTF-8 JSON with 2-space indentation and trailing newline.
+  - File naming: `${slug}.lumio.json` where slug is lowercase alphanumeric, spaces/symbols collapsed to single `-`, leading/trailing dashes removed, max 60 chars (fallback: `project.lumio.json`).
+- **Limits & Error Handling:**
+  - Maximum file size: 5,000,000 UTF-8 bytes (`MAX_FILE_BYTES`). Larger files rejected with `'too-large'` before `JSON.parse`.
+  - Parse error taxonomy:
+    - `'too-large'`: byte length exceeds 5 MB.
+    - `'not-json'`: JSON syntax error.
+    - `'wrong-format'`: non-object, missing/invalid `format` marker, or non-positive integer `schemaVersion`.
+    - `'unsupported-version'`: `schemaVersion` greater than current supported version.
+    - `'invalid-project'`: schema validation failure against `ProjectSchema` (capped at 10 dot-joined path details + remaining count).
+    - `'integrity'`: referential integrity or ID collision failure.
+- **Integrity Policy:**
+  - Enforces unique node IDs, unique edge IDs, unique variable IDs, and valid source/target node references across all edges.
+  - Variable name duplicates are permitted (handled by consistency checker).
+  - Unknown keys: stripped properties on top-level project, nodes, edges, or variables are detected and reported as non-fatal warnings.
+- **Migration Registry:**
+  - Version-keyed table `MIGRATIONS: Record<number, MigrationFn>` executes forward data transforms when loading legacy versions up to `CURRENT_SCHEMA_VERSION`.
+- **Dirty Tracking:**
+  - `isDirty(state, savedPresent)` performs strict reference comparison (`state.present !== savedPresent`).
+  - Saved baseline updates on Save, Open, New project, and Sample reset.
+  - Controls "Unsaved changes" toolbar badge, `beforeunload` browser prompt, and confirmation dialogs on destructive actions.
+
+## 11. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
-## 11. Open questions
+## 12. Open questions
 - ORM choice (Drizzle vs Prisma)
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1
