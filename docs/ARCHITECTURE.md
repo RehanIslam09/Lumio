@@ -55,7 +55,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure lib helpers (`src/lib/`), and sidebar tabs
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure lib helpers (`src/lib/`), Inspector connection components, and sidebar tabs
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -186,7 +186,8 @@ Interactive story canvas and narrative authoring environment built with React, V
 - **Editing Flow & Canvas Integration:**
   - Nodes are draggable in controlled mode via transient `dragOverrides` Map. On drag stop, compares final coordinates against pre-drag rendered layout position; dispatches ONE `moveNode` only if coordinates changed.
   - Adding nodes places new node at the center of the visible canvas (`screenToFlowPosition` offset by half node dimensions).
-  - Handle-to-handle dragging completes connections via `addEdge` with `makeEdge`.
+  - Handle-to-handle dragging completes connections via `addEdge` with `makeEdge`. Node handles are enlarged to 14px with hover growth (`scale: 1.2`), distinct outline focus, and `<ReactFlow connectionRadius={30} />` to maximize target hit area.
+  - Non-blocking dismissible tip overlay (`pointer-events: none` container with `pointer-events: auto` dismiss button) guides users on node handle dragging without blocking canvas interactions or overlapping Controls / MiniMap.
   - Single deletion path: React Flow's `deleteKeyCode` is disabled (`null`). Global key listener uses pure `interpretKey` to intercept `Delete` / `Backspace` when non-editable canvas targets have focus, dispatching `deleteNode` or `deleteEdge` on current selection.
 - **Selection Model:**
   - Single source of truth `{ kind: 'node' | 'edge', id: string } | null` in App.
@@ -198,7 +199,9 @@ Interactive story canvas and narrative authoring environment built with React, V
   - Under condition and effect fields, live diagnostics from pure `draftCheck` highlight syntax/type problem spans in real time without committing.
 - **Right Sidebar Tabs (420px):**
   - **Issues Tab:** Grouped consistency diagnostics (Errors, Warnings, Variables) with code snippets and click-to-focus camera panning.
-  - **Inspector Tab:** Contextual inspector for selected Node (ID, title, type, explicit/auto position with clear button, delete button, inline node issues) or Edge (ID, source, target, condition, editable effects list, delete button, inline edge issues).
+  - **Inspector Tab:**
+    - Contextual inspector for selected Node: ID, title, type, explicit/auto position with clear button, Connections section (incoming/outgoing edge rows with direction arrow, destination title or `(missing node)`, condition summary, `fx N` chip, and click-to-focus; empty state messaging; and "Connect to…" dropdown + Connect button dispatching `addEdge` via `makeEdge`), and delete button.
+    - Contextual inspector for selected Edge: "Go to source" and "Go to target" navigation buttons with click-to-focus (disabled on dangling references), ID, source, target, condition, editable effects list, delete button, inline edge issues.
   - **Variables Tab:** Variable manager with name, type selector, initial value controls (number, string, boolean checkbox, or clear/set initial toggle), inline variable issues, and deletion. Incompatible type switches surface editor error in dismissible message bar.
 
 ## 8. Editor state `DECIDED`

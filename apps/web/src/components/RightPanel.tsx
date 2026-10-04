@@ -28,6 +28,9 @@ interface RightPanelProps {
     patch: { from?: string; to?: string; condition?: string | null; effects?: string[] | null },
   ) => void;
   onDeleteEdge: (id: string) => void;
+  onSelectNode: (id: string) => void;
+  onSelectEdge: (id: string) => void;
+  onConnectNodes: (fromId: string, toId: string) => void;
   onAddVariable: () => void;
   onUpdateVariable: (
     id: string,
@@ -51,6 +54,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onDeleteNode,
   onUpdateEdge,
   onDeleteEdge,
+  onSelectNode,
+  onSelectEdge,
+  onConnectNodes,
   onAddVariable,
   onUpdateVariable,
   onDeleteVariable,
@@ -119,6 +125,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               onDeleteNode={onDeleteNode}
               onUpdateEdge={onUpdateEdge}
               onDeleteEdge={onDeleteEdge}
+              onSelectNode={onSelectNode}
+              onSelectEdge={onSelectEdge}
+              onConnectNodes={onConnectNodes}
             />
           </div>
         )}

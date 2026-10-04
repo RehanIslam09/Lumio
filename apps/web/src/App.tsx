@@ -73,6 +73,7 @@ function StoryCanvas({
 }) {
   const { setCenter, getViewport } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const [tipDismissed, setTipDismissed] = useState(false);
   const [dragOverrides, setDragOverrides] = useState<Map<string, { x: number; y: number }>>(
     new Map(),
   );
@@ -166,6 +167,23 @@ function StoryCanvas({
 
   return (
     <div className="canvas-wrapper" ref={wrapperRef}>
+      {!tipDismissed && (
+        <div className="canvas-tip-overlay" role="note">
+          <div className="canvas-tip-card">
+            <p className="canvas-tip-text">
+              Tip: drag from the dot on a node's right edge to the dot on another node's left edge to connect them.
+            </p>
+            <button
+              type="button"
+              className="canvas-tip-dismiss-btn"
+              onClick={() => setTipDismissed(true)}
+              aria-label="Dismiss tip"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -175,6 +193,7 @@ function StoryCanvas({
         nodesConnectable={true}
         elementsSelectable={true}
         edgesReconnectable={false}
+        connectionRadius={30}
         deleteKeyCode={null}
         multiSelectionKeyCode={null}
         selectionKeyCode={null}
@@ -230,7 +249,8 @@ function MainStudio() {
 
   const project = editorState.present;
 
-  const dispatch = useCallback((action: EditorAction) => {
+  const dispatch = useCallback((action: EditorAction): boolean => {
+    let success = false;
     setEditorState((current) => {
       const res = apply(current, action);
       if (!res.ok) {
@@ -238,8 +258,10 @@ function MainStudio() {
         return current;
       }
       setErrorMessage(null);
+      success = true;
       return res.state;
     });
+    return success;
   }, []);
 
   const handleUndo = useCallback(() => {
@@ -352,9 +374,22 @@ function MainStudio() {
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
       const edge = makeEdge(connection.source, connection.target, project.edges.map((e) => e.id));
-      dispatch({ type: "addEdge", edge });
-      setSelected({ kind: "edge", id: edge.id });
-      setActiveTab("inspector");
+      const ok = dispatch({ type: "addEdge", edge });
+      if (ok) {
+        setSelected({ kind: "edge", id: edge.id });
+        setActiveTab("inspector");
+      }
+    },
+    [project.edges, dispatch],
+  );
+
+  const handleConnectNodes = useCallback(
+    (fromId: string, toId: string) => {
+      const edge = makeEdge(fromId, toId, project.edges.map((e) => e.id));
+      const ok = dispatch({ type: "addEdge", edge });
+      if (ok) {
+        setSelected({ kind: "edge", id: edge.id });
+      }
     },
     [project.edges, dispatch],
   );
@@ -438,6 +473,9 @@ function MainStudio() {
             dispatch({ type: "deleteEdge", id });
             setSelected(null);
           }}
+          onSelectNode={(id) => setSelected({ kind: "node", id })}
+          onSelectEdge={(id) => setSelected({ kind: "edge", id })}
+          onConnectNodes={handleConnectNodes}
           onAddVariable={() => {
             const v = makeVariable(project.variables);
             dispatch({ type: "addVariable", variable: v });

@@ -2,7 +2,10 @@ import React from "react";
 import type { Project, Issue, FlowNodeType } from "@repo/schema";
 import type { Selection } from "../lib/flowModel.js";
 import { DraftField } from "./DraftField.js";
-import { checkConditionDraft, checkEffectDraft } from "../lib/draftCheck.js";
+import { checkConditionDraft } from "../lib/draftCheck.js";
+import { ConnectionsSection } from "./ConnectionsSection.js";
+import { EdgeNavButtons } from "./EdgeNavButtons.js";
+import { EdgeEffectsSection } from "./EdgeEffectsSection.js";
 
 interface InspectorPanelProps {
   project: Project;
@@ -13,6 +16,9 @@ interface InspectorPanelProps {
   onDeleteNode: (id: string) => void;
   onUpdateEdge: (id: string, patch: { from?: string; to?: string; condition?: string | null; effects?: string[] | null }) => void;
   onDeleteEdge: (id: string) => void;
+  onSelectNode: (id: string) => void;
+  onSelectEdge: (id: string) => void;
+  onConnectNodes: (fromId: string, toId: string) => void;
 }
 
 export const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -24,6 +30,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onDeleteNode,
   onUpdateEdge,
   onDeleteEdge,
+  onSelectNode,
+  onSelectEdge,
+  onConnectNodes,
 }) => {
   if (!selection) {
     return (
@@ -118,6 +127,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </div>
           </div>
 
+          <ConnectionsSection
+            key={node.id}
+            project={project}
+            nodeId={node.id}
+            onSelectEdge={onSelectEdge}
+            onConnect={(toId) => onConnectNodes(node.id, toId)}
+          />
+
           <div className="inspector-danger-zone">
             <button
               type="button"
@@ -142,8 +159,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     );
   }
 
-  const effects = edge.effects ?? [];
-
   return (
     <div className="inspector-panel" aria-label={`Edge Inspector: ${edge.id}`}>
       {edgeIssues.length > 0 && (
@@ -161,6 +176,13 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       )}
 
       <div className="inspector-fields">
+        <EdgeNavButtons
+          project={project}
+          fromNodeId={edge.from}
+          toNodeId={edge.to}
+          onSelectNode={onSelectNode}
+        />
+
         <div className="field-group">
           <label htmlFor="inspect-edge-id" className="field-label">Edge ID</label>
           <input
@@ -219,61 +241,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           }}
         />
 
-        <div className="effects-section">
-          <div className="effects-header">
-            <label className="field-label">Effects ({effects.length})</label>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                const newEffects = [...effects, ""];
-                onUpdateEdge(edge.id, { effects: newEffects });
-              }}
-            >
-              + Add effect
-            </button>
-          </div>
-
-          {effects.length === 0 ? (
-            <p className="empty-substate">No effects configured for this edge.</p>
-          ) : (
-            <div className="effects-list">
-              {effects.map((effectStr, idx) => (
-                <div key={idx} className="effect-row">
-                  <div className="effect-input-wrapper">
-                    <DraftField
-                      id={`inspect-edge-effect-${idx}`}
-                      label={`Effect ${idx + 1}`}
-                      value={effectStr}
-                      placeholder="e.g. gold -= 10"
-                      checkDraft={(draft) => checkEffectDraft(draft, project.variables)}
-                      onCommit={(nextEffect) => {
-                        const trimmed = nextEffect.trim();
-                        const nextList = [...effects];
-                        nextList[idx] = trimmed;
-                        onUpdateEdge(edge.id, { effects: nextList });
-                      }}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-danger-outline btn-sm btn-remove-effect"
-                    onClick={() => {
-                      const nextList = effects.filter((_, i) => i !== idx);
-                      onUpdateEdge(edge.id, {
-                        effects: nextList.length > 0 ? nextList : null,
-                      });
-                    }}
-                    title="Remove this effect"
-                    aria-label={`Remove effect ${idx + 1}`}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <EdgeEffectsSection
+          effects={edge.effects ?? []}
+          variables={project.variables}
+          onUpdateEffects={(effects) => onUpdateEdge(edge.id, { effects })}
+        />
 
         <div className="inspector-danger-zone">
           <button

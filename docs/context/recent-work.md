@@ -24,6 +24,50 @@
 
 ## Entries
 
+### W-014 | 2026-10-04 | Connections UX for apps/web: pure connections module, enlarged handles, navigation, and Inspector wiring
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add connections UX with enlarged handles, edge navigation, and inspector connections section`
+- **Goal:** Implement pure connections library module with unit & fast-check property tests; enlarge handles to 14px with connectionRadius={30} and non-blocking dismissible tip overlay; add incoming/outgoing lists with click-to-focus and Connect-to dropdown in Node Inspector; add Go-to-source and Go-to-target navigation in Edge Inspector.
+- **Files changed:**
+  - `apps/web/src/lib/connections.ts`: created with pure `listConnections`, `connectTargets`, and `summarizeCondition`.
+  - `apps/web/src/lib/connections.test.ts`: created with 13 unit and fast-check property tests (ordering, self-loops, parallel edges, dangling nodes, summarize edge cases, incident edge invariant).
+  - `apps/web/src/components/ConnectionsSection.tsx`: created with incoming/outgoing connections list, condition summaries, fx chips, click-to-focus edge, and Connect-to dropdown with auto-reset on target removal or node switch.
+  - `apps/web/src/components/EdgeNavButtons.tsx`: created with Go to source and Go to target navigation buttons with click-to-focus and dangling reference disable.
+  - `apps/web/src/components/EdgeEffectsSection.tsx`: extracted from InspectorPanel to maintain component line limits.
+  - `apps/web/src/components/InspectorPanel.tsx`: integrated ConnectionsSection and EdgeNavButtons while maintaining < 250 lines.
+  - `apps/web/src/components/RightPanel.tsx`: forwarded navigation and connect handlers to InspectorPanel.
+  - `apps/web/src/App.tsx`: added connectionRadius={30}, non-blocking dismissible canvas tip overlay, and handleConnectNodes dispatch handler.
+  - `apps/web/src/index.css`: styled 14px handles with hover growth, non-blocking tip overlay card, connection rows, fx chips, and edge navigation buttons.
+  - `docs/ARCHITECTURE.md`: updated UI section with connection flows, enlarged handles, and updated repo map.
+  - `docs/context/recent-work.md`: recorded entry W-014.
+- **New/changed public APIs:**
+  - `apps/web/src/lib/connections.ts`:
+    - `type ConnectionRow = { edgeId: string; otherNodeId: string; otherTitle: string | undefined; condition: string | undefined; effectCount: number; }`
+    - `type NodeConnections = { outgoing: ConnectionRow[]; incoming: ConnectionRow[]; }`
+    - `type ConnectTarget = { id: string; label: string; }`
+    - `summarizeCondition(condition: string | undefined, maxLength: number): string`
+    - `listConnections(project: Project, nodeId: string): NodeConnections`
+    - `connectTargets(project: Project, nodeId?: string): ConnectTarget[]`
+- **Decisions and why:**
+  - Verified `@xyflow/react` connection radius prop directly in installed types: `connectionRadius?: number` (`component-props.d.ts:598`) and set to 30 for relaxed target dragging (R1.1).
+  - Canvas tip overlay uses `pointer-events: none` on container and `pointer-events: auto` on dismiss button so background panning/dragging is completely unimpeded (addition 1).
+  - Connect-to chosen target state is local to `ConnectionsSection`, keyed by `nodeId`, and validates against current project nodes on every render to automatically reset to empty if deleted or undone (addition 2).
+  - Extracted `EdgeNavButtons.tsx` and `EdgeEffectsSection.tsx` to keep all components under ~300 lines (`InspectorPanel.tsx` is 242 lines, `ConnectionsSection.tsx` is 115 lines) (addition 3).
+  - Maintained zero non-null assertions and strict type safety across all test and source files (R3.1).
+- **Assumptions / UNVERIFIED:**
+  - Visual ergonomics of 14px handles and canvas tip overlay position need manual verification in browser.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 240 tests passing: 81 dsl, 59 checker, 100 web).
+  - `pnpm --filter @repo/web exec vitest run src/lib/connections.test.ts --reporter=verbose` -> pass (13/13 tests passing).
+  - `pnpm --filter @repo/web build` -> pass (built in 218ms, 0 errors).
+- **Known issues / debt:**
+  - No reconnecting existing edges by dragging their ends (handle drag creates new edges only).
+  - No batch actions (multi-node selection / multi-delete not supported).
+  - No persistence (editor state is in-memory; resets on page reload).
+  - Positions of auto-laid-out nodes can shift when the graph changes.
+- **Next steps:**
+  - User to run manual test script and commit changes.
+
 ### W-013 | 2026-10-04 | Promote commit f34bb71 as stable-004
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-004 promotion at commit f34bb71`
