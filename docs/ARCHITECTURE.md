@@ -9,11 +9,13 @@
 2. Stack `DRAFT`
 3. Repo map `DRAFT`
 4. Data model `DRAFT`
-5. DSL (conditions and effects) `TODO`
+5. DSL (conditions and effects) `DECIDED`
 6. Consistency checker `DRAFT`
-7. Realtime collaboration `DRAFT`
-8. Export format `TODO`
-9. Open questions
+7. UI `DECIDED`
+8. Editor state `DECIDED`
+9. Realtime collaboration `DRAFT`
+10. Export format `TODO`
+11. Open questions
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -53,7 +55,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  web/          Read-only React Flow story canvas + live checker issues panel
+  web/          React Flow story canvas, live checker diagnostics, and pure editor state module (`src/editor/`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -183,13 +185,64 @@ Read-only story canvas built with React, Vite, and `@xyflow/react` (`apps/web`).
 - **MiniMap:** Color-coded node shapes (red for errors, amber for warnings, green/purple/indigo by node type).
 - **Issues Panel (`IssuesPanel`):** 420px fixed-width consistency diagnostics panel with wrapped tags/messages and horizontally scrolling snippet blocks. Clicking an issue outside the current viewport pans smoothly to it via `setCenter`.
 
-## 8. Realtime collaboration `DRAFT`
+## 8. Editor state `DECIDED`
+Pure TypeScript editor state module with undo/redo history and referential integrity (`apps/web/src/editor/`).
+Completely isolated from React, DOM, and browser APIs; imports only from `@repo/schema`. Mutates data structures; does not evaluate DSL or compute checker diagnostics.
+
+### Types
+```ts
+interface EditorState {
+  present: Project;
+  past: Project[]; // capped at 100 entries (FIFO eviction)
+  future: Project[];
+}
+
+type EditorAction =
+  | { type: "renameProject"; name: string }
+  | { type: "addNode"; node: FlowNode }
+  | { type: "updateNode"; id: string; patch: { title?: string; type?: FlowNode["type"]; position?: { x: number; y: number } | null } }
+  | { type: "moveNode"; id: string; position: { x: number; y: number } }
+  | { type: "deleteNode"; id: string }
+  | { type: "addEdge"; edge: FlowEdge }
+  | { type: "updateEdge"; id: string; patch: { from?: string; to?: string; condition?: string | null; effects?: string[] | null } }
+  | { type: "deleteEdge"; id: string }
+  | { type: "addVariable"; variable: Variable }
+  | { type: "updateVariable"; id: string; patch: { name?: string; type?: Variable["type"]; initial?: Variable["initial"] | null } }
+  | { type: "deleteVariable"; id: string };
+
+type ApplyResult =
+  | { ok: true; state: EditorState }
+  | { ok: false; error: EditorError };
+
+interface EditorError {
+  code: "not-found" | "duplicate-id" | "invalid" | "dangling-reference";
+  message: string;
+}
+```
+
+### Public functions
+- `createEditor(project: Project): EditorState`: initializes state with empty past and future.
+- `apply(state: EditorState, action: EditorAction): ApplyResult`: validates and applies an action immutably.
+- `undo(state: EditorState): EditorState`: pops previous state from past, moves present to future.
+- `redo(state: EditorState): EditorState`: shifts next state from future, moves present to past.
+- `canUndo(state: EditorState): boolean`, `canRedo(state: EditorState): boolean`.
+- `nextId(existingIds: readonly string[], prefix: string): string`: finds lowest unused integer `n >= 1` for `${prefix}_${n}`.
+
+### Semantics
+- **Immutability & Structural Sharing:** Untouched entities and unmodified collection arrays preserve strict reference equality (`Object.is`).
+- **Validation:** Changed entities are validated via `safeParse` against Zod schemas from `@repo/schema`. The parsed output is stored in the new state. Validation failures return `{ ok: false, error: { code: 'invalid', message } }` without mutating state or pushing history.
+- **Referential Integrity:** `addEdge` and `updateEdge` check that `from` and `to` nodes exist in `present.nodes` (else `'dangling-reference'`). `deleteNode` automatically cascade-deletes all incident incoming and outgoing edges in a single atomic history step (one `undo` restores node and edges together). Self-loops and parallel edges are allowed.
+- **Variable Initial Value Integrity:** Changing a variable's `type` without providing a compatible `initial` or removing it via `initial: null` returns `'invalid'`. Unique variable names are not enforced by the editor.
+- **No-op Detection:** Changes deep-equal to the current state via internal `structurallyEqual` helper (key-order independent, undefined/missing key equivalence) return `{ ok: true, state }` with the exact same state reference and do not push history.
+- **History Cap:** Capped at 100 entries in `past`. When exceeded, the oldest entry is dropped (FIFO). Any successful non-no-op action clears `future`.
+
+## 9. Realtime collaboration `DRAFT`
 Yjs documents per project/node, Hocuspocus server, awareness for cursors and presence. Persistence to Postgres via Hocuspocus extension. Auth on WebSocket connect (R8.1).
 
-## 9. Export format `TODO`
+## 10. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
-## 10. Open questions
+## 11. Open questions
 - ORM choice (Drizzle vs Prisma)
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1
