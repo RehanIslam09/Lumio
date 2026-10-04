@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'apps/*'
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.11.7'
   - '@turbo/darwin-arm64@2.11.7'

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as fc from "fast-check";
 import type { FlowEdge, FlowNode, FlowNodeType, Project, Variable } from "@repo/schema";
-import { IssueSchema, VariableSchema } from "@repo/schema";
+import { FlowNodeSchema, IssueSchema, VariableSchema } from "@repo/schema";
 import { parseCondition, parseEffect } from "@repo/dsl";
 import {
   check,
@@ -1192,6 +1192,54 @@ describe("property tests", () => {
         ).toBe(false);
         expect(
           VariableSchema.safeParse({ id: "v3", name: "n", type: "number", initial: -Infinity }).success,
+        ).toBe(false);
+      });
+    });
+
+    describe("FlowNodeSchema position refinement", () => {
+      it("accepts node without position", () => {
+        const parsed = FlowNodeSchema.safeParse({
+          id: "n1",
+          type: "start",
+          title: "Start",
+        });
+        expect(parsed.success).toBe(true);
+      });
+
+      it("accepts node with finite x and y coordinates", () => {
+        const parsed = FlowNodeSchema.safeParse({
+          id: "n1",
+          type: "scene",
+          title: "Scene",
+          position: { x: 100, y: -50.5 },
+        });
+        expect(parsed.success).toBe(true);
+      });
+
+      it("rejects node with NaN or Infinity coordinates", () => {
+        expect(
+          FlowNodeSchema.safeParse({
+            id: "n1",
+            type: "scene",
+            title: "Scene",
+            position: { x: NaN, y: 100 },
+          }).success,
+        ).toBe(false);
+        expect(
+          FlowNodeSchema.safeParse({
+            id: "n1",
+            type: "scene",
+            title: "Scene",
+            position: { x: 100, y: Infinity },
+          }).success,
+        ).toBe(false);
+        expect(
+          FlowNodeSchema.safeParse({
+            id: "n1",
+            type: "scene",
+            title: "Scene",
+            position: { x: -Infinity, y: 0 },
+          }).success,
         ).toBe(false);
       });
     });

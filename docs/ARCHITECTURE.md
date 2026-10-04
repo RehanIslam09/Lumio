@@ -26,8 +26,8 @@ Core differentiator: an automated **consistency checker** (static analysis over 
 | Concern | Choice | Status |
 |---|---|---|
 | Language | TypeScript (strict) | DECIDED |
-| Frontend | React + Vite | DRAFT |
-| Graph editor | React Flow; Sigma.js/Cytoscape for large lore graph | DRAFT |
+| Frontend | React + Vite | DECIDED |
+| Graph editor | React Flow (@xyflow/react) for flow graph; Sigma.js/Cytoscape for large lore graph | DECIDED |
 | Rich text | Tiptap + Yjs | DRAFT |
 | Realtime | Yjs + Hocuspocus | DRAFT |
 | Backend | Node + Hono or Fastify, Zod | DRAFT |
@@ -52,6 +52,8 @@ pnpm-workspace.yaml
 README.md
 tsconfig.base.json
 turbo.json
+apps/
+  web/          Read-only React Flow story canvas + live checker issues panel
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -68,7 +70,7 @@ AGENTS.md
 |---|---|---|
 | Project | id, name, nodes, edges, variables, ownerId | |
 | Member | projectId, userId, role (viewer/writer/lead) | |
-| FlowNode | id, projectId, type, title, body (rich text), position | `type`: scene, dialogue, branch, start, end |
+| FlowNode | id, projectId, type, title, body (rich text), position (optional { x: number, y: number }) | `type`: scene, dialogue, branch, start, end; position coordinates must be finite |
 | FlowEdge | id, from, to, label, condition (optional string), effects (optional string[]) | |
 | Variable | id, name, type ('number' \| 'string' \| 'boolean'), initial (optional number \| string \| boolean) | Referenced by DSL; initial type must match type and numbers must be finite |
 | Entity | id, projectId, kind (character/faction/place/event), name, attributes (JSONB) | Rename/delete must cascade-warn |
@@ -173,13 +175,20 @@ Policy: under-report. A false positive costs more trust than a false negative.
 - Reachability limitation: variable usage is counted across all edges in `project.edges`, even edges whose source node is unreachable from any start node or edges with invalid/dangling `from` nodes.
 - Parse error suppression: a single unparseable condition or effect on any edge suppresses all variable-usage issues across the entire project to prevent false positives.
 
-## 7. Realtime collaboration `DRAFT`
+## 7. UI `DECIDED`
+Read-only story canvas built with React, Vite, and `@xyflow/react` (`apps/web`).
+- **Graph Layout (`computeLayout`):** Pure deterministic layered layout algorithm. Nodes with explicit `position` keep it exactly. Reachable nodes are placed in layers determined by the shortest path from start nodes (`x = layer * 280`, `y = index * 140`). Unreachable nodes occupy an orphan band (`maxLayer + 2`).
+- **Custom Nodes (`StoryNode`):** Displays node title, type chip (start, scene, end), and error/warning count badges from node-level issues.
+- **Edges:** Labels display condition text and effect counts. Edges with issues are styled with error color and animated flow.
+- **Issues Panel (`IssuesPanel`):** Live consistency diagnostics from `check(project)`, categorized into Errors, Warnings, and Variable Issues. Clicking an issue focuses and centers the corresponding node or edge on the canvas and highlights source code spans for edge condition/effect errors (`getIssueSnippet`).
+
+## 8. Realtime collaboration `DRAFT`
 Yjs documents per project/node, Hocuspocus server, awareness for cursors and presence. Persistence to Postgres via Hocuspocus extension. Auth on WebSocket connect (R8.1).
 
-## 8. Export format `TODO`
+## 9. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
-## 9. Open questions
+## 10. Open questions
 - ORM choice (Drizzle vs Prisma)
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1

@@ -3,10 +3,22 @@ import { z } from "zod";
 export const FlowNodeTypeSchema = z.enum(["start", "scene", "end"]);
 export type FlowNodeType = z.infer<typeof FlowNodeTypeSchema>;
 
+export const FlowNodePositionSchema = z
+  .object({
+    x: z.number(),
+    y: z.number(),
+  })
+  .refine(
+    (pos) => Number.isFinite(pos.x) && Number.isFinite(pos.y),
+    "Position coordinates must be finite numbers",
+  );
+export type FlowNodePosition = z.infer<typeof FlowNodePositionSchema>;
+
 export const FlowNodeSchema = z.object({
   id: z.string(),
   type: FlowNodeTypeSchema,
   title: z.string(),
+  position: FlowNodePositionSchema.optional(),
 });
 export type FlowNode = z.infer<typeof FlowNodeSchema>;
 
