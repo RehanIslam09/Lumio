@@ -54,8 +54,8 @@ tsconfig.base.json
 turbo.json
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
-  checker/      Graph analysis (pure): findUnreachableNodes, findNodesThatCannotReachEnd, check + tests
-  dsl/          Language parser (pure): AST, lexer, parser for conditions and effects + tests
+  checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
+  dsl/          Language parser & typechecker (pure): AST, lexer, parser, typechecker for conditions and effects + tests
 docs/
   RULES.md  ARCHITECTURE.md  context/
 .agent/workflows/
@@ -77,7 +77,7 @@ AGENTS.md
 | NodeVersion | nodeId, version, snapshot, authorId, createdAt | Per-node history |
 
 ## 5. DSL `DECIDED`
-Small expression language for edge conditions and effects. Pure hand-written lexer and recursive descent parser in `@repo/dsl`. Parsed and interpreted, never executed as code (R8.3).
+Small expression language for edge conditions and effects. Pure hand-written lexer, recursive descent parser, and typechecker in `@repo/dsl`. Parsed and interpreted, never executed as code (R8.3).
 
 Grammar (lowest to highest precedence, all binary operators left-associative):
 ```text
@@ -94,17 +94,68 @@ effect     := IDENT ( "=" | "+=" | "-=" ) expr
 ```
 Maximum nesting depth: 200 (counting each nested `(` and each chained unary operator). Exceeding it returns `ParseError` without throwing.
 
+### Typing rules summary
+- `Type`: `"number"` | `"string"` | `"boolean"` | `"unknown"`. `TypeEnv`: `ReadonlyMap<string, VariableType>`. Duplicate names in environment: first wins.
+- Literals: `NUMBER` -> `"number"`, `STRING` -> `"string"`, `BOOL` -> `"boolean"`.
+- Identifier: type from env; if absent -> reports `undefined-variable` at identifier span with type `"unknown"`.
+- Unary operators:
+  - `!`: expects `"boolean"` -> `"boolean"`.
+  - `-`: expects `"number"` -> `"number"`.
+- Binary operators:
+  - `+`: (`number`, `number`) -> `"number"`; (`string`, `string`) -> `"string"`.
+  - `-`, `*`, `/`: (`number`, `number`) -> `"number"`.
+  - `<`, `<=`, `>`, `>=`: (`number`, `number`) -> `"boolean"` (strings not allowed).
+  - `==`, `!=`: both operands same type -> `"boolean"`.
+  - `&&`, `||`: (`boolean`, `boolean`) -> `"boolean"`.
+- Cascade suppression: `"unknown"` is silent. If any operand of an operator is `"unknown"`, the operator emits no issue and assumes its natural result type (`+` yields `"unknown"`). After a genuine mismatch, the operator node also assumes its natural result type (`+` -> `"unknown"`).
+- Top-level silent unknown: if condition evaluates to `"unknown"`, no condition-boolean mismatch is reported; if effect value evaluates to `"unknown"`, no assignment compatibility mismatch is reported.
+- Condition check: if final type is known and not `"boolean"`, reports `type-mismatch` across the full condition expression span.
+- Effect check: target identifier must exist in env (else `undefined-variable` at target span, skipping value compatibility). Assignment rules:
+  - `=`: value type === target type.
+  - `+=`: (`number`, `number`) or (`string`, `string`).
+  - `-=`: (`number`, `number`).
+  Mismatch span is `effect.value` span.
+- Output issues are ordered by start offset, then end offset.
+
 ## 6. Consistency checker `DRAFT`
 Pure function: `check(project) -> Issue[]`. Runs in a Web Worker (live) and on the server (pre-export).
+
+### Issue model
+```ts
+interface IssueLocation {
+  edgeId: string;
+  field: "condition" | "effect";
+  effectIndex?: number;
+  start: number;
+  end: number;
+}
+
+interface Issue {
+  ruleId:
+    | "unreachable-from-start"
+    | "cannot-reach-end"
+    | "invalid-expression"
+    | "undefined-variable"
+    | "type-mismatch";
+  severity: "error" | "warning";
+  nodeId: string;
+  message: string;
+  location?: IssueLocation;
+}
+```
+
+### Rules table
 | Rule | Algorithm | Phase |
 |---|---|---|
 | Unreachable from start (`unreachable-from-start`) | Forward BFS from start nodes | v1 (implemented) |
 | Cannot reach end (`cannot-reach-end`) | Reverse BFS from end nodes (covers dead ends and trap cycles; Tarjan SCC postponed) | v1 (implemented) |
-| Undefined variables | symbol table over parsed DSL | v1 |
+| Invalid expression (`invalid-expression`) | Syntax validation via `@repo/dsl` lexer and parser on edge conditions and effects | v1 (implemented) |
+| Undefined variables (`undefined-variable`) | Symbol table & typecheck over parsed DSL on edge conditions and effects | v1 (implemented) |
+| Type mismatch (`type-mismatch`) | Pure static typechecker over parsed DSL conditions and effect assignments | v1 (implemented) |
 | Dead effects (set, never read) | def-use analysis | v2 |
 | Conflicting or impossible conditions | path-sensitive state/interval analysis | v2 |
 | Lore contradictions | typed-relation rules | later |
-Policy: under-report. A false positive costs more trust than a false negative (v1 ships only the first three rules).
+Policy: under-report. A false positive costs more trust than a false negative.
 
 ## 7. Realtime collaboration `DRAFT`
 Yjs documents per project/node, Hocuspocus server, awareness for cursors and presence. Persistence to Postgres via Hocuspocus extension. Auth on WebSocket connect (R8.1).

@@ -1,4 +1,11 @@
 import type { Issue, Project } from "@repo/schema";
+import {
+  buildTypeEnv,
+  parseCondition,
+  parseEffect,
+  typecheckCondition,
+  typecheckEffect,
+} from "@repo/dsl";
 
 type TraversalDirection = "forward" | "reverse";
 
@@ -107,14 +114,20 @@ export function findNodesThatCannotReachEnd(project: Project): string[] {
  * Consistency checker entry point running static analysis rules over the project flow graph.
  *
  * Ordering:
- * - Grouped by project.nodes order, then rule order ('unreachable-from-start' first).
+ * - All existing node-based issues first (grouped by project.nodes order, then rule order).
+ * - Edge-based issues ordered by project.edges order.
+ * - Within an edge: condition issues first, then effects by index.
+ * - Within each field: ordered by start offset.
  */
 export function check(project: Project): Issue[] {
   const unreachableSet = new Set(findUnreachableNodes(project));
   const cannotReachEndSet = new Set(findNodesThatCannotReachEnd(project));
+  const nodeMap = new Map(project.nodes.map((n) => [n.id, n]));
+  const env = buildTypeEnv(project.variables);
 
   const issues: Issue[] = [];
 
+  // Node-based issues
   for (const node of project.nodes) {
     if (unreachableSet.has(node.id)) {
       issues.push({
@@ -135,6 +148,100 @@ export function check(project: Project): Issue[] {
     }
   }
 
+  // Edge-based issues
+  for (const edge of project.edges) {
+    const fromNode = nodeMap.get(edge.from);
+    if (!fromNode) {
+      continue;
+    }
+
+    // Condition
+    if (edge.condition !== undefined && edge.condition.trim() !== "") {
+      const parsedCond = parseCondition(edge.condition);
+      if (!parsedCond.ok) {
+        issues.push({
+          ruleId: "invalid-expression",
+          severity: "error",
+          nodeId: edge.from,
+          message: `In "${fromNode.title}": condition syntax error: ${parsedCond.error.message}.`,
+          location: {
+            edgeId: edge.id,
+            field: "condition",
+            start: parsedCond.error.start,
+            end: parsedCond.error.end,
+          },
+        });
+      } else {
+        const typeIssues = typecheckCondition(parsedCond.value, env);
+        for (const typeIssue of typeIssues) {
+          const detail =
+            typeIssue.code === "undefined-variable"
+              ? typeIssue.message.toLowerCase()
+              : typeIssue.message;
+          issues.push({
+            ruleId: typeIssue.code,
+            severity: "error",
+            nodeId: edge.from,
+            message: `In "${fromNode.title}": ${detail}.`,
+            location: {
+              edgeId: edge.id,
+              field: "condition",
+              start: typeIssue.start,
+              end: typeIssue.end,
+            },
+          });
+        }
+      }
+    }
+
+    // Effects
+    if (edge.effects) {
+      for (let i = 0; i < edge.effects.length; i++) {
+        const effectStr = edge.effects[i];
+        if (effectStr === undefined || effectStr.trim() === "") {
+          continue;
+        }
+
+        const parsedEffect = parseEffect(effectStr);
+        if (!parsedEffect.ok) {
+          issues.push({
+            ruleId: "invalid-expression",
+            severity: "error",
+            nodeId: edge.from,
+            message: `In "${fromNode.title}": effect syntax error: ${parsedEffect.error.message}.`,
+            location: {
+              edgeId: edge.id,
+              field: "effect",
+              effectIndex: i,
+              start: parsedEffect.error.start,
+              end: parsedEffect.error.end,
+            },
+          });
+        } else {
+          const typeIssues = typecheckEffect(parsedEffect.value, env);
+          for (const typeIssue of typeIssues) {
+            const detail =
+              typeIssue.code === "undefined-variable"
+                ? typeIssue.message.toLowerCase()
+                : typeIssue.message;
+            issues.push({
+              ruleId: typeIssue.code,
+              severity: "error",
+              nodeId: edge.from,
+              message: `In "${fromNode.title}": ${detail}.`,
+              location: {
+                edgeId: edge.id,
+                field: "effect",
+                effectIndex: i,
+                start: typeIssue.start,
+                end: typeIssue.end,
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+
   return issues;
 }
-

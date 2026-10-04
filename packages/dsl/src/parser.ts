@@ -11,6 +11,10 @@ import { type Token, tokenize } from "./lexer.js";
 
 const MAX_NESTING_DEPTH = 200;
 
+function isPunct(tok: Token, ...values: string[]): boolean {
+  return tok.type === "PUNCT" && values.includes(String(tok.value));
+}
+
 class Parser {
   private tokens: Token[];
   private pos = 0;
@@ -114,11 +118,7 @@ class Parser {
       };
     }
 
-    if (
-      opTok.value !== "=" &&
-      opTok.value !== "+=" &&
-      opTok.value !== "-="
-    ) {
+    if (!isPunct(opTok, "=", "+=", "-=")) {
       return {
         ok: false,
         error: {
@@ -168,7 +168,7 @@ class Parser {
     let leftRes = this.parseAnd(depth);
     if (!leftRes.ok) return leftRes;
 
-    while (this.peek().value === "||") {
+    while (isPunct(this.peek(), "||")) {
       const opTok = this.consume();
       const rightRes = this.parseAnd(depth);
       if (!rightRes.ok) return rightRes;
@@ -193,7 +193,7 @@ class Parser {
     let leftRes = this.parseEquality(depth);
     if (!leftRes.ok) return leftRes;
 
-    while (this.peek().value === "&&") {
+    while (isPunct(this.peek(), "&&")) {
       const opTok = this.consume();
       const rightRes = this.parseEquality(depth);
       if (!rightRes.ok) return rightRes;
@@ -218,7 +218,7 @@ class Parser {
     let leftRes = this.parseRelational(depth);
     if (!leftRes.ok) return leftRes;
 
-    while (this.peek().value === "==" || this.peek().value === "!=") {
+    while (isPunct(this.peek(), "==", "!=")) {
       const opTok = this.consume();
       const rightRes = this.parseRelational(depth);
       if (!rightRes.ok) return rightRes;
@@ -243,12 +243,7 @@ class Parser {
     let leftRes = this.parseAdditive(depth);
     if (!leftRes.ok) return leftRes;
 
-    while (
-      this.peek().value === "<" ||
-      this.peek().value === "<=" ||
-      this.peek().value === ">" ||
-      this.peek().value === ">="
-    ) {
+    while (isPunct(this.peek(), "<", "<=", ">", ">=")) {
       const opTok = this.consume();
       const rightRes = this.parseAdditive(depth);
       if (!rightRes.ok) return rightRes;
@@ -273,7 +268,7 @@ class Parser {
     let leftRes = this.parseTerm(depth);
     if (!leftRes.ok) return leftRes;
 
-    while (this.peek().value === "+" || this.peek().value === "-") {
+    while (isPunct(this.peek(), "+", "-")) {
       const opTok = this.consume();
       const rightRes = this.parseTerm(depth);
       if (!rightRes.ok) return rightRes;
@@ -298,7 +293,7 @@ class Parser {
     let leftRes = this.parseUnary(depth);
     if (!leftRes.ok) return leftRes;
 
-    while (this.peek().value === "*" || this.peek().value === "/") {
+    while (isPunct(this.peek(), "*", "/")) {
       const opTok = this.consume();
       const rightRes = this.parseUnary(depth);
       if (!rightRes.ok) return rightRes;
@@ -321,7 +316,7 @@ class Parser {
 
   private parseUnary(depth: number): ParseResult<Expr> {
     const tok = this.peek();
-    if (tok.value === "!" || tok.value === "-") {
+    if (isPunct(tok, "!", "-")) {
       if (depth + 1 > MAX_NESTING_DEPTH) {
         return {
           ok: false,
@@ -406,7 +401,7 @@ class Parser {
       };
     }
 
-    if (tok.value === "(") {
+    if (isPunct(tok, "(")) {
       if (depth + 1 > MAX_NESTING_DEPTH) {
         return {
           ok: false,
@@ -422,7 +417,7 @@ class Parser {
       if (!innerRes.ok) return innerRes;
 
       const closing = this.peek();
-      if (closing.value === ")") {
+      if (isPunct(closing, ")")) {
         this.consume();
         return innerRes;
       }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as fc from "fast-check";
-import type { FlowEdge, FlowNode, FlowNodeType, Project } from "@repo/schema";
+import type { FlowEdge, FlowNode, FlowNodeType, Project, Variable } from "@repo/schema";
 import {
   check,
   findNodesThatCannotReachEnd,
@@ -671,13 +671,395 @@ describe("property tests", () => {
         for (const issue of issues) {
           expect(existingNodeIds.has(issue.nodeId)).toBe(true);
 
-          const key = `${issue.ruleId}:${issue.nodeId}`;
+          const key = `${issue.ruleId}:${issue.nodeId}:${issue.location?.edgeId ?? ""}:${issue.location?.field ?? ""}:${issue.location?.effectIndex ?? ""}:${issue.location?.start ?? ""}:${issue.location?.end ?? ""}`;
           expect(seenPairs.has(key)).toBe(false);
           seenPairs.add(key);
         }
       }),
       { numRuns: 100 },
     );
+  });
+
+  describe("new rules: invalid-expression, undefined-variable, type-mismatch", () => {
+    const baseNodes: FlowNode[] = [
+      { id: "start", type: "start", title: "Start Node" },
+      { id: "end", type: "end", title: "End Node" },
+    ];
+
+    it("valid edge condition and effects produce no issues", () => {
+      const project: Project = {
+        id: "p1",
+        name: "Valid Edge",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x > 0",
+            effects: ["x += 1", 'msg = "ok"'],
+          },
+        ],
+        variables: [
+          { id: "v1", name: "x", type: "number" },
+          { id: "v2", name: "msg", type: "string" },
+        ],
+      };
+      const issues = check(project);
+      expect(issues).toHaveLength(0);
+    });
+
+    it("blank condition and blank effect entries are skipped", () => {
+      const project: Project = {
+        id: "p2",
+        name: "Blank Fields",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "   ",
+            effects: ["", "   "],
+          },
+        ],
+        variables: [],
+      };
+      const issues = check(project);
+      expect(issues).toHaveLength(0);
+    });
+
+    it("edge with missing from node is skipped", () => {
+      const project: Project = {
+        id: "p3",
+        name: "Missing From",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "ghost_from",
+            to: "end",
+            condition: "invalid !@#$",
+            effects: ["invalid !@#$"],
+          },
+        ],
+        variables: [],
+      };
+      const issues = check(project);
+      // Only reachability issue for start not reaching end if any, but no edge issues
+      const edgeIssues = issues.filter((i) => i.location !== undefined);
+      expect(edgeIssues).toHaveLength(0);
+    });
+
+    it("duplicate variable names: first-wins", () => {
+      const project: Project = {
+        id: "p4",
+        name: "Duplicate Vars",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x + 1 > 0",
+          },
+        ],
+        variables: [
+          { id: "v1", name: "x", type: "number" },
+          { id: "v2", name: "x", type: "string" },
+        ],
+      };
+      const issues = check(project);
+      const edgeIssues = issues.filter((i) => i.location !== undefined);
+      expect(edgeIssues).toHaveLength(0);
+    });
+
+    it("parse error in condition produces invalid-expression with location and node title in message", () => {
+      const project: Project = {
+        id: "p5",
+        name: "Parse Error Cond",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x +",
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number" }],
+      };
+      const issues = check(project);
+      const invalid = issues.filter((i) => i.ruleId === "invalid-expression");
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.severity).toBe("error");
+      expect(invalid[0]?.nodeId).toBe("start");
+      expect(invalid[0]?.message).toContain("Start Node");
+      expect(invalid[0]?.location).toEqual({
+        edgeId: "e1",
+        field: "condition",
+        start: 3,
+        end: 3,
+      });
+    });
+
+    it("parse error in effects produces invalid-expression with effectIndex", () => {
+      const project: Project = {
+        id: "p6",
+        name: "Parse Error Effect",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            effects: ["x = 1", "y =="],
+          },
+        ],
+        variables: [
+          { id: "v1", name: "x", type: "number" },
+          { id: "v2", name: "y", type: "number" },
+        ],
+      };
+      const issues = check(project);
+      const invalid = issues.filter((i) => i.ruleId === "invalid-expression");
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.location).toEqual({
+        edgeId: "e1",
+        field: "effect",
+        effectIndex: 1,
+        start: 2,
+        end: 4,
+      });
+    });
+
+    it("undefined variable produces undefined-variable issue naming the variable and node title", () => {
+      const project: Project = {
+        id: "p7",
+        name: "Undef Var",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "ghost > 0",
+          },
+        ],
+        variables: [],
+      };
+      const issues = check(project);
+      const undef = issues.filter((i) => i.ruleId === "undefined-variable");
+      expect(undef).toHaveLength(1);
+      expect(undef[0]?.severity).toBe("error");
+      expect(undef[0]?.nodeId).toBe("start");
+      expect(undef[0]?.message).toContain("Start Node");
+      expect(undef[0]?.message).toContain("ghost");
+      expect(undef[0]?.location).toEqual({
+        edgeId: "e1",
+        field: "condition",
+        start: 0,
+        end: 5,
+      });
+    });
+
+    it("type mismatch produces type-mismatch issue with severity error", () => {
+      const project: Project = {
+        id: "p8",
+        name: "Type Mismatch",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x + y > 0",
+          },
+        ],
+        variables: [
+          { id: "v1", name: "x", type: "number" },
+          { id: "v2", name: "y", type: "string" },
+        ],
+      };
+      const issues = check(project);
+      const mismatch = issues.filter((i) => i.ruleId === "type-mismatch");
+      expect(mismatch).toHaveLength(1);
+      expect(mismatch[0]?.severity).toBe("error");
+      expect(mismatch[0]?.nodeId).toBe("start");
+      expect(mismatch[0]?.message).toContain("Start Node");
+      expect(mismatch[0]?.location).toEqual({
+        edgeId: "e1",
+        field: "condition",
+        start: 0,
+        end: 5,
+      });
+    });
+
+    it("ordering: node-based first, then edges order, condition before effects, effects by index, within each by start offset", () => {
+      const project: Project = {
+        id: "p9",
+        name: "Ordering",
+        nodes: [
+          { id: "start", type: "start", title: "Start" },
+          { id: "orphan", type: "scene", title: "Orphan" },
+          { id: "end", type: "end", title: "End" },
+        ],
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "undef1 + undef2 > 0",
+            effects: ["x = 10", "undef3 = 1"],
+          },
+          {
+            id: "e2",
+            from: "start",
+            to: "end",
+            condition: "1 + 2", // type mismatch
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "string" }], // x = 10 is mismatch
+      };
+
+      const issues = check(project);
+      const mapped = issues.map((i) => ({
+        ruleId: i.ruleId,
+        nodeId: i.nodeId,
+        edgeId: i.location?.edgeId,
+        field: i.location?.field,
+        effectIndex: i.location?.effectIndex,
+        start: i.location?.start,
+      }));
+
+      expect(mapped).toEqual([
+        {
+          ruleId: "unreachable-from-start",
+          nodeId: "orphan",
+          edgeId: undefined,
+          field: undefined,
+          effectIndex: undefined,
+          start: undefined,
+        },
+        {
+          ruleId: "cannot-reach-end",
+          nodeId: "orphan",
+          edgeId: undefined,
+          field: undefined,
+          effectIndex: undefined,
+          start: undefined,
+        },
+        {
+          ruleId: "undefined-variable",
+          nodeId: "start",
+          edgeId: "e1",
+          field: "condition",
+          effectIndex: undefined,
+          start: 0,
+        },
+        {
+          ruleId: "undefined-variable",
+          nodeId: "start",
+          edgeId: "e1",
+          field: "condition",
+          effectIndex: undefined,
+          start: 9,
+        },
+        {
+          ruleId: "type-mismatch",
+          nodeId: "start",
+          edgeId: "e1",
+          field: "effect",
+          effectIndex: 0,
+          start: 4,
+        },
+        {
+          ruleId: "undefined-variable",
+          nodeId: "start",
+          edgeId: "e1",
+          field: "effect",
+          effectIndex: 1,
+          start: 0,
+        },
+        {
+          ruleId: "type-mismatch",
+          nodeId: "start",
+          edgeId: "e2",
+          field: "condition",
+          effectIndex: undefined,
+          start: 0,
+        },
+      ]);
+    });
+  });
+
+  describe("Property C1 (robustness with random expressions)", () => {
+    const randomProjectWithExprsArbitrary = fc
+      .integer({ min: 1, max: 8 })
+      .chain((nodeCount) => {
+        const ids = Array.from({ length: nodeCount }, (_, i) => `n_${i}`);
+        return fc
+          .record({
+            nodeTypes: fc.array(
+              fc.constantFrom<FlowNodeType>("start", "scene", "end"),
+              { minLength: nodeCount, maxLength: nodeCount },
+            ),
+            edges: fc.array(
+              fc.record({
+                id: fc.uuid(),
+                from: fc.constantFrom(...ids, "ghost_src"),
+                to: fc.constantFrom(...ids, "ghost_dst"),
+                condition: fc.option(fc.string({ maxLength: 50 }), { nil: undefined }),
+                effects: fc.option(fc.array(fc.string({ maxLength: 50 }), { maxLength: 3 }), {
+                  nil: undefined,
+                }),
+              }),
+              { maxLength: 10 },
+            ),
+            variables: fc.array(
+              fc.record({
+                id: fc.uuid(),
+                name: fc
+                  .stringMatching(/^[a-z][a-z0-9_]{0,4}$/)
+                  .filter((s) => s !== "true" && s !== "false"),
+                type: fc.constantFrom<Variable["type"]>("number", "string", "boolean"),
+              }),
+              { maxLength: 5 },
+            ),
+          })
+          .map(({ nodeTypes, edges, variables }) => {
+            const nodes: FlowNode[] = ids.map((id, index) => ({
+              id,
+              type: nodeTypes[index] ?? "scene",
+              title: `Title ${id}`,
+            }));
+            return {
+              id: "proj_rnd_expr",
+              name: "Random Expr Project",
+              nodes,
+              edges,
+              variables,
+            } satisfies Project;
+          });
+      });
+
+    it("Property C1: check() never throws on arbitrary expressions, and location invariants hold", () => {
+      fc.assert(
+        fc.property(randomProjectWithExprsArbitrary, (project) => {
+          const issues = check(project);
+          const validEdgeIds = new Set(project.edges.map((e) => e.id));
+
+          for (const issue of issues) {
+            if (issue.location) {
+              expect(validEdgeIds.has(issue.location.edgeId)).toBe(true);
+              expect(issue.location.start).toBeGreaterThanOrEqual(0);
+              expect(issue.location.end).toBeGreaterThanOrEqual(issue.location.start);
+            }
+          }
+        }),
+        { numRuns: 100 },
+      );
+    });
   });
 });
 

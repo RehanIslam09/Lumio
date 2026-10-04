@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import * as fc from "fast-check";
-import type { Expr } from "./ast.js";
-import { parseCondition, parseEffect } from "./index.js";
+import type { Effect, Expr, ParseResult, StringLit } from "./ast.js";
+import {
+  parseCondition,
+  parseEffect,
+  buildTypeEnv,
+  typecheckCondition,
+  typecheckEffect,
+  type TypeEnv,
+} from "./index.js";
+import type { Variable, VariableType } from "@repo/schema";
 
 function stripSpans(expr: Expr): unknown {
   switch (expr.type) {
@@ -355,6 +363,49 @@ describe("parseEffect - unit tests", () => {
   });
 });
 
+describe("regression: string literals matching operators and keywords parse as StringLit", () => {
+  const symbols = [
+    "!",
+    "-",
+    "+",
+    "*",
+    "/",
+    "(",
+    ")",
+    "&&",
+    "||",
+    "==",
+    "!=",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "=",
+    "+=",
+    "-=",
+    "true",
+    "false",
+  ];
+
+  for (const sym of symbols) {
+    it(`parses "${sym}" as StringLit in condition and effect`, () => {
+      const condRes = parseCondition(`"${sym}"`);
+      expect(condRes.ok).toBe(true);
+      if (condRes.ok) {
+        expect(condRes.value.type).toBe("StringLit");
+        expect((condRes.value as StringLit).value).toBe(sym);
+      }
+
+      const effRes = parseEffect(`x = "${sym}"`);
+      expect(effRes.ok).toBe(true);
+      if (effRes.ok) {
+        expect(effRes.value.value.type).toBe("StringLit");
+        expect((effRes.value.value as StringLit).value).toBe(sym);
+      }
+    });
+  }
+});
+
 describe("error span conventions", () => {
   it("unexpected character: [i, i+1)", () => {
     const res = parseCondition("a @ b");
@@ -577,18 +628,45 @@ describe("property tests", () => {
     ),
   );
 
-  const stringArbitrary = fc
-    .array(
-      fc.oneof(
-        fc.constantFrom(
-          ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _+-/*=<>!(),".split(""),
+  const operatorKeywordArbitrary = fc.constantFrom(
+    "!",
+    "-",
+    "+",
+    "*",
+    "/",
+    "(",
+    ")",
+    "&&",
+    "||",
+    "==",
+    "!=",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "=",
+    "+=",
+    "-=",
+    "true",
+    "false",
+  );
+
+  const stringArbitrary = fc.oneof(
+    operatorKeywordArbitrary,
+    fc
+      .array(
+        fc.oneof(
+          fc.constantFrom(
+            ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _+-/*=<>!(),".split(""),
+          ),
+          fc.constant('"'),
+          fc.constant("\\"),
+          operatorKeywordArbitrary,
         ),
-        fc.constant('"'),
-        fc.constant("\\"),
-      ),
-      { maxLength: 20 },
-    )
-    .map((chars) => chars.join(""));
+        { maxLength: 20 },
+      )
+      .map((chars) => chars.join("")),
+  );
 
 
   const leafExprArbitrary: fc.Arbitrary<Expr> = fc.oneof(
@@ -693,5 +771,517 @@ describe("property tests", () => {
       }),
       { numRuns: 100 },
     );
+  });
+});
+
+describe("typechecker - unit and property tests", () => {
+  const dummyEnv: TypeEnv = new Map<string, VariableType>([
+    ["n1", "number"],
+    ["n2", "number"],
+    ["s1", "string"],
+    ["s2", "string"],
+    ["b1", "boolean"],
+    ["b2", "boolean"],
+  ]);
+
+  function assertParseOk<T>(res: ParseResult<T>, src: string): T {
+    if (!res.ok) throw new Error(`Failed to parse: ${src} -> ${res.error.message}`);
+    return res.value;
+  }
+
+  function parseCondOk(src: string): Expr {
+    return assertParseOk(parseCondition(src), src);
+  }
+
+  function parseEffOk(src: string): Effect {
+    return assertParseOk(parseEffect(src), src);
+  }
+
+  it("buildTypeEnv: first duplicate wins", () => {
+    const vars: Variable[] = [
+      { id: "1", name: "x", type: "number" },
+      { id: "2", name: "x", type: "string" },
+      { id: "3", name: "y", type: "boolean" },
+    ];
+    const env = buildTypeEnv(vars);
+    expect(env.get("x")).toBe("number");
+    expect(env.get("y")).toBe("boolean");
+  });
+
+  describe("operator unit tests (valid and invalid cases)", () => {
+    it("unary !", () => {
+      expect(typecheckCondition(parseCondOk("!b1"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("!n1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("unary -", () => {
+      const valid = typecheckCondition(parseCondOk("-n1 == 0"), dummyEnv);
+      expect(valid).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("-s1 == 0"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary +", () => {
+      expect(typecheckCondition(parseCondOk("n1 + n2 == 0"), dummyEnv)).toHaveLength(0);
+      expect(typecheckCondition(parseCondOk('s1 + s2 == "a"'), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 + s1 == 0"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary -", () => {
+      expect(typecheckCondition(parseCondOk("n1 - n2 == 0"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 - s1 == 0"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary *", () => {
+      expect(typecheckCondition(parseCondOk("n1 * n2 == 0"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 * b1 == 0"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary /", () => {
+      expect(typecheckCondition(parseCondOk("n1 / n2 == 0"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("b1 / n1 == 0"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary <", () => {
+      expect(typecheckCondition(parseCondOk("n1 < n2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("s1 < s2"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary <=", () => {
+      expect(typecheckCondition(parseCondOk("n1 <= n2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("b1 <= b2"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary >", () => {
+      expect(typecheckCondition(parseCondOk("n1 > n2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("s1 > n1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary >=", () => {
+      expect(typecheckCondition(parseCondOk("n1 >= n2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 >= b1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary ==", () => {
+      expect(typecheckCondition(parseCondOk("n1 == n2"), dummyEnv)).toHaveLength(0);
+      expect(typecheckCondition(parseCondOk("b1 == b2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 == s1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary !=", () => {
+      expect(typecheckCondition(parseCondOk("n1 != n2"), dummyEnv)).toHaveLength(0);
+      expect(typecheckCondition(parseCondOk("b1 != b2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 != b1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary &&", () => {
+      expect(typecheckCondition(parseCondOk("b1 && b2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("b1 && n1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("binary ||", () => {
+      expect(typecheckCondition(parseCondOk("b1 || b2"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckCondition(parseCondOk("n1 || b1"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+  });
+
+  describe("unknown suppression & cascade behavior", () => {
+    it("ghost + 1 > 2 yields exactly ONE issue (undefined-variable)", () => {
+      const issues = typecheckCondition(parseCondOk("ghost + 1 > 2"), dummyEnv);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.code).toBe("undefined-variable");
+    });
+
+    it("ghost == ghost yields two undefined-variable issues and NO mismatch", () => {
+      const issues = typecheckCondition(parseCondOk("ghost == ghost"), dummyEnv);
+      expect(issues).toHaveLength(2);
+      expect(issues[0]?.code).toBe("undefined-variable");
+      expect(issues[1]?.code).toBe("undefined-variable");
+    });
+  });
+
+  describe("condition non-boolean check", () => {
+    it("1 + 2 reports type-mismatch over whole expression", () => {
+      const expr = parseCondOk("1 + 2");
+      const issues = typecheckCondition(expr, dummyEnv);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.code).toBe("type-mismatch");
+      expect(issues[0]?.start).toBe(expr.start);
+      expect(issues[0]?.end).toBe(expr.end);
+    });
+  });
+
+  describe("effect checking", () => {
+    it("= operator matches target type", () => {
+      expect(typecheckEffect(parseEffOk("n1 = 42"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckEffect(parseEffOk('n1 = "str"'), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("+= operator permits number and string, but not boolean", () => {
+      expect(typecheckEffect(parseEffOk("n1 += 1"), dummyEnv)).toHaveLength(0);
+      expect(typecheckEffect(parseEffOk('s1 += "!"'), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckEffect(parseEffOk("b1 += true"), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("-= operator permits only number", () => {
+      expect(typecheckEffect(parseEffOk("n1 -= 1"), dummyEnv)).toHaveLength(0);
+      const invalid = typecheckEffect(parseEffOk('s1 -= "a"'), dummyEnv);
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0]?.code).toBe("type-mismatch");
+    });
+
+    it("undefined target reports undefined-variable and skips value compatibility check", () => {
+      const issues = typecheckEffect(parseEffOk('ghost = "val"'), dummyEnv);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.code).toBe("undefined-variable");
+    });
+  });
+
+  describe("clarification 1: silent unknown at top level", () => {
+    it("typecheckCondition: unknown top-level type reports NO condition must be boolean issue", () => {
+      const issues = typecheckCondition(parseCondOk("ghost"), dummyEnv);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.code).toBe("undefined-variable");
+    });
+
+    it("typecheckEffect: unknown value type reports NO compatibility issue", () => {
+      const issues = typecheckEffect(parseEffOk("n1 = ghost"), dummyEnv);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.code).toBe("undefined-variable");
+    });
+  });
+
+  describe("properties T1, T2, T3", () => {
+    type WellTypedAst = { expr: Expr; identifiers: string[] };
+
+    function generateWellTyped(
+      targetType: VariableType,
+      envVars: { name: string; type: VariableType }[],
+      depth: number,
+    ): fc.Arbitrary<WellTypedAst> {
+      const validVars = envVars.filter((v) => v.type === targetType);
+
+      const leafArbitraries: fc.Arbitrary<WellTypedAst>[] = [];
+      if (targetType === "number") {
+        leafArbitraries.push(
+          fc.integer({ min: -100, max: 100 }).map((val) => ({
+            expr: { type: "NumberLit", value: val, start: 0, end: 1 },
+            identifiers: [],
+          })),
+        );
+      } else if (targetType === "string") {
+        leafArbitraries.push(
+          fc.string({ maxLength: 10 }).map((val) => ({
+            expr: { type: "StringLit", value: val, start: 0, end: 1 },
+            identifiers: [],
+          })),
+        );
+      } else {
+        leafArbitraries.push(
+          fc.boolean().map((val) => ({
+            expr: { type: "BoolLit", value: val, start: 0, end: 1 },
+            identifiers: [],
+          })),
+        );
+      }
+
+      for (const v of validVars) {
+        leafArbitraries.push(
+          fc.constant({
+            expr: { type: "Identifier", name: v.name, start: 0, end: 1 },
+            identifiers: [v.name],
+          }),
+        );
+      }
+
+      const leaf = fc.oneof(...leafArbitraries);
+      if (depth <= 0) return leaf;
+
+      const recursiveArbitraries: fc.Arbitrary<WellTypedAst>[] = [leaf];
+
+      if (targetType === "number") {
+        recursiveArbitraries.push(
+          generateWellTyped("number", envVars, depth - 1).map((sub) => ({
+            expr: { type: "Unary", op: "-", operand: sub.expr, start: 0, end: 1 },
+            identifiers: sub.identifiers,
+          })),
+        );
+        recursiveArbitraries.push(
+          fc
+            .tuple(
+              fc.constantFrom<"+" | "-" | "*" | "/">("+", "-", "*", "/"),
+              generateWellTyped("number", envVars, depth - 1),
+              generateWellTyped("number", envVars, depth - 1),
+            )
+            .map(([op, left, right]) => ({
+              expr: {
+                type: "Binary",
+                op,
+                left: left.expr,
+                right: right.expr,
+                start: 0,
+                end: 1,
+              },
+              identifiers: [...left.identifiers, ...right.identifiers],
+            })),
+        );
+      } else if (targetType === "string") {
+        recursiveArbitraries.push(
+          fc
+            .tuple(
+              generateWellTyped("string", envVars, depth - 1),
+              generateWellTyped("string", envVars, depth - 1),
+            )
+            .map(([left, right]) => ({
+              expr: {
+                type: "Binary",
+                op: "+",
+                left: left.expr,
+                right: right.expr,
+                start: 0,
+                end: 1,
+              },
+              identifiers: [...left.identifiers, ...right.identifiers],
+            })),
+        );
+      } else {
+        // boolean
+        recursiveArbitraries.push(
+          generateWellTyped("boolean", envVars, depth - 1).map((sub) => ({
+            expr: { type: "Unary", op: "!", operand: sub.expr, start: 0, end: 1 },
+            identifiers: sub.identifiers,
+          })),
+        );
+        recursiveArbitraries.push(
+          fc
+            .tuple(
+              fc.constantFrom<"&&" | "||">("&&", "||"),
+              generateWellTyped("boolean", envVars, depth - 1),
+              generateWellTyped("boolean", envVars, depth - 1),
+            )
+            .map(([op, left, right]) => ({
+              expr: {
+                type: "Binary",
+                op,
+                left: left.expr,
+                right: right.expr,
+                start: 0,
+                end: 1,
+              },
+              identifiers: [...left.identifiers, ...right.identifiers],
+            })),
+        );
+        recursiveArbitraries.push(
+          fc
+            .tuple(
+              fc.constantFrom<"<" | "<=" | ">" | ">=">("<", "<=", ">", ">="),
+              generateWellTyped("number", envVars, depth - 1),
+              generateWellTyped("number", envVars, depth - 1),
+            )
+            .map(([op, left, right]) => ({
+              expr: {
+                type: "Binary",
+                op,
+                left: left.expr,
+                right: right.expr,
+                start: 0,
+                end: 1,
+              },
+              identifiers: [...left.identifiers, ...right.identifiers],
+            })),
+        );
+        for (const t of ["number", "string", "boolean"] as VariableType[]) {
+          recursiveArbitraries.push(
+            fc
+              .tuple(
+                fc.constantFrom<"==" | "!=">("==", "!="),
+                generateWellTyped(t, envVars, depth - 1),
+                generateWellTyped(t, envVars, depth - 1),
+              )
+              .map(([op, left, right]) => ({
+                expr: {
+                  type: "Binary",
+                  op,
+                  left: left.expr,
+                  right: right.expr,
+                  start: 0,
+                  end: 1,
+                },
+                identifiers: [...left.identifiers, ...right.identifiers],
+              })),
+          );
+        }
+      }
+
+      return fc.oneof(...recursiveArbitraries);
+    }
+
+    const typedEnvArbitrary = fc
+      .array(
+        fc.record({
+          name: fc
+            .stringMatching(/^[a-z][a-z0-9_]{0,5}$/)
+            .filter((s) => s !== "true" && s !== "false"),
+          type: fc.constantFrom<VariableType>("number", "string", "boolean"),
+        }),
+        { minLength: 3, maxLength: 8 },
+      )
+      .map((arr) => {
+        const unique = new Map<string, VariableType>();
+        for (const item of arr) {
+          if (!unique.has(item.name)) unique.set(item.name, item.type);
+        }
+        return Array.from(unique.entries()).map(([name, type]) => ({ name, type }));
+      });
+
+    it("Property T1 (well-typed by construction): generator expressions return no issues", () => {
+      fc.assert(
+        fc.property(
+          typedEnvArbitrary.chain((envVars) =>
+            generateWellTyped("boolean", envVars, 3).map((ast) => ({
+              ast,
+              env: new Map(envVars.map((v) => [v.name, v.type])),
+            })),
+          ),
+          ({ ast, env }) => {
+            const issues = typecheckCondition(ast.expr, env);
+            expect(issues).toEqual([]);
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+
+    it("Property T2 (mutation): renaming one identifier yields exactly one undefined-variable issue", () => {
+      function mutateOneIdentifier(
+        expr: Expr,
+        targetIndex: number,
+        replacementName: string,
+      ): { mutated: Expr; currentIndex: number } {
+        function helper(node: Expr, idx: number): { result: Expr; nextIdx: number } {
+          switch (node.type) {
+            case "Identifier":
+              if (idx === targetIndex) {
+                return {
+                  result: { ...node, name: replacementName },
+                  nextIdx: idx + 1,
+                };
+              }
+              return { result: node, nextIdx: idx + 1 };
+            case "Unary": {
+              const opRes = helper(node.operand, idx);
+              return {
+                result: { ...node, operand: opRes.result },
+                nextIdx: opRes.nextIdx,
+              };
+            }
+            case "Binary": {
+              const leftRes = helper(node.left, idx);
+              const rightRes = helper(node.right, leftRes.nextIdx);
+              return {
+                result: { ...node, left: leftRes.result, right: rightRes.result },
+                nextIdx: rightRes.nextIdx,
+              };
+            }
+            default:
+              return { result: node, nextIdx: idx };
+          }
+        }
+        const { result, nextIdx } = helper(expr, 0);
+        return { mutated: result, currentIndex: nextIdx };
+      }
+
+      fc.assert(
+        fc.property(
+          typedEnvArbitrary
+            .chain((envVars) =>
+              generateWellTyped("boolean", envVars, 3).map((ast) => ({
+                ast,
+                env: new Map(envVars.map((v) => [v.name, v.type])),
+              })),
+            )
+            .filter(({ ast }) => ast.identifiers.length > 0)
+            .chain(({ ast, env }) =>
+              fc
+                .tuple(
+                  fc.integer({ min: 0, max: ast.identifiers.length - 1 }),
+                  fc
+                    .stringMatching(/^[a-z][a-z0-9_]{6,10}$/)
+                    .filter(
+                      (name) =>
+                        name !== "true" &&
+                        name !== "false" &&
+                        !env.has(name),
+                    ),
+                )
+                .map(([targetIdx, replName]) => ({
+                  ast,
+                  env,
+                  targetIdx,
+                  replName,
+                })),
+            ),
+          ({ ast, env, targetIdx, replName }) => {
+            const { mutated } = mutateOneIdentifier(ast.expr, targetIdx, replName);
+            const issues = typecheckCondition(mutated, env);
+            expect(issues).toHaveLength(1);
+            expect(issues[0]?.code).toBe("undefined-variable");
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+
+    it("Property T3 (robustness): if parseCondition succeeds, typecheckCondition never throws and preserves bounds", () => {
+      fc.assert(
+        fc.property(
+          fc.tuple(fc.string({ maxLength: 100 }), typedEnvArbitrary),
+          ([src, envVars]) => {
+            const parsed = parseCondition(src);
+            if (parsed.ok) {
+              const env = new Map(envVars.map((v) => [v.name, v.type]));
+              const issues = typecheckCondition(parsed.value, env);
+              for (const issue of issues) {
+                expect(issue.start).toBeGreaterThanOrEqual(0);
+                expect(issue.end).toBeGreaterThanOrEqual(issue.start);
+                expect(issue.end).toBeLessThanOrEqual(src.length);
+              }
+            }
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
   });
 });

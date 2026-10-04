@@ -52,17 +52,30 @@ export type Project = z.infer<typeof ProjectSchema>;
 export const IssueRuleIdSchema = z.enum([
   "unreachable-from-start",
   "cannot-reach-end",
+  "invalid-expression",
+  "undefined-variable",
+  "type-mismatch",
 ]);
 export type IssueRuleId = z.infer<typeof IssueRuleIdSchema>;
 
 export const IssueSeveritySchema = z.enum(["error", "warning"]);
 export type IssueSeverity = z.infer<typeof IssueSeveritySchema>;
 
+export const IssueLocationSchema = z.object({
+  edgeId: z.string(),
+  field: z.enum(["condition", "effect"]),
+  effectIndex: z.number().int().nonnegative().optional(),
+  start: z.number().int().nonnegative(),
+  end: z.number().int().nonnegative(),
+});
+export type IssueLocation = z.infer<typeof IssueLocationSchema>;
+
 export const IssueSchema = z.object({
   ruleId: IssueRuleIdSchema,
   severity: IssueSeveritySchema,
   nodeId: z.string(),
   message: z.string(),
+  location: IssueLocationSchema.optional(),
 });
 export type Issue = z.infer<typeof IssueSchema>;
 

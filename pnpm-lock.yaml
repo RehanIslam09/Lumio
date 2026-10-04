@@ -184,6 +184,9 @@ importers:
 
   packages/checker:
     dependencies:
+      '@repo/dsl':
+        specifier: workspace:*
+        version: link:../dsl
       '@repo/schema':
         specifier: workspace:*
         version: link:../schema
