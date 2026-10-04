@@ -24,6 +24,24 @@
 
 ## Entries
 
+### W-006 | 2026-10-04 | Promote commit d9d7b35 as stable-002
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-002 promotion at commit d9d7b35`
+- **Goal:** Promote commit `d9d7b35` as second stable baseline (`stable-002`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-002 baseline (commit d9d7b35), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-006 documenting the promotion
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-002 d9d7b35eef65a59abfdb4329f8dc5423177801e1`).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass (8/8 tasks successful across 3 packages, 109 tests passing)
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-002 d9d7b35eef65a59abfdb4329f8dc5423177801e1`.
+
 ### W-005 | 2026-10-04 | DSL typechecker and checker rules: invalid-expression, undefined-variable, type-mismatch
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement DSL typechecker and expression consistency rules`
