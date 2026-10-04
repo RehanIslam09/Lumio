@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import * as fc from "fast-check";
 import type { FlowEdge, FlowNode, FlowNodeType, Project, Variable } from "@repo/schema";
+import { IssueSchema, VariableSchema } from "@repo/schema";
+import { parseCondition, parseEffect } from "@repo/dsl";
 import {
   check,
   findNodesThatCannotReachEnd,
@@ -669,9 +671,14 @@ describe("property tests", () => {
         const seenPairs = new Set<string>();
 
         for (const issue of issues) {
-          expect(existingNodeIds.has(issue.nodeId)).toBe(true);
+          expect(
+            (issue.nodeId !== undefined) !== (issue.variableId !== undefined),
+          ).toBe(true);
+          if (issue.nodeId !== undefined) {
+            expect(existingNodeIds.has(issue.nodeId)).toBe(true);
+          }
 
-          const key = `${issue.ruleId}:${issue.nodeId}:${issue.location?.edgeId ?? ""}:${issue.location?.field ?? ""}:${issue.location?.effectIndex ?? ""}:${issue.location?.start ?? ""}:${issue.location?.end ?? ""}`;
+          const key = `${issue.ruleId}:${issue.nodeId ?? ""}:${issue.variableId ?? ""}:${issue.location?.edgeId ?? ""}:${issue.location?.field ?? ""}:${issue.location?.effectIndex ?? ""}:${issue.location?.start ?? ""}:${issue.location?.end ?? ""}`;
           expect(seenPairs.has(key)).toBe(false);
           seenPairs.add(key);
         }
@@ -696,7 +703,7 @@ describe("property tests", () => {
             id: "e1",
             from: "start",
             to: "end",
-            condition: "x > 0",
+            condition: 'x > 0 && msg == "ok"',
             effects: ["x += 1", 'msg = "ok"'],
           },
         ],
@@ -919,13 +926,17 @@ describe("property tests", () => {
             condition: "1 + 2", // type mismatch
           },
         ],
-        variables: [{ id: "v1", name: "x", type: "string" }], // x = 10 is mismatch
+        variables: [
+          { id: "v1", name: "x", type: "string" },
+          { id: "v2", name: "unused_var", type: "number" },
+        ],
       };
 
       const issues = check(project);
       const mapped = issues.map((i) => ({
         ruleId: i.ruleId,
         nodeId: i.nodeId,
+        variableId: i.variableId,
         edgeId: i.location?.edgeId,
         field: i.location?.field,
         effectIndex: i.location?.effectIndex,
@@ -936,6 +947,7 @@ describe("property tests", () => {
         {
           ruleId: "unreachable-from-start",
           nodeId: "orphan",
+          variableId: undefined,
           edgeId: undefined,
           field: undefined,
           effectIndex: undefined,
@@ -944,6 +956,7 @@ describe("property tests", () => {
         {
           ruleId: "cannot-reach-end",
           nodeId: "orphan",
+          variableId: undefined,
           edgeId: undefined,
           field: undefined,
           effectIndex: undefined,
@@ -952,6 +965,7 @@ describe("property tests", () => {
         {
           ruleId: "undefined-variable",
           nodeId: "start",
+          variableId: undefined,
           edgeId: "e1",
           field: "condition",
           effectIndex: undefined,
@@ -960,6 +974,7 @@ describe("property tests", () => {
         {
           ruleId: "undefined-variable",
           nodeId: "start",
+          variableId: undefined,
           edgeId: "e1",
           field: "condition",
           effectIndex: undefined,
@@ -968,6 +983,7 @@ describe("property tests", () => {
         {
           ruleId: "type-mismatch",
           nodeId: "start",
+          variableId: undefined,
           edgeId: "e1",
           field: "effect",
           effectIndex: 0,
@@ -976,6 +992,7 @@ describe("property tests", () => {
         {
           ruleId: "undefined-variable",
           nodeId: "start",
+          variableId: undefined,
           edgeId: "e1",
           field: "effect",
           effectIndex: 1,
@@ -984,10 +1001,29 @@ describe("property tests", () => {
         {
           ruleId: "type-mismatch",
           nodeId: "start",
+          variableId: undefined,
           edgeId: "e2",
           field: "condition",
           effectIndex: undefined,
           start: 0,
+        },
+        {
+          ruleId: "variable-never-read",
+          nodeId: undefined,
+          variableId: "v1",
+          edgeId: undefined,
+          field: undefined,
+          effectIndex: undefined,
+          start: undefined,
+        },
+        {
+          ruleId: "unused-variable",
+          nodeId: undefined,
+          variableId: "v2",
+          edgeId: undefined,
+          field: undefined,
+          effectIndex: undefined,
+          start: undefined,
         },
       ]);
     });
@@ -1052,6 +1088,726 @@ describe("property tests", () => {
           for (const issue of issues) {
             if (issue.location) {
               expect(validEdgeIds.has(issue.location.edgeId)).toBe(true);
+              expect(issue.location.start).toBeGreaterThanOrEqual(0);
+              expect(issue.location.end).toBeGreaterThanOrEqual(issue.location.start);
+            }
+          }
+        }),
+        { numRuns: 100 },
+      );
+    });
+  });
+
+  describe("schema refinements: IssueSchema and VariableSchema", () => {
+    describe("IssueSchema exactly-one-of nodeId/variableId refinement", () => {
+      it("accepts issue with nodeId only", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "unreachable-from-start",
+          severity: "warning",
+          nodeId: "n1",
+          message: "Node n1 is unreachable",
+        });
+        expect(parsed.success).toBe(true);
+      });
+
+      it("accepts issue with variableId only", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "unused-variable",
+          severity: "warning",
+          variableId: "v1",
+          message: 'Variable "x" is declared but never used.',
+        });
+        expect(parsed.success).toBe(true);
+      });
+
+      it("rejects issue with both nodeId and variableId present", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "unused-variable",
+          severity: "warning",
+          nodeId: "n1",
+          variableId: "v1",
+          message: "Conflict",
+        });
+        expect(parsed.success).toBe(false);
+        if (!parsed.success) {
+          const messages = parsed.error.issues.map((i) => i.message);
+          expect(messages).toContain("Exactly one of nodeId or variableId must be present");
+        }
+      });
+
+      it("rejects issue with neither nodeId nor variableId present", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "unused-variable",
+          severity: "warning",
+          message: "Neither",
+        });
+        expect(parsed.success).toBe(false);
+        if (!parsed.success) {
+          const messages = parsed.error.issues.map((i) => i.message);
+          expect(messages).toContain("Exactly one of nodeId or variableId must be present");
+        }
+      });
+    });
+
+    describe("VariableSchema initial value refinement", () => {
+      it("accepts variable without initial value", () => {
+        const parsed = VariableSchema.safeParse({
+          id: "v1",
+          name: "count",
+          type: "number",
+        });
+        expect(parsed.success).toBe(true);
+      });
+
+      it("accepts matching initial types", () => {
+        expect(
+          VariableSchema.safeParse({ id: "v1", name: "n", type: "number", initial: 42 }).success,
+        ).toBe(true);
+        expect(
+          VariableSchema.safeParse({ id: "v2", name: "s", type: "string", initial: "hello" }).success,
+        ).toBe(true);
+        expect(
+          VariableSchema.safeParse({ id: "v3", name: "b", type: "boolean", initial: false }).success,
+        ).toBe(true);
+      });
+
+      it("rejects mismatched initial types", () => {
+        expect(
+          VariableSchema.safeParse({ id: "v1", name: "n", type: "number", initial: "42" }).success,
+        ).toBe(false);
+        expect(
+          VariableSchema.safeParse({ id: "v2", name: "s", type: "string", initial: 123 }).success,
+        ).toBe(false);
+        expect(
+          VariableSchema.safeParse({ id: "v3", name: "b", type: "boolean", initial: "true" }).success,
+        ).toBe(false);
+      });
+
+      it("rejects non-finite number initial values", () => {
+        expect(
+          VariableSchema.safeParse({ id: "v1", name: "n", type: "number", initial: NaN }).success,
+        ).toBe(false);
+        expect(
+          VariableSchema.safeParse({ id: "v2", name: "n", type: "number", initial: Infinity }).success,
+        ).toBe(false);
+        expect(
+          VariableSchema.safeParse({ id: "v3", name: "n", type: "number", initial: -Infinity }).success,
+        ).toBe(false);
+      });
+    });
+  });
+
+  describe("variable-usage analysis", () => {
+    const baseNodes: FlowNode[] = [
+      { id: "start", type: "start", title: "Start Node" },
+      { id: "end", type: "end", title: "End Node" },
+    ];
+
+    it("read-only with initial produces no usage issue", () => {
+      const project: Project = {
+        id: "p_init_read",
+        name: "Initial Read Only",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x > 0",
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number", initial: 10 }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([]);
+    });
+
+    it("read-only without initial produces variable-never-written", () => {
+      const project: Project = {
+        id: "p_no_init_read",
+        name: "No Initial Read Only",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x > 0",
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number" }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([
+        {
+          ruleId: "variable-never-written",
+          severity: "warning",
+          variableId: "v1",
+          message: 'Variable "x" is read but never written.',
+        },
+      ]);
+    });
+
+    it("write-only produces variable-never-read", () => {
+      const project: Project = {
+        id: "p_write_only",
+        name: "Write Only",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            effects: ["x = 5"],
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number", initial: 0 }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([
+        {
+          ruleId: "variable-never-read",
+          severity: "warning",
+          variableId: "v1",
+          message: 'Variable "x" is written but never read.',
+        },
+      ]);
+    });
+
+    it("neither read nor written produces unused-variable", () => {
+      const project: Project = {
+        id: "p_unused",
+        name: "Unused",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number", initial: 0 }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([
+        {
+          ruleId: "unused-variable",
+          severity: "warning",
+          variableId: "v1",
+          message: 'Variable "x" is declared but never used.',
+        },
+      ]);
+    });
+
+    it("both read and written produces no usage issue", () => {
+      const project: Project = {
+        id: "p_both",
+        name: "Both Read and Written",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "x > 0",
+            effects: ["x = 1"],
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number" }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([]);
+    });
+
+    it("compound assignment x += 1 alone produces variable-never-read", () => {
+      const project: Project = {
+        id: "p_compound",
+        name: "Compound Write",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            effects: ["x += 1"],
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number", initial: 0 }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([
+        {
+          ruleId: "variable-never-read",
+          severity: "warning",
+          variableId: "v1",
+          message: 'Variable "x" is written but never read.',
+        },
+      ]);
+    });
+
+    it("assignment reading self x = x + 1 produces no usage issue", () => {
+      const project: Project = {
+        id: "p_self_assign",
+        name: "Self Assignment",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            effects: ["x = x + 1"],
+          },
+        ],
+        variables: [{ id: "v1", name: "x", type: "number" }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([]);
+    });
+
+    it("single unparseable string anywhere suppresses all usage issues", () => {
+      const project: Project = {
+        id: "p_suppress",
+        name: "Parse Error Suppression",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "@@bad_syntax@@",
+          },
+        ],
+        variables: [
+          { id: "v1", name: "unused_var", type: "number" },
+          { id: "v2", name: "written_var", type: "number" },
+        ],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([]);
+      expect(issues.some((i) => i.ruleId === "invalid-expression")).toBe(true);
+    });
+
+    it("reachability limitation: usage on edge from orphan node counts and produces no usage issue", () => {
+      const project: Project = {
+        id: "p_orphan_reachability",
+        name: "Orphan Reachability",
+        nodes: [
+          ...baseNodes,
+          { id: "orphan", type: "scene", title: "Orphan Node" },
+        ],
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+          },
+          {
+            id: "e2",
+            from: "orphan",
+            to: "end",
+            condition: "orphan_var > 0",
+            effects: ["orphan_var = 10"],
+          },
+        ],
+        variables: [{ id: "v1", name: "orphan_var", type: "number" }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([]);
+      expect(issues.some((i) => i.ruleId === "unreachable-from-start" && i.nodeId === "orphan")).toBe(
+        true,
+      );
+    });
+
+    it("dangling edge (missing from node) still counts usage", () => {
+      const project: Project = {
+        id: "p_dangling_edge",
+        name: "Dangling Edge",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e_dangling",
+            from: "nonexistent_node",
+            to: "end",
+            condition: "dangling_var > 0",
+            effects: ["dangling_var = 1"],
+          },
+        ],
+        variables: [{ id: "v1", name: "dangling_var", type: "number" }],
+      };
+
+      const issues = check(project);
+      const usageIssues = issues.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageIssues).toEqual([]);
+    });
+
+    it("duplicate variable names: first declared variable wins", () => {
+      const projectUnused: Project = {
+        id: "p_dup_unused",
+        name: "Duplicate Unused",
+        nodes: baseNodes,
+        edges: [{ id: "e1", from: "start", to: "end" }],
+        variables: [
+          { id: "v1", name: "dup", type: "number" },
+          { id: "v2", name: "dup", type: "number" },
+        ],
+      };
+
+      const issuesUnused = check(projectUnused);
+      const usageUnused = issuesUnused.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageUnused).toEqual([
+        {
+          ruleId: "unused-variable",
+          severity: "warning",
+          variableId: "v1",
+          message: 'Variable "dup" is declared but never used.',
+        },
+      ]);
+
+      const projectUsed: Project = {
+        id: "p_dup_used",
+        name: "Duplicate Used",
+        nodes: baseNodes,
+        edges: [
+          {
+            id: "e1",
+            from: "start",
+            to: "end",
+            condition: "dup > 0",
+            effects: ["dup = 10"],
+          },
+        ],
+        variables: [
+          { id: "v1", name: "dup", type: "number" },
+          { id: "v2", name: "dup", type: "number" },
+        ],
+      };
+
+      const issuesUsed = check(projectUsed);
+      const usageUsed = issuesUsed.filter(
+        (i) =>
+          i.ruleId === "unused-variable" ||
+          i.ruleId === "variable-never-written" ||
+          i.ruleId === "variable-never-read",
+      );
+      expect(usageUsed).toEqual([]);
+    });
+  });
+
+  describe("Property U1 (differential testing of variable usage)", () => {
+    type VariableRole = "unused" | "read-only" | "write-only" | "read-and-write";
+
+    interface VarGenSpec {
+      id: string;
+      name: string;
+      type: "number" | "boolean";
+      hasInitial: boolean;
+      role: VariableRole;
+    }
+
+    const varGenArbitrary = fc
+      .array(
+        fc.record({
+          role: fc.constantFrom<VariableRole>(
+            "unused",
+            "read-only",
+            "write-only",
+            "read-and-write",
+          ),
+          type: fc.constantFrom<"number" | "boolean">("number", "boolean"),
+          hasInitial: fc.boolean(),
+        }),
+        { minLength: 1, maxLength: 8 },
+      )
+      .map((specs) => {
+        return specs.map<VarGenSpec>((spec, idx) => ({
+          ...spec,
+          id: `var_${idx}`,
+          name: `v_${idx}`,
+        }));
+      });
+
+    it("Property U1: checker usage rules match independent specification", () => {
+      fc.assert(
+        fc.property(varGenArbitrary, (specs) => {
+          const variables: Variable[] = specs.map((s) => ({
+            id: s.id,
+            name: s.name,
+            type: s.type,
+            initial: s.hasInitial
+              ? s.type === "number"
+                ? 100
+                : true
+              : undefined,
+          }));
+
+          const conditions: string[] = [];
+          const effects: string[] = [];
+
+          for (const s of specs) {
+            const lit = s.type === "number" ? "1" : "true";
+            switch (s.role) {
+              case "unused":
+                break;
+              case "read-only":
+                conditions.push(`${s.name} == ${lit}`);
+                break;
+              case "write-only":
+                effects.push(`${s.name} = ${lit}`);
+                break;
+              case "read-and-write":
+                conditions.push(`${s.name} == ${lit}`);
+                effects.push(`${s.name} = ${lit}`);
+                break;
+            }
+          }
+
+          // Assert every generated condition and effect parses successfully
+          for (const cond of conditions) {
+            const parsed = parseCondition(cond);
+            expect(parsed.ok).toBe(true);
+          }
+          for (const eff of effects) {
+            const parsed = parseEffect(eff);
+            expect(parsed.ok).toBe(true);
+          }
+
+          const project: Project = {
+            id: "proj_u1",
+            name: "Property U1 Project",
+            nodes: [
+              { id: "start", type: "start", title: "Start" },
+              { id: "end", type: "end", title: "End" },
+            ],
+            edges: [
+              {
+                id: "e1",
+                from: "start",
+                to: "end",
+                condition: conditions.length > 0 ? conditions.join(" && ") : undefined,
+                effects: effects.length > 0 ? effects : undefined,
+              },
+            ],
+            variables,
+          };
+
+          if (project.edges[0]?.condition) {
+            expect(parseCondition(project.edges[0].condition).ok).toBe(true);
+          }
+
+          // Independent expected value computation purely from VarGenSpec
+          const expectedUsageIssues: {
+            ruleId: string;
+            severity: string;
+            variableId: string;
+            message: string;
+          }[] = [];
+
+          for (const s of specs) {
+            const read = s.role === "read-only" || s.role === "read-and-write";
+            const written = s.role === "write-only" || s.role === "read-and-write";
+
+            if (!read && !written) {
+              expectedUsageIssues.push({
+                ruleId: "unused-variable",
+                severity: "warning",
+                variableId: s.id,
+                message: `Variable "${s.name}" is declared but never used.`,
+              });
+            } else if (read && !written && !s.hasInitial) {
+              expectedUsageIssues.push({
+                ruleId: "variable-never-written",
+                severity: "warning",
+                variableId: s.id,
+                message: `Variable "${s.name}" is read but never written.`,
+              });
+            } else if (written && !read) {
+              expectedUsageIssues.push({
+                ruleId: "variable-never-read",
+                severity: "warning",
+                variableId: s.id,
+                message: `Variable "${s.name}" is written but never read.`,
+              });
+            }
+          }
+
+          const actualIssues = check(project);
+          const actualUsageIssues = actualIssues
+            .filter(
+              (i) =>
+                i.ruleId === "unused-variable" ||
+                i.ruleId === "variable-never-written" ||
+                i.ruleId === "variable-never-read",
+            )
+            .map((i) => ({
+              ruleId: i.ruleId,
+              severity: i.severity,
+              variableId: i.variableId ?? "",
+              message: i.message,
+            }));
+
+          expect(actualUsageIssues).toEqual(expectedUsageIssues);
+        }),
+        { numRuns: 100 },
+      );
+    });
+  });
+
+  describe("Property U2 (robustness on arbitrary projects with variables and expressions)", () => {
+    const arbitraryProjectWithVariables = fc
+      .integer({ min: 1, max: 6 })
+      .chain((nodeCount) => {
+        const ids = Array.from({ length: nodeCount }, (_, i) => `n_${i}`);
+        return fc
+          .record({
+            nodeTypes: fc.array(
+              fc.constantFrom<FlowNodeType>("start", "scene", "end"),
+              { minLength: nodeCount, maxLength: nodeCount },
+            ),
+            edges: fc.array(
+              fc.record({
+                id: fc.uuid(),
+                from: fc.constantFrom(...ids, "orphan_src", "ghost_src"),
+                to: fc.constantFrom(...ids, "orphan_dst", "ghost_dst"),
+                condition: fc.option(fc.string({ maxLength: 40 }), { nil: undefined }),
+                effects: fc.option(fc.array(fc.string({ maxLength: 40 }), { maxLength: 3 }), {
+                  nil: undefined,
+                }),
+              }),
+              { maxLength: 8 },
+            ),
+            variables: fc.array(
+              fc.record({
+                id: fc.uuid(),
+                name: fc
+                  .stringMatching(/^[a-z][a-z0-9_]{0,3}$/)
+                  .filter((s) => s !== "true" && s !== "false"),
+                type: fc.constantFrom<Variable["type"]>("number", "string", "boolean"),
+                initial: fc.option(
+                  fc.oneof(fc.integer({ min: -100, max: 100 }), fc.string({ maxLength: 10 }), fc.boolean()),
+                  { nil: undefined },
+                ),
+              }).filter((v) => {
+                // Ensure initial type matches variable type if present
+                if (v.initial === undefined) return true;
+                if (v.type === "number") return typeof v.initial === "number";
+                if (v.type === "string") return typeof v.initial === "string";
+                if (v.type === "boolean") return typeof v.initial === "boolean";
+                return false;
+              }),
+              { maxLength: 5 },
+            ),
+          })
+          .map(({ nodeTypes, edges, variables }) => {
+            const nodes: FlowNode[] = ids.map((id, index) => ({
+              id,
+              type: nodeTypes[index] ?? "scene",
+              title: `Title ${id}`,
+            }));
+            return {
+              id: "proj_rnd_u2",
+              name: "Random U2 Project",
+              nodes,
+              edges,
+              variables,
+            } satisfies Project;
+          });
+      });
+
+    it("Property U2: check() never throws on arbitrary projects and enforces XOR of nodeId/variableId", () => {
+      fc.assert(
+        fc.property(arbitraryProjectWithVariables, (project) => {
+          const issues = check(project);
+          const existingNodeIds = new Set(project.nodes.map((n) => n.id));
+          const existingVarIds = new Set(project.variables.map((v) => v.id));
+          const existingEdgeIds = new Set(project.edges.map((e) => e.id));
+
+          for (const issue of issues) {
+            // Refinement XOR check
+            expect(
+              (issue.nodeId !== undefined) !== (issue.variableId !== undefined),
+            ).toBe(true);
+
+            if (issue.nodeId !== undefined) {
+              expect(existingNodeIds.has(issue.nodeId)).toBe(true);
+            }
+            if (issue.variableId !== undefined) {
+              expect(existingVarIds.has(issue.variableId)).toBe(true);
+            }
+            if (issue.location) {
+              expect(existingEdgeIds.has(issue.location.edgeId)).toBe(true);
               expect(issue.location.start).toBeGreaterThanOrEqual(0);
               expect(issue.location.end).toBeGreaterThanOrEqual(issue.location.start);
             }

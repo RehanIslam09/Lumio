@@ -24,11 +24,23 @@ export const VariableNameSchema = z
     "Variable name must not be a reserved boolean literal ('true' or 'false')",
   );
 
-export const VariableSchema = z.object({
-  id: z.string(),
-  name: VariableNameSchema,
-  type: VariableTypeSchema,
-});
+export const VariableSchema = z
+  .object({
+    id: z.string(),
+    name: VariableNameSchema,
+    type: VariableTypeSchema,
+    initial: z.union([z.number(), z.string(), z.boolean()]).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.initial === undefined) return true;
+      if (data.type === "number") {
+        return typeof data.initial === "number" && Number.isFinite(data.initial);
+      }
+      return typeof data.initial === data.type;
+    },
+    { message: "initial value type must match variable type and numbers must be finite" },
+  );
 export type Variable = z.infer<typeof VariableSchema>;
 
 export const FlowEdgeSchema = z.object({
@@ -55,6 +67,9 @@ export const IssueRuleIdSchema = z.enum([
   "invalid-expression",
   "undefined-variable",
   "type-mismatch",
+  "unused-variable",
+  "variable-never-written",
+  "variable-never-read",
 ]);
 export type IssueRuleId = z.infer<typeof IssueRuleIdSchema>;
 
@@ -70,12 +85,18 @@ export const IssueLocationSchema = z.object({
 });
 export type IssueLocation = z.infer<typeof IssueLocationSchema>;
 
-export const IssueSchema = z.object({
-  ruleId: IssueRuleIdSchema,
-  severity: IssueSeveritySchema,
-  nodeId: z.string(),
-  message: z.string(),
-  location: IssueLocationSchema.optional(),
-});
+export const IssueSchema = z
+  .object({
+    ruleId: IssueRuleIdSchema,
+    severity: IssueSeveritySchema,
+    nodeId: z.string().optional(),
+    variableId: z.string().optional(),
+    message: z.string(),
+    location: IssueLocationSchema.optional(),
+  })
+  .refine(
+    (issue) => (issue.nodeId !== undefined) !== (issue.variableId !== undefined),
+    { message: "Exactly one of nodeId or variableId must be present" },
+  );
 export type Issue = z.infer<typeof IssueSchema>;
 

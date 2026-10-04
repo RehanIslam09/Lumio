@@ -1,10 +1,14 @@
-import type { Issue, Project } from "@repo/schema";
+import type { Issue, Project, Variable } from "@repo/schema";
 import {
   buildTypeEnv,
+  collectEffectUsage,
+  collectReads,
   parseCondition,
   parseEffect,
   typecheckCondition,
   typecheckEffect,
+  type Effect,
+  type Expr,
 } from "@repo/dsl";
 
 type TraversalDirection = "forward" | "reverse";
@@ -148,48 +152,55 @@ export function check(project: Project): Issue[] {
     }
   }
 
+  let hasParseError = false;
+  const parsedConditions: Expr[] = [];
+  const parsedEffects: Effect[] = [];
+
   // Edge-based issues
   for (const edge of project.edges) {
     const fromNode = nodeMap.get(edge.from);
-    if (!fromNode) {
-      continue;
-    }
 
     // Condition
     if (edge.condition !== undefined && edge.condition.trim() !== "") {
       const parsedCond = parseCondition(edge.condition);
       if (!parsedCond.ok) {
-        issues.push({
-          ruleId: "invalid-expression",
-          severity: "error",
-          nodeId: edge.from,
-          message: `In "${fromNode.title}": condition syntax error: ${parsedCond.error.message}.`,
-          location: {
-            edgeId: edge.id,
-            field: "condition",
-            start: parsedCond.error.start,
-            end: parsedCond.error.end,
-          },
-        });
-      } else {
-        const typeIssues = typecheckCondition(parsedCond.value, env);
-        for (const typeIssue of typeIssues) {
-          const detail =
-            typeIssue.code === "undefined-variable"
-              ? typeIssue.message.toLowerCase()
-              : typeIssue.message;
+        hasParseError = true;
+        if (fromNode) {
           issues.push({
-            ruleId: typeIssue.code,
+            ruleId: "invalid-expression",
             severity: "error",
             nodeId: edge.from,
-            message: `In "${fromNode.title}": ${detail}.`,
+            message: `In "${fromNode.title}": condition syntax error: ${parsedCond.error.message}.`,
             location: {
               edgeId: edge.id,
               field: "condition",
-              start: typeIssue.start,
-              end: typeIssue.end,
+              start: parsedCond.error.start,
+              end: parsedCond.error.end,
             },
           });
+        }
+      } else {
+        parsedConditions.push(parsedCond.value);
+        if (fromNode) {
+          const typeIssues = typecheckCondition(parsedCond.value, env);
+          for (const typeIssue of typeIssues) {
+            const detail =
+              typeIssue.code === "undefined-variable"
+                ? typeIssue.message.toLowerCase()
+                : typeIssue.message;
+            issues.push({
+              ruleId: typeIssue.code,
+              severity: "error",
+              nodeId: edge.from,
+              message: `In "${fromNode.title}": ${detail}.`,
+              location: {
+                edgeId: edge.id,
+                field: "condition",
+                start: typeIssue.start,
+                end: typeIssue.end,
+              },
+            });
+          }
         }
       }
     }
@@ -204,41 +215,106 @@ export function check(project: Project): Issue[] {
 
         const parsedEffect = parseEffect(effectStr);
         if (!parsedEffect.ok) {
-          issues.push({
-            ruleId: "invalid-expression",
-            severity: "error",
-            nodeId: edge.from,
-            message: `In "${fromNode.title}": effect syntax error: ${parsedEffect.error.message}.`,
-            location: {
-              edgeId: edge.id,
-              field: "effect",
-              effectIndex: i,
-              start: parsedEffect.error.start,
-              end: parsedEffect.error.end,
-            },
-          });
-        } else {
-          const typeIssues = typecheckEffect(parsedEffect.value, env);
-          for (const typeIssue of typeIssues) {
-            const detail =
-              typeIssue.code === "undefined-variable"
-                ? typeIssue.message.toLowerCase()
-                : typeIssue.message;
+          hasParseError = true;
+          if (fromNode) {
             issues.push({
-              ruleId: typeIssue.code,
+              ruleId: "invalid-expression",
               severity: "error",
               nodeId: edge.from,
-              message: `In "${fromNode.title}": ${detail}.`,
+              message: `In "${fromNode.title}": effect syntax error: ${parsedEffect.error.message}.`,
               location: {
                 edgeId: edge.id,
                 field: "effect",
                 effectIndex: i,
-                start: typeIssue.start,
-                end: typeIssue.end,
+                start: parsedEffect.error.start,
+                end: parsedEffect.error.end,
               },
             });
           }
+        } else {
+          parsedEffects.push(parsedEffect.value);
+          if (fromNode) {
+            const typeIssues = typecheckEffect(parsedEffect.value, env);
+            for (const typeIssue of typeIssues) {
+              const detail =
+                typeIssue.code === "undefined-variable"
+                  ? typeIssue.message.toLowerCase()
+                  : typeIssue.message;
+              issues.push({
+                ruleId: typeIssue.code,
+                severity: "error",
+                nodeId: edge.from,
+                message: `In "${fromNode.title}": ${detail}.`,
+                location: {
+                  edgeId: edge.id,
+                  field: "effect",
+                  effectIndex: i,
+                  start: typeIssue.start,
+                  end: typeIssue.end,
+                },
+              });
+            }
+          }
         }
+      }
+    }
+  }
+
+  // Variable-usage issues
+  // If ANY condition or effect on ANY edge failed to parse, suppress all usage issues.
+  if (!hasParseError) {
+    const readVarNames = new Set<string>();
+    const writtenVarNames = new Set<string>();
+
+    for (const cond of parsedConditions) {
+      for (const id of collectReads(cond)) {
+        readVarNames.add(id.name);
+      }
+    }
+
+    for (const eff of parsedEffects) {
+      const usage = collectEffectUsage(eff);
+      writtenVarNames.add(usage.write.name);
+      for (const id of usage.reads) {
+        readVarNames.add(id.name);
+      }
+    }
+
+    const firstDeclaredVars: Variable[] = [];
+    const seenVarNames = new Set<string>();
+    for (const v of project.variables) {
+      if (!seenVarNames.has(v.name)) {
+        seenVarNames.add(v.name);
+        firstDeclaredVars.push(v);
+      }
+    }
+
+    for (const v of firstDeclaredVars) {
+      const isRead = readVarNames.has(v.name);
+      const isWritten = writtenVarNames.has(v.name);
+      const hasInitial = v.initial !== undefined;
+
+      if (!isRead && !isWritten) {
+        issues.push({
+          ruleId: "unused-variable",
+          severity: "warning",
+          variableId: v.id,
+          message: `Variable "${v.name}" is declared but never used.`,
+        });
+      } else if (isRead && !isWritten && !hasInitial) {
+        issues.push({
+          ruleId: "variable-never-written",
+          severity: "warning",
+          variableId: v.id,
+          message: `Variable "${v.name}" is read but never written.`,
+        });
+      } else if (isWritten && !isRead) {
+        issues.push({
+          ruleId: "variable-never-read",
+          severity: "warning",
+          variableId: v.id,
+          message: `Variable "${v.name}" is written but never read.`,
+        });
       }
     }
   }

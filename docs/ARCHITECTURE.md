@@ -70,7 +70,7 @@ AGENTS.md
 | Member | projectId, userId, role (viewer/writer/lead) | |
 | FlowNode | id, projectId, type, title, body (rich text), position | `type`: scene, dialogue, branch, start, end |
 | FlowEdge | id, from, to, label, condition (optional string), effects (optional string[]) | |
-| Variable | id, name, type ('number' \| 'string' \| 'boolean') | Referenced by DSL |
+| Variable | id, name, type ('number' \| 'string' \| 'boolean'), initial (optional number \| string \| boolean) | Referenced by DSL; initial type must match type and numbers must be finite |
 | Entity | id, projectId, kind (character/faction/place/event), name, attributes (JSONB) | Rename/delete must cascade-warn |
 | Relation | id, fromEntityId, toEntityId, type, attributes | Typed edge in lore graph |
 | NodeEntityLink | nodeId, entityId | Connects flow and lore layers |
@@ -117,6 +117,10 @@ Maximum nesting depth: 200 (counting each nested `(` and each chained unary oper
   Mismatch span is `effect.value` span.
 - Output issues are ordered by start offset, then end offset.
 
+### Variable usage helpers (`@repo/dsl`)
+- `collectReads(expr: Expr): Identifier[]`: collects identifier reads in source order.
+- `collectEffectUsage(effect: Effect): { write: Identifier; reads: Identifier[] }`: returns target identifier as write, and `collectReads(effect.value)` as reads. Compound operators (`+=`, `-=`) do not add target to reads.
+
 ## 6. Consistency checker `DRAFT`
 Pure function: `check(project) -> Issue[]`. Runs in a Web Worker (live) and on the server (pre-export).
 
@@ -136,13 +140,18 @@ interface Issue {
     | "cannot-reach-end"
     | "invalid-expression"
     | "undefined-variable"
-    | "type-mismatch";
+    | "type-mismatch"
+    | "unused-variable"
+    | "variable-never-written"
+    | "variable-never-read";
   severity: "error" | "warning";
-  nodeId: string;
+  nodeId?: string;
+  variableId?: string;
   message: string;
   location?: IssueLocation;
 }
 ```
+Refinement: exactly one of `nodeId` or `variableId` must be present (`(nodeId !== undefined) !== (variableId !== undefined)`).
 
 ### Rules table
 | Rule | Algorithm | Phase |
@@ -152,10 +161,17 @@ interface Issue {
 | Invalid expression (`invalid-expression`) | Syntax validation via `@repo/dsl` lexer and parser on edge conditions and effects | v1 (implemented) |
 | Undefined variables (`undefined-variable`) | Symbol table & typecheck over parsed DSL on edge conditions and effects | v1 (implemented) |
 | Type mismatch (`type-mismatch`) | Pure static typechecker over parsed DSL conditions and effect assignments | v1 (implemented) |
+| Unused variable (`unused-variable`) | Warning when declared variable is never read and never written | v1 (implemented) |
+| Variable never written (`variable-never-written`) | Warning when declared variable without `initial` is read but never written | v1 (implemented) |
+| Variable never read (`variable-never-read`) | Warning when declared variable is written but never read | v1 (implemented) |
 | Dead effects (set, never read) | def-use analysis | v2 |
 | Conflicting or impossible conditions | path-sensitive state/interval analysis | v2 |
 | Lore contradictions | typed-relation rules | later |
 Policy: under-report. A false positive costs more trust than a false negative.
+
+### Known limitations
+- Reachability limitation: variable usage is counted across all edges in `project.edges`, even edges whose source node is unreachable from any start node or edges with invalid/dangling `from` nodes.
+- Parse error suppression: a single unparseable condition or effect on any edge suppresses all variable-usage issues across the entire project to prevent false positives.
 
 ## 7. Realtime collaboration `DRAFT`
 Yjs documents per project/node, Hocuspocus server, awareness for cursors and presence. Persistence to Postgres via Hocuspocus extension. Auth on WebSocket connect (R8.1).

@@ -24,6 +24,41 @@
 
 ## Entries
 
+### W-007 | 2026-10-04 | Variable-usage analysis: initial values + usage rules (W-006 task spec)
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement variable usage analysis and initial values`
+- **Goal:** Add optional `initial` value refinement to `VariableSchema`, update `IssueSchema` with optional `nodeId`, `variableId`, and XOR refinement; implement pure `collectReads` and `collectEffectUsage` in `@repo/dsl`; implement `unused-variable`, `variable-never-written`, and `variable-never-read` rules in `@repo/checker`; validate with schema, unit, and property tests (U1, U2).
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added optional `initial` with refinement to `VariableSchema`; added usage rule IDs to `IssueRuleIdSchema`; added optional `variableId`, made `nodeId` optional, and added XOR refinement to `IssueSchema`.
+  - `packages/dsl/src/usage.ts`: created pure AST traversal helpers `collectReads` (source order) and `collectEffectUsage` (compound operators `+=`/`-=` do not add target to reads).
+  - `packages/dsl/src/index.ts`: exported `usage.ts`.
+  - `packages/dsl/src/index.test.ts`: added unit tests for `collectReads` and `collectEffectUsage`.
+  - `packages/checker/src/index.ts`: parsed conditions/effects across all edges, suppressed usage issues on parse errors, deduplicated variable declarations by first-declared, and emitted usage issues in `project.variables` order.
+  - `packages/checker/src/index.test.ts`: adapted Property B for optional `nodeId` and XOR refinement, updated ordering test for variable-level issues, updated W-005 fixture to read `msg`, added schema refinement tests, rule unit tests, Property U1 differential test, and Property U2 robustness test.
+  - `docs/ARCHITECTURE.md`: updated Sections 4, 5, 6 with variable `initial`, DSL usage helpers, updated Issue shape, rules table, and known limitations.
+  - `docs/context/recent-work.md`: logged entry W-007.
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `VariableSchema`: gains optional `initial?: number | string | boolean` with refinement ensuring type match and finite numbers.
+    - `IssueRuleIdSchema`: added `"unused-variable" | "variable-never-written" | "variable-never-read"`.
+    - `IssueSchema`: `nodeId` is now optional; added optional `variableId: string`; refined so exactly one of `nodeId` or `variableId` is present. Any consumer (e.g. future UI) must handle variable-level issues.
+  - `@repo/dsl`:
+    - `collectReads(expr: Expr): Identifier[]`
+    - `collectEffectUsage(effect: Effect): { write: Identifier; reads: Identifier[] }`
+  - `@repo/checker`:
+    - `check(project: Project): Issue[]` outputs node issues, edge issues, and variable-usage issues in `project.variables` order.
+- **Decisions and why:**
+  - `Issue.nodeId` made optional in favor of `variableId` with mutual exclusivity refinement (`(nodeId !== undefined) !== (variableId !== undefined)`). Variable-level issues do not attach to an arbitrary node.
+  - Reachability limitation: variable usage is counted across all edges in `project.edges`, even edges whose source node is unreachable from any start node or dangling edges. Pinned with dedicated unit test.
+  - Syntax error suppression: any parse error on any edge condition/effect suppresses all usage issues across the project to prevent cascading false positives. Pinned with unit test.
+  - First declared variable wins: duplicate variable names attribute usage to the first declaration without crashing or attributing to duplicates.
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (8/8 tasks successful across 3 packages, 137 tests passing: 81 dsl, 56 checker).
+- **Known issues / debt:** none
+- **Next steps:**
+  - Integrate AST evaluator or AST interpreter for playtest execution mode.
+
 ### W-006 | 2026-10-04 | Promote commit d9d7b35 as stable-002
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-002 promotion at commit d9d7b35`

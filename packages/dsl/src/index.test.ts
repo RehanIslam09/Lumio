@@ -7,6 +7,8 @@ import {
   buildTypeEnv,
   typecheckCondition,
   typecheckEffect,
+  collectReads,
+  collectEffectUsage,
   type TypeEnv,
 } from "./index.js";
 import type { Variable, VariableType } from "@repo/schema";
@@ -1284,4 +1286,99 @@ describe("typechecker - unit and property tests", () => {
       );
     });
   });
+
+  describe("collectReads and collectEffectUsage", () => {
+    it("collectReads returns empty array for literals", () => {
+      const numParsed = parseCondition("42");
+      expect(numParsed.ok).toBe(true);
+      if (numParsed.ok) expect(collectReads(numParsed.value)).toEqual([]);
+
+      const strParsed = parseCondition('"hello"');
+      expect(strParsed.ok).toBe(true);
+      if (strParsed.ok) expect(collectReads(strParsed.value)).toEqual([]);
+
+      const boolParsed = parseCondition("true");
+      expect(boolParsed.ok).toBe(true);
+      if (boolParsed.ok) expect(collectReads(boolParsed.value)).toEqual([]);
+    });
+
+    it("collectReads returns single identifier with correct spans", () => {
+      const parsed = parseCondition("myVar");
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        const reads = collectReads(parsed.value);
+        expect(reads).toEqual([
+          { type: "Identifier", name: "myVar", start: 0, end: 5 },
+        ]);
+      }
+    });
+
+    it("collectReads traverses unary expressions", () => {
+      const parsed = parseCondition("!flag && -count > 0");
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        const reads = collectReads(parsed.value);
+        expect(reads.map((r) => r.name)).toEqual(["flag", "count"]);
+      }
+    });
+
+    it("collectReads returns identifiers in left-to-right source order including duplicates", () => {
+      const parsed = parseCondition("x + x * (y - x)");
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        const reads = collectReads(parsed.value);
+        expect(reads.map((r) => r.name)).toEqual(["x", "x", "y", "x"]);
+        expect(reads.map((r) => [r.start, r.end])).toEqual([
+          [0, 1],
+          [4, 5],
+          [9, 10],
+          [13, 14],
+        ]);
+      }
+    });
+
+    it("collectEffectUsage on simple assignment", () => {
+      const parsed = parseEffect("x = 42");
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        const usage = collectEffectUsage(parsed.value);
+        expect(usage.write).toEqual({
+          type: "Identifier",
+          name: "x",
+          start: 0,
+          end: 1,
+        });
+        expect(usage.reads).toEqual([]);
+      }
+    });
+
+    it("collectEffectUsage on assignment with reads", () => {
+      const parsed = parseEffect("score = bonus + base * 2");
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        const usage = collectEffectUsage(parsed.value);
+        expect(usage.write.name).toBe("score");
+        expect(usage.reads.map((r) => r.name)).toEqual(["bonus", "base"]);
+      }
+    });
+
+    it("collectEffectUsage compound assignment does NOT include target in reads", () => {
+      const plusParsed = parseEffect("x += 1");
+      expect(plusParsed.ok).toBe(true);
+      if (plusParsed.ok) {
+        const usage = collectEffectUsage(plusParsed.value);
+        expect(usage.write.name).toBe("x");
+        expect(usage.reads).toEqual([]);
+      }
+
+      const minusParsed = parseEffect("y -= a + b");
+      expect(minusParsed.ok).toBe(true);
+      if (minusParsed.ok) {
+        const usage = collectEffectUsage(minusParsed.value);
+        expect(usage.write.name).toBe("y");
+        expect(usage.reads.map((r) => r.name)).toEqual(["a", "b"]);
+      }
+    });
+  });
 });
+
