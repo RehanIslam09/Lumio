@@ -10,10 +10,33 @@ export const FlowNodeSchema = z.object({
 });
 export type FlowNode = z.infer<typeof FlowNodeSchema>;
 
+export const VariableTypeSchema = z.enum(["number", "string", "boolean"]);
+export type VariableType = z.infer<typeof VariableTypeSchema>;
+
+export const VariableNameSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z_][A-Za-z0-9_]*$/,
+    "Variable name must match [A-Za-z_][A-Za-z0-9_]*",
+  )
+  .refine(
+    (name) => name !== "true" && name !== "false",
+    "Variable name must not be a reserved boolean literal ('true' or 'false')",
+  );
+
+export const VariableSchema = z.object({
+  id: z.string(),
+  name: VariableNameSchema,
+  type: VariableTypeSchema,
+});
+export type Variable = z.infer<typeof VariableSchema>;
+
 export const FlowEdgeSchema = z.object({
   id: z.string(),
   from: z.string(),
   to: z.string(),
+  condition: z.string().optional(),
+  effects: z.array(z.string()).optional(),
 });
 export type FlowEdge = z.infer<typeof FlowEdgeSchema>;
 
@@ -22,6 +45,7 @@ export const ProjectSchema = z.object({
   name: z.string(),
   nodes: z.array(FlowNodeSchema),
   edges: z.array(FlowEdgeSchema),
+  variables: z.array(VariableSchema),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 

@@ -22,7 +22,7 @@
 ## 3. Code standards
 - **R3.1** TypeScript `strict`. No `any`; use `unknown` and narrow.
 - **R3.2** Validate all external input with Zod at boundaries (HTTP, WebSocket, import, export).
-- **R3.3** Types are defined once in `packages/schema` and imported everywhere. Never redefine them.
+- **R3.3** Types are defined once in `packages/schema` and imported everywhere. Never redefine them. (Domain and persisted types live in `packages/schema`; language AST types are internal to the language and live in `packages/dsl`.)
 - **R3.4** Prefer small pure functions. Side effects live at the edges.
 - **R3.5** Export JSON is versioned (`schemaVersion`). Breaking changes need a version bump and a migration note.
 

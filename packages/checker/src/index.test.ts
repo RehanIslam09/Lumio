@@ -22,6 +22,7 @@ describe("findUnreachableNodes", () => {
         { id: "e1", from: "start", to: "scene1" },
         { id: "e2", from: "scene1", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual([]);
@@ -43,6 +44,7 @@ describe("findUnreachableNodes", () => {
         { id: "e3", from: "choiceA", to: "end" },
         { id: "e4", from: "choiceB", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual([]);
@@ -58,6 +60,7 @@ describe("findUnreachableNodes", () => {
         { id: "island", type: "scene", title: "Island" },
       ],
       edges: [{ id: "e1", from: "start", to: "scene1" }],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["island"]);
@@ -76,6 +79,7 @@ describe("findUnreachableNodes", () => {
         { id: "e1", from: "scene1", to: "scene2" },
         { id: "e2", from: "scene2", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["scene1", "scene2", "end"]);
@@ -96,6 +100,7 @@ describe("findUnreachableNodes", () => {
         { id: "e2", from: "loopA", to: "loopB" },
         { id: "e3", from: "loopB", to: "loopA" },
       ],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["orphan"]);
@@ -116,6 +121,7 @@ describe("findUnreachableNodes", () => {
         { id: "e1", from: "start1", to: "scene1" },
         { id: "e2", from: "start2", to: "scene2" },
       ],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["orphan"]);
@@ -133,6 +139,7 @@ describe("findUnreachableNodes", () => {
         { id: "e1", from: "start", to: "ghostNode" },
         { id: "e2", from: "ghostNode", to: "scene1" },
       ],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["scene1"]);
@@ -149,6 +156,7 @@ describe("findUnreachableNodes", () => {
         { id: "orphanM", type: "scene", title: "M" },
       ],
       edges: [],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["orphanZ", "orphanA", "orphanM"]);
@@ -167,6 +175,7 @@ describe("findUnreachableNodes", () => {
         { id: "e1", from: "unreached1", to: "unreached2" },
         { id: "e2", from: "unreached1", to: "unreached2" },
       ],
+      variables: [],
     };
 
     const unreachable = findUnreachableNodes(project);
@@ -184,6 +193,7 @@ describe("findUnreachableNodes", () => {
         { id: "orphan", type: "scene", title: "Orphan" },
       ],
       edges: [],
+      variables: [],
     };
 
     expect(findUnreachableNodes(project)).toEqual(["orphan"]);
@@ -238,6 +248,7 @@ describe("findUnreachableNodes", () => {
             name: "Property Project",
             nodes,
             edges,
+            variables: [],
           };
 
           const result = findUnreachableNodes(project);
@@ -266,6 +277,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e1", from: "start", to: "scene1" },
         { id: "e2", from: "scene1", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual([]);
@@ -286,6 +298,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e2", from: "start", to: "sceneB" },
         { id: "e3", from: "sceneA", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual(["sceneB"]);
@@ -308,6 +321,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e3", from: "loopA", to: "loopB" },
         { id: "e4", from: "loopB", to: "loopA" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual([
@@ -333,6 +347,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e2", from: "start", to: "sceneOk" },
         { id: "e3", from: "sceneOk", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual(["deadNode"]);
@@ -351,6 +366,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e1", from: "start", to: "scene1" },
         { id: "e2", from: "scene1", to: "scene2" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual(["start", "scene1", "scene2"]);
@@ -370,6 +386,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e2", from: "scene1", to: "ghostNode" },
         { id: "e3", from: "ghostNode", to: "end" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual(["start", "scene1"]);
@@ -385,6 +402,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "end2", type: "end", title: "End 2" },
       ],
       edges: [{ id: "e1", from: "start", to: "end1" }],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual([]);
@@ -408,6 +426,7 @@ describe("findNodesThatCannotReachEnd", () => {
         { id: "e3", from: "branchA", to: "end1" },
         { id: "e4", from: "branchB", to: "end2" },
       ],
+      variables: [],
     };
 
     expect(findNodesThatCannotReachEnd(project)).toEqual(["orphanScene"]);
@@ -429,6 +448,7 @@ describe("check", () => {
         { id: "e1", from: "start", to: "dead" },
         { id: "e2", from: "island", to: "end" },
       ],
+      variables: [],
     };
 
     const issues = check(project);
@@ -452,6 +472,7 @@ describe("check", () => {
         { id: "end", type: "end", title: "The Finish" },
       ],
       edges: [{ id: "e1", from: "start", to: "end" }],
+      variables: [],
     };
 
     const issues = check(project);
@@ -482,6 +503,7 @@ describe("check", () => {
         { id: "e2", from: "scene1", to: "end" },
         { id: "e3", from: "scene1", to: "nodeB" },
       ],
+      variables: [],
     };
 
 
@@ -521,6 +543,7 @@ describe("check", () => {
         { id: "e1", from: "start", to: "scene" },
         { id: "e2", from: "scene", to: "end" },
       ],
+      variables: [],
     };
 
     expect(check(project)).toEqual([]);
@@ -617,6 +640,7 @@ describe("property tests", () => {
             name: "Random",
             nodes,
             edges,
+            variables: [],
           } satisfies Project;
         });
     });

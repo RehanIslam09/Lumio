@@ -198,6 +198,22 @@ importers:
         specifier: 5.0.3
         version: 5.0.3(vite@8.3.2)
 
+  packages/dsl:
+    dependencies:
+      '@repo/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(vite@8.3.2)
+
   packages/schema:
     dependencies:
       zod:

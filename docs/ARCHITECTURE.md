@@ -53,8 +53,9 @@ README.md
 tsconfig.base.json
 turbo.json
 packages/
-  schema/       Zod types: FlowNode, FlowEdge, Project, Issue
+  schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): findUnreachableNodes, findNodesThatCannotReachEnd, check + tests
+  dsl/          Language parser (pure): AST, lexer, parser for conditions and effects + tests
 docs/
   RULES.md  ARCHITECTURE.md  context/
 .agent/workflows/
@@ -65,18 +66,33 @@ AGENTS.md
 ## 4. Data model `DRAFT`
 | Entity | Key fields | Notes |
 |---|---|---|
-| Project | id, name, ownerId | |
+| Project | id, name, nodes, edges, variables, ownerId | |
 | Member | projectId, userId, role (viewer/writer/lead) | |
 | FlowNode | id, projectId, type, title, body (rich text), position | `type`: scene, dialogue, branch, start, end |
-| FlowEdge | id, from, to, label, condition (DSL), effects (DSL[]) | |
-| Variable | id, projectId, name, type, initial | Referenced by DSL |
+| FlowEdge | id, from, to, label, condition (optional string), effects (optional string[]) | |
+| Variable | id, name, type ('number' \| 'string' \| 'boolean') | Referenced by DSL |
 | Entity | id, projectId, kind (character/faction/place/event), name, attributes (JSONB) | Rename/delete must cascade-warn |
 | Relation | id, fromEntityId, toEntityId, type, attributes | Typed edge in lore graph |
 | NodeEntityLink | nodeId, entityId | Connects flow and lore layers |
 | NodeVersion | nodeId, version, snapshot, authorId, createdAt | Per-node history |
 
-## 5. DSL `TODO`
-Small expression language for edge conditions and effects. Grammar, types, and operators to be designed. Must be parsed and interpreted, never executed as code (R8.3).
+## 5. DSL `DECIDED`
+Small expression language for edge conditions and effects. Pure hand-written lexer and recursive descent parser in `@repo/dsl`. Parsed and interpreted, never executed as code (R8.3).
+
+Grammar (lowest to highest precedence, all binary operators left-associative):
+```text
+expr       := or
+or         := and ( "||" and )*
+and        := equality ( "&&" equality )*
+equality   := relational ( ("==" | "!=") relational )*
+relational := additive ( ("<" | "<=" | ">" | ">=") additive )*
+additive   := term ( ("+" | "-") term )*
+term       := unary ( ("*" | "/") unary )*
+unary      := ("!" | "-") unary | primary
+primary    := NUMBER | STRING | "true" | "false" | IDENT | "(" expr ")"
+effect     := IDENT ( "=" | "+=" | "-=" ) expr
+```
+Maximum nesting depth: 200 (counting each nested `(` and each chained unary operator). Exceeding it returns `ParseError` without throwing.
 
 ## 6. Consistency checker `DRAFT`
 Pure function: `check(project) -> Issue[]`. Runs in a Web Worker (live) and on the server (pre-export).
