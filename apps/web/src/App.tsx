@@ -6,23 +6,41 @@ import {
   MiniMap,
   useReactFlow,
   type Node,
-  type Edge,
+  type NodeChange,
+  type Connection,
+  type OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import { check } from "@repo/checker";
-import type { Issue } from "@repo/schema";
+import type { Issue, FlowNodeType, VariableType, Variable } from "@repo/schema";
 import { getSampleProjectWithSyntaxError } from "./demo/sampleProject.js";
 import { computeLayout } from "./lib/layout.js";
 import { groupIssues } from "./lib/decorate.js";
+import { projectToFlow, type Selection } from "./lib/flowModel.js";
+import { makeNode, makeEdge, makeVariable } from "./lib/defaults.js";
+import { interpretKey, isTargetEditable } from "./lib/keymap.js";
+import {
+  createEditor,
+  apply,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
+  type EditorState,
+  type EditorAction,
+} from "./editor/index.js";
+
 import {
   StoryNode,
   STORY_NODE_WIDTH,
   STORY_NODE_HEIGHT,
   type StoryNodeData,
 } from "./components/StoryNode.js";
-import { StoryEdge, type StoryEdgeData } from "./components/StoryEdge.js";
-import { IssuesPanel } from "./components/IssuesPanel.js";
+import { StoryEdge } from "./components/StoryEdge.js";
+import { Toolbar } from "./components/Toolbar.js";
+import { MessageBar } from "./components/MessageBar.js";
+import { RightPanel, type PanelTab } from "./components/RightPanel.js";
 
 const nodeTypes = {
   storyNode: StoryNode,
@@ -35,137 +53,116 @@ const edgeTypes = {
 function StoryCanvas({
   project,
   issues,
-  selectedNodeId,
-  selectedEdgeId,
-  onNodeClick,
-  onEdgeClick,
+  selection,
+  layout,
+  onNodeSelect,
+  onEdgeSelect,
+  onPaneClick,
+  onConnect,
+  onMoveNode,
 }: {
-  project: ReturnType<typeof getSampleProjectWithSyntaxError>;
+  project: EditorState["present"];
   issues: Issue[];
-  selectedNodeId: string | null;
-  selectedEdgeId: string | null;
-  onNodeClick: (nodeId: string) => void;
-  onEdgeClick: (edgeId: string) => void;
+  selection: Selection;
+  layout: Map<string, { x: number; y: number }>;
+  onNodeSelect: (id: string) => void;
+  onEdgeSelect: (id: string) => void;
+  onPaneClick: () => void;
+  onConnect: (connection: Connection) => void;
+  onMoveNode: (id: string, position: { x: number; y: number }) => void;
 }) {
   const { setCenter, getViewport } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const grouped = useMemo(() => groupIssues(project, issues), [project, issues]);
-  const layout = useMemo(() => computeLayout(project), [project]);
+  const [dragOverrides, setDragOverrides] = useState<Map<string, { x: number; y: number }>>(
+    new Map(),
+  );
 
-  // Outcome 5: Pan to selected node only if it is outside current viewport
-  useEffect(() => {
-    if (!selectedNodeId) return;
-    const pos = layout.get(selectedNodeId);
-    if (!pos) return;
-
-    const targetX = pos.x + STORY_NODE_WIDTH / 2;
-    const targetY = pos.y + STORY_NODE_HEIGHT / 2;
-
-    const vp = getViewport();
-    const container = wrapperRef.current;
-    const width = container?.clientWidth || 1000;
-    const height = container?.clientHeight || 800;
-
-    const minX = -vp.x / vp.zoom;
-    const maxX = (width - vp.x) / vp.zoom;
-    const minY = -vp.y / vp.zoom;
-    const maxY = (height - vp.y) / vp.zoom;
-
-    const isOutside =
-      pos.x + STORY_NODE_WIDTH < minX ||
-      pos.x > maxX ||
-      pos.y + STORY_NODE_HEIGHT < minY ||
-      pos.y > maxY;
-
-    if (isOutside) {
-      const targetZoom = Math.max(vp.zoom, 0.65);
-      void setCenter(targetX, targetY, {
-        duration: 400,
-        zoom: targetZoom,
-      });
+  // Controlled position tracking for live dragging
+  const effectivePositions = useMemo(() => {
+    const map = new Map(layout);
+    for (const [id, pos] of dragOverrides) {
+      map.set(id, pos);
     }
-  }, [selectedNodeId, layout, getViewport, setCenter]);
+    return map;
+  }, [layout, dragOverrides]);
 
-  // Outcome 5: Pan to selected edge only if it is outside current viewport
-  useEffect(() => {
-    if (!selectedEdgeId) return;
-    const edge = project.edges.find((e) => e.id === selectedEdgeId);
-    if (!edge) return;
-    const fromPos = layout.get(edge.from);
-    const toPos = layout.get(edge.to);
-    if (!fromPos || !toPos) return;
+  const { nodes, edges } = useMemo(() => {
+    return projectToFlow(project, effectivePositions, selection, issues, onEdgeSelect);
+  }, [project, effectivePositions, selection, issues, onEdgeSelect]);
 
-    const targetX = (fromPos.x + toPos.x + STORY_NODE_WIDTH) / 2;
-    const targetY = (fromPos.y + toPos.y + STORY_NODE_HEIGHT) / 2;
-
-    const vp = getViewport();
-    const container = wrapperRef.current;
-    const width = container?.clientWidth || 1000;
-    const height = container?.clientHeight || 800;
-
-    const minX = -vp.x / vp.zoom;
-    const maxX = (width - vp.x) / vp.zoom;
-    const minY = -vp.y / vp.zoom;
-    const maxY = (height - vp.y) / vp.zoom;
-
-    const isOutside =
-      targetX < minX ||
-      targetX > maxX ||
-      targetY < minY ||
-      targetY > maxY;
-
-    if (isOutside) {
-      const targetZoom = Math.max(vp.zoom, 0.65);
-      void setCenter(targetX, targetY, {
-        duration: 400,
-        zoom: targetZoom,
-      });
-    }
-  }, [selectedEdgeId, project.edges, layout, getViewport, setCenter]);
-
-  const nodes: Node<StoryNodeData>[] = useMemo(() => {
-    return project.nodes.map((node) => ({
-      id: node.id,
-      type: "storyNode",
-      position: layout.get(node.id) ?? { x: 0, y: 0 },
-      initialWidth: STORY_NODE_WIDTH,
-      initialHeight: STORY_NODE_HEIGHT,
-      data: {
-        title: node.title,
-        nodeType: node.type,
-        issues: grouped.byNode.get(node.id) ?? [],
-      },
-      selected: selectedNodeId === node.id,
-      selectable: true,
-      draggable: false,
-    }));
-  }, [project.nodes, layout, grouped.byNode, selectedNodeId]);
-
-  const edges: Edge<StoryEdgeData>[] = useMemo(() => {
-    return project.edges.map((edge) => {
-      const edgeIssues = grouped.byEdge.get(edge.id) ?? [];
-      const hasIssue = edgeIssues.length > 0;
-
-      return {
-        id: edge.id,
-        source: edge.from,
-        target: edge.to,
-        type: "storyEdge",
-        selected: selectedEdgeId === edge.id,
-        animated: hasIssue,
-        style: {
-          stroke: hasIssue ? "var(--color-error)" : "var(--color-edge)",
-          strokeWidth: hasIssue ? 2.5 : 1.5,
-        },
-        data: {
-          condition: edge.condition,
-          effects: edge.effects,
-          hasIssue,
-          onSelect: onEdgeClick,
-        },
-      };
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    setDragOverrides((prev) => {
+      let updated = prev;
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          if (updated === prev) updated = new Map(prev);
+          updated.set(change.id, change.position);
+        }
+      }
+      return updated;
     });
-  }, [project.edges, grouped.byEdge, selectedEdgeId, onEdgeClick]);
+  }, []);
+
+  const handleNodeDragStop: OnNodeDrag = useCallback(
+    (_event, node) => {
+      const renderedPos = layout.get(node.id);
+      const finalX = Math.round(node.position.x);
+      const finalY = Math.round(node.position.y);
+
+      if (
+        renderedPos &&
+        (finalX !== Math.round(renderedPos.x) || finalY !== Math.round(renderedPos.y))
+      ) {
+        onMoveNode(node.id, { x: finalX, y: finalY });
+      }
+      setDragOverrides(new Map());
+    },
+    [layout, onMoveNode],
+  );
+
+  // Pan to selected entity if it is outside current viewport
+  useEffect(() => {
+    if (!selection) return;
+
+    let targetX = 0;
+    let targetY = 0;
+
+    if (selection.kind === "node") {
+      const pos = layout.get(selection.id);
+      if (!pos) return;
+      targetX = pos.x + STORY_NODE_WIDTH / 2;
+      targetY = pos.y + STORY_NODE_HEIGHT / 2;
+    } else {
+      const edge = project.edges.find((e) => e.id === selection.id);
+      if (!edge) return;
+      const fromPos = layout.get(edge.from);
+      const toPos = layout.get(edge.to);
+      if (!fromPos || !toPos) return;
+      targetX = (fromPos.x + toPos.x + STORY_NODE_WIDTH) / 2;
+      targetY = (fromPos.y + toPos.y + STORY_NODE_HEIGHT) / 2;
+    }
+
+    const vp = getViewport();
+    const container = wrapperRef.current;
+    const width = container?.clientWidth || 1000;
+    const height = container?.clientHeight || 800;
+
+    const minX = -vp.x / vp.zoom;
+    const maxX = (width - vp.x) / vp.zoom;
+    const minY = -vp.y / vp.zoom;
+    const maxY = (height - vp.y) / vp.zoom;
+
+    const isOutside =
+      targetX < minX || targetX > maxX || targetY < minY || targetY > maxY;
+
+    if (isOutside) {
+      const targetZoom = Math.max(vp.zoom, 0.65);
+      void setCenter(targetX, targetY, {
+        duration: 400,
+        zoom: targetZoom,
+      });
+    }
+  }, [selection, project.edges, layout, getViewport, setCenter]);
 
   return (
     <div className="canvas-wrapper" ref={wrapperRef}>
@@ -174,19 +171,26 @@ function StoryCanvas({
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesDraggable={true}
+        nodesConnectable={true}
+        elementsSelectable={true}
+        edgesReconnectable={false}
+        deleteKeyCode={null}
+        multiSelectionKeyCode={null}
+        selectionKeyCode={null}
+        selectionOnDrag={false}
+        panOnDrag={true}
+        zoomOnScroll={true}
+        onNodesChange={handleNodesChange}
+        onNodeDragStop={handleNodeDragStop}
+        onConnect={onConnect}
+        onNodeClick={(_event, node) => onNodeSelect(node.id)}
+        onEdgeClick={(_event, edge) => onEdgeSelect(edge.id)}
+        onPaneClick={onPaneClick}
         fitView
         fitViewOptions={{ padding: 0.08, minZoom: 0.1 }}
         minZoom={0.1}
         maxZoom={2}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        edgesReconnectable={false}
-        deleteKeyCode={null}
-        elementsSelectable={true}
-        panOnDrag={true}
-        zoomOnScroll={true}
-        onNodeClick={(_event, node) => onNodeClick(node.id)}
-        onEdgeClick={(_event, edge) => onEdgeClick(edge.id)}
         proOptions={{ hideAttribution: true }}
       >
         <Controls showInteractive={false} className="canvas-controls" />
@@ -214,95 +218,245 @@ function StoryCanvas({
   );
 }
 
-export function App() {
-  const [includeSyntaxError, setIncludeSyntaxError] = useState(false);
+function MainStudio() {
+  const { screenToFlowPosition } = useReactFlow();
+  const [editorState, setEditorState] = useState<EditorState>(() =>
+    createEditor(getSampleProjectWithSyntaxError(false)),
+  );
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selection, setSelected] = useState<Selection>(null);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PanelTab>("issues");
 
-  const project = useMemo(
-    () => getSampleProjectWithSyntaxError(includeSyntaxError),
-    [includeSyntaxError],
-  );
+  const project = editorState.present;
 
-  const issues = useMemo(() => check(project), [project]);
-
-  const handleSelectIssue = useCallback(
-    (issue: Issue) => {
-      setSelectedIssue(issue);
-
-      if (issue.location) {
-        setSelectedEdgeId(issue.location.edgeId);
-        setSelectedNodeId(null);
-      } else if (issue.nodeId) {
-        setSelectedNodeId(issue.nodeId);
-        setSelectedEdgeId(null);
-      } else {
-        setSelectedNodeId(null);
-        setSelectedEdgeId(null);
+  const dispatch = useCallback((action: EditorAction) => {
+    setEditorState((current) => {
+      const res = apply(current, action);
+      if (!res.ok) {
+        setErrorMessage(res.error.message);
+        return current;
       }
+      setErrorMessage(null);
+      return res.state;
+    });
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    setEditorState((current) => undo(current));
+    setErrorMessage(null);
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    setEditorState((current) => redo(current));
+    setErrorMessage(null);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    if (canUndo(editorState)) {
+      const ok = window.confirm("Reset project to sample? Unsaved changes will be lost.");
+      if (!ok) return;
+    }
+    setEditorState(createEditor(getSampleProjectWithSyntaxError(false)));
+    setSelected(null);
+    setSelectedIssue(null);
+    setErrorMessage(null);
+  }, [editorState]);
+
+  // Warning when leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (canUndo(editorState)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [editorState]);
+
+  // Consistency checker main-thread evaluation
+  const issues = useMemo(() => check(project), [project]);
+  const grouped = useMemo(() => groupIssues(project, issues), [project, issues]);
+  const layout = useMemo(() => computeLayout(project), [project]);
+
+  // Derive valid selection (cleared if entity is deleted or removed via undo)
+  const effectiveSelection: Selection = useMemo(() => {
+    if (!selection) return null;
+    if (selection.kind === "node") {
+      return project.nodes.some((n) => n.id === selection.id) ? selection : null;
+    }
+    if (selection.kind === "edge") {
+      return project.edges.some((e) => e.id === selection.id) ? selection : null;
+    }
+    return null;
+  }, [selection, project.nodes, project.edges]);
+
+  // Global key listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const targetIsEditable = isTargetEditable(e.target);
+      const action = interpretKey({
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        targetIsEditable,
+      });
+
+      if (action === "undo") {
+        e.preventDefault();
+        handleUndo();
+      } else if (action === "redo") {
+        e.preventDefault();
+        handleRedo();
+      } else if (action === "delete") {
+        if (effectiveSelection) {
+          e.preventDefault();
+          if (effectiveSelection.kind === "node") {
+            dispatch({ type: "deleteNode", id: effectiveSelection.id });
+          } else if (effectiveSelection.kind === "edge") {
+            dispatch({ type: "deleteEdge", id: effectiveSelection.id });
+          }
+          setSelected(null);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo, effectiveSelection, dispatch]);
+
+  const handleAddNode = useCallback(
+    (type: FlowNodeType) => {
+      const container = document.querySelector(".canvas-wrapper");
+      const rect = container?.getBoundingClientRect();
+      const screenX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+      const screenY = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+      const flowPos = screenToFlowPosition({ x: screenX, y: screenY });
+
+      const nodePos = {
+        x: Math.round(flowPos.x - STORY_NODE_WIDTH / 2),
+        y: Math.round(flowPos.y - STORY_NODE_HEIGHT / 2),
+      };
+
+      const node = makeNode(type, project.nodes.map((n) => n.id), nodePos);
+      dispatch({ type: "addNode", node });
+      setSelected({ kind: "node", id: node.id });
+      setActiveTab("inspector");
     },
-    [],
+    [project.nodes, screenToFlowPosition, dispatch],
   );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const edge = makeEdge(connection.source, connection.target, project.edges.map((e) => e.id));
+      dispatch({ type: "addEdge", edge });
+      setSelected({ kind: "edge", id: edge.id });
+      setActiveTab("inspector");
+    },
+    [project.edges, dispatch],
+  );
+
+  const handleSelectIssue = useCallback((issue: Issue) => {
+    setSelectedIssue(issue);
+    if (issue.location) {
+      setSelected({ kind: "edge", id: issue.location.edgeId });
+    } else if (issue.nodeId) {
+      setSelected({ kind: "node", id: issue.nodeId });
+    }
+  }, []);
+
+  const selectedNodeIssues = useMemo(() => {
+    if (effectiveSelection?.kind !== "node") return [];
+    return grouped.byNode.get(effectiveSelection.id) ?? [];
+  }, [effectiveSelection, grouped.byNode]);
+
+  const selectedEdgeIssues = useMemo(() => {
+    if (effectiveSelection?.kind !== "edge") return [];
+    return grouped.byEdge.get(effectiveSelection.id) ?? [];
+  }, [effectiveSelection, grouped.byEdge]);
 
   return (
     <div className="app-container">
-      <header className="app-header">
-        <div className="header-left">
-          <div className="header-badge">Lumio Narrative Studio</div>
-          <h1 className="header-title">{project.name}</h1>
-        </div>
-        <div className="header-right">
-          <div className="toggle-group">
-            <span className="toggle-label" id="syntax-toggle-label">
-              Syntax error test:
-            </span>
-            <button
-              type="button"
-              className={`btn-toggle ${includeSyntaxError ? "active" : ""}`}
-              onClick={() => setIncludeSyntaxError((prev) => !prev)}
-              aria-labelledby="syntax-toggle-label"
-              id="btn-syntax-toggle"
-            >
-              {includeSyntaxError ? "ON (invalid-expression)" : "OFF (usage rules active)"}
-            </button>
-          </div>
-          <div className="stats-pill">
-            <span>{project.nodes.length} nodes</span>
-            <span>•</span>
-            <span>{project.edges.length} edges</span>
-            <span>•</span>
-            <span>{project.variables.length} vars</span>
-          </div>
-        </div>
-      </header>
+      <Toolbar
+        projectName={project.name}
+        canUndo={canUndo(editorState)}
+        canRedo={canRedo(editorState)}
+        nodesCount={project.nodes.length}
+        edgesCount={project.edges.length}
+        varsCount={project.variables.length}
+        onAddNode={handleAddNode}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onReset={handleReset}
+      />
+
+      <MessageBar
+        message={errorMessage}
+        onDismiss={() => setErrorMessage(null)}
+      />
 
       <main className="app-main">
-        <ReactFlowProvider>
-          <StoryCanvas
-            project={project}
-            issues={issues}
-            selectedNodeId={selectedNodeId}
-            selectedEdgeId={selectedEdgeId}
-            onNodeClick={(id) => {
-              setSelectedNodeId(id);
-              setSelectedEdgeId(null);
-            }}
-            onEdgeClick={(id) => {
-              setSelectedEdgeId(id);
-              setSelectedNodeId(null);
-            }}
-          />
-        </ReactFlowProvider>
+        <StoryCanvas
+          project={project}
+          issues={issues}
+          selection={effectiveSelection}
+          layout={layout}
+          onNodeSelect={(id) => {
+            setSelected({ kind: "node", id });
+            setActiveTab("inspector");
+          }}
+          onEdgeSelect={(id) => {
+            setSelected({ kind: "edge", id });
+            setActiveTab("inspector");
+          }}
+          onPaneClick={() => setSelected(null)}
+          onConnect={handleConnect}
+          onMoveNode={(id, pos) => dispatch({ type: "moveNode", id, position: pos })}
+        />
 
-        <IssuesPanel
+        <RightPanel
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
           project={project}
           issues={issues}
           selectedIssue={selectedIssue}
+          selection={effectiveSelection}
           onSelectIssue={handleSelectIssue}
+          nodeIssues={selectedNodeIssues}
+          edgeIssues={selectedEdgeIssues}
+          variableIssues={grouped.byVariable}
+          onUpdateNode={(id, patch) => dispatch({ type: "updateNode", id, patch })}
+          onDeleteNode={(id) => {
+            dispatch({ type: "deleteNode", id });
+            setSelected(null);
+          }}
+          onUpdateEdge={(id, patch) => dispatch({ type: "updateEdge", id, patch })}
+          onDeleteEdge={(id) => {
+            dispatch({ type: "deleteEdge", id });
+            setSelected(null);
+          }}
+          onAddVariable={() => {
+            const v = makeVariable(project.variables);
+            dispatch({ type: "addVariable", variable: v });
+          }}
+          onUpdateVariable={(id, patch: { name?: string; type?: VariableType; initial?: Variable["initial"] | null }) => {
+            dispatch({ type: "updateVariable", id, patch });
+          }}
+          onDeleteVariable={(id) => dispatch({ type: "deleteVariable", id })}
         />
       </main>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <ReactFlowProvider>
+      <MainStudio />
+    </ReactFlowProvider>
   );
 }
 

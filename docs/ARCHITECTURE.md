@@ -55,7 +55,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  web/          React Flow story canvas, live checker diagnostics, and pure editor state module (`src/editor/`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure lib helpers (`src/lib/`), and sidebar tabs
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -178,12 +178,28 @@ Policy: under-report. A false positive costs more trust than a false negative.
 - Parse error suppression: a single unparseable condition or effect on any edge suppresses all variable-usage issues across the entire project to prevent false positives.
 
 ## 7. UI `DECIDED`
-Read-only story canvas built with React, Vite, and `@xyflow/react` (`apps/web`).
+Interactive story canvas and narrative authoring environment built with React, Vite, and `@xyflow/react` (`apps/web`).
 - **Graph Layout (`computeLayout`):** Pure deterministic layered layout algorithm. Nodes with explicit `position` keep it exactly. Reachable nodes are placed in layers determined by the shortest path from start nodes (`x = layer * 380`, `y = index * 140`). Unreachable nodes occupy an orphan band (`maxLayer + 2`).
 - **Custom Nodes (`StoryNode`):** Displays node title, type chip (start, scene, end), and error/warning count badges from node-level issues. Exports named dimension constants `STORY_NODE_WIDTH` (220) and `STORY_NODE_HEIGHT` (88) as single source of truth for initial dimensions and inline styles.
-- **Custom Edges (`StoryEdge`):** Uses `BaseEdge` and `EdgeLabelRenderer`. Labels render compact condition pills truncated with ellipsis and full tooltip on hover, plus `fx N` effect chips. Does not intercept panning (`nodrag nopan`) or break edge selection.
+- **Custom Edges (`StoryEdge`):** Uses `BaseEdge` and `EdgeLabelRenderer`. Labels render compact condition pills truncated with ellipsis and full tooltip on hover, plus `fx N` effect chips. Does not intercept panning (`nodrag nopan`). Clicking edge label selects the edge.
 - **MiniMap:** Color-coded node shapes (red for errors, amber for warnings, green/purple/indigo by node type).
-- **Issues Panel (`IssuesPanel`):** 420px fixed-width consistency diagnostics panel with wrapped tags/messages and horizontally scrolling snippet blocks. Clicking an issue outside the current viewport pans smoothly to it via `setCenter`.
+- **Editing Flow & Canvas Integration:**
+  - Nodes are draggable in controlled mode via transient `dragOverrides` Map. On drag stop, compares final coordinates against pre-drag rendered layout position; dispatches ONE `moveNode` only if coordinates changed.
+  - Adding nodes places new node at the center of the visible canvas (`screenToFlowPosition` offset by half node dimensions).
+  - Handle-to-handle dragging completes connections via `addEdge` with `makeEdge`.
+  - Single deletion path: React Flow's `deleteKeyCode` is disabled (`null`). Global key listener uses pure `interpretKey` to intercept `Delete` / `Backspace` when non-editable canvas targets have focus, dispatching `deleteNode` or `deleteEdge` on current selection.
+- **Selection Model:**
+  - Single source of truth `{ kind: 'node' | 'edge', id: string } | null` in App.
+  - Derived valid selection automatically clears if selected entity is deleted or removed via undo.
+  - Tab rule: selecting a node or edge on canvas switches right sidebar to Inspector tab; clicking an issue in Issues tab selects and focuses target on canvas without switching tabs.
+- **Draft & Commit Rules:**
+  - Input fields and textareas maintain local draft state while user is editing.
+  - Values commit to editor state only on `blur` or `Enter` (`Ctrl+Enter` in multiline textareas). `Escape` reverts to committed value. Unchanged drafts commit nothing.
+  - Under condition and effect fields, live diagnostics from pure `draftCheck` highlight syntax/type problem spans in real time without committing.
+- **Right Sidebar Tabs (420px):**
+  - **Issues Tab:** Grouped consistency diagnostics (Errors, Warnings, Variables) with code snippets and click-to-focus camera panning.
+  - **Inspector Tab:** Contextual inspector for selected Node (ID, title, type, explicit/auto position with clear button, delete button, inline node issues) or Edge (ID, source, target, condition, editable effects list, delete button, inline edge issues).
+  - **Variables Tab:** Variable manager with name, type selector, initial value controls (number, string, boolean checkbox, or clear/set initial toggle), inline variable issues, and deletion. Incompatible type switches surface editor error in dismissible message bar.
 
 ## 8. Editor state `DECIDED`
 Pure TypeScript editor state module with undo/redo history and referential integrity (`apps/web/src/editor/`).

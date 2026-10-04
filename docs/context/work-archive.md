@@ -3,6 +3,51 @@
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 > Full entries rotated out of `recent-work.md`, newest at the top. Same template as `recent-work.md`.
 
+### W-004 | 2026-10-03 | DSL v1: Schema additions + pure lexer & parser
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(dsl): implement condition and effect lexer, parser, and schema updates`
+- **Goal:** Add Variable schema, optional condition/effects on FlowEdge, and variables on Project in @repo/schema; create pure @repo/dsl package with hand-written lexer and recursive descent parser for conditions and effects; add unit and fast-check property tests; update architecture docs.
+- **Files changed:**
+  - `docs/RULES.md`: added clarifying sentence to R3.3 (domain/persisted types in schema; AST types in dsl)
+  - `packages/schema/src/index.ts`: added Variable schema/type, updated FlowEdge with optional condition/effects, updated Project with variables
+  - `packages/checker/src/index.test.ts`: added variables: [] to Project fixtures without altering test logic
+  - `packages/dsl/package.json`: workspace package configuration for @repo/dsl
+  - `packages/dsl/tsconfig.json`: TypeScript configuration extending root base
+  - `packages/dsl/src/ast.ts`: AST definitions (Expr, Effect, Span, ParseResult, ParseError)
+  - `packages/dsl/src/lexer.ts`: hand-written lexer with exact error offsets and escape handling
+  - `packages/dsl/src/parser.ts`: hand-written recursive descent parser for conditions and effects with 200 nesting limit
+  - `packages/dsl/src/index.ts`: public exports
+  - `packages/dsl/src/index.test.ts`: 27 tests (literals, precedence, associativity, error spans, nesting limit, round-trip and robustness property tests)
+  - `pnpm-lock.yaml`: updated due to new @repo/dsl workspace package wiring (no new external dependencies)
+  - `docs/ARCHITECTURE.md`: updated Repo map, Section 4 (data model), and Section 5 (DSL marked DECIDED)
+  - `docs/context/recent-work.md`: logged entry W-004
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `VariableTypeSchema: z.ZodEnum<["number", "string", "boolean"]>`
+    - `type VariableType = "number" | "string" | "boolean"`
+    - `VariableNameSchema: z.ZodString` (validates `^[A-Za-z_][A-Za-z0-9_]*$` and excludes `"true"`/`"false"`)
+    - `VariableSchema: z.ZodObject<{ id: z.ZodString, name: VariableNameSchema, type: VariableTypeSchema }>`
+    - `type Variable = { id: string; name: string; type: VariableType; }`
+    - `FlowEdgeSchema` updated with optional `condition?: z.ZodString` and `effects?: z.ZodArray<z.ZodString>`
+    - `ProjectSchema` updated with `variables: z.ZodArray<VariableSchema>`
+  - `@repo/dsl`:
+    - `type Expr = NumberLit | StringLit | BoolLit | Identifier | Unary | Binary`
+    - `type Effect = { target: Identifier; op: "=" | "+=" | "-="; value: Expr; start: number; end: number; }`
+    - `type ParseError = { message: string; start: number; end: number; }`
+    - `type ParseResult<T> = { ok: true; value: T } | { ok: false; error: ParseError }`
+    - `parseCondition(source: string): ParseResult<Expr>`
+    - `parseEffect(source: string): ParseResult<Effect>`
+- **Decisions and why:**
+  - Hand-crafted lexer and recursive descent parser without third-party dependencies to keep @repo/dsl pure and lightweight (R2.4, R4.1).
+  - Explicit nesting limit of 200 enforced without throwing RangeError, returning ParseError directly at the offending token span.
+  - Retained strict pure boundaries: AST types live in `@repo/dsl`, while persistent entity models live in `@repo/schema` (R3.3 clarification in RULES.md).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force` -> pass (8/8 tasks successful across 3 packages, 27 tests passing)
+- **Known issues / debt:** none
+- **Next steps:**
+  - Build DSL typechecker and wire undefined variable consistency checker rule.
+
 ### W-003 | 2026-10-03 | Checker v1 structure: Issue model, check() entry point, second rule
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement Issue model, cannot-reach-end rule, and check entry point`
