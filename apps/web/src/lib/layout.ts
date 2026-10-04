@@ -1,13 +1,20 @@
 import type { Project } from "@repo/schema";
 
+export const HORIZONTAL_GAP = 380;
+export const VERTICAL_GAP = 140;
+
 /**
  * Computes deterministic 2D coordinates for all nodes in a story project.
  * - Nodes with an explicit `position` keep it exactly.
  * - Other reachable nodes are arranged in horizontal layers:
  *   layer = shortest path length following edge direction from the nearest 'start' node.
- *   x = layer * 380; y = (index within layer among generated nodes, in project.nodes order) * 140.
- * - Unreachable nodes go in a separate orphan band: layer = (maxReachableLayer + 2).
- *   If there are no start nodes, all nodes are placed in the orphan band at layer 0.
+ *   x = layer * HORIZONTAL_GAP; y = (index within layer among generated nodes, in project.nodes order) * VERTICAL_GAP.
+ * - Unreachable nodes without an explicit position go in an orphan grid BELOW the main flow:
+ *   mainLayerCount = startNodeIds.length === 0 ? 0 : maxReachableLayer + 1
+ *   columns = Math.max(3, mainLayerCount)
+ *   bandTop = maxAutoInMainLayer === 0 ? 0 : maxAutoInMainLayer * VERTICAL_GAP + VERTICAL_GAP
+ *   orphan i: column = i % columns, row = floor(i / columns)
+ *   x = column * HORIZONTAL_GAP; y = bandTop + row * VERTICAL_GAP
  */
 export function computeLayout(project: Project): Map<string, { x: number; y: number }> {
   const result = new Map<string, { x: number; y: number }>();
@@ -57,7 +64,7 @@ export function computeLayout(project: Project): Map<string, { x: number; y: num
     }
   }
 
-  // Determine orphan layer
+  // Determine main layer count
   let maxReachableLayer = -1;
   for (const layer of layerMap.values()) {
     if (layer > maxReachableLayer) {
@@ -65,35 +72,62 @@ export function computeLayout(project: Project): Map<string, { x: number; y: num
     }
   }
 
-  const orphanLayer = startNodeIds.length === 0 ? 0 : maxReachableLayer + 2;
+  const mainLayerCount = startNodeIds.length === 0 ? 0 : maxReachableLayer + 1;
+  const columns = Math.max(3, mainLayerCount);
 
-  // Group nodes without explicit position by their assigned layer, in project.nodes order
-  const nodesByLayer = new Map<number, string[]>();
+  // Group nodes without explicit position into reachable layers or orphan list
+  const reachableNodesByLayer = new Map<number, string[]>();
+  const orphanNodeIds: string[] = [];
 
   for (const node of project.nodes) {
     if (node.position) {
       result.set(node.id, { x: node.position.x, y: node.position.y });
-    } else {
-      const layer = layerMap.has(node.id) ? (layerMap.get(node.id) ?? 0) : orphanLayer;
-      const list = nodesByLayer.get(layer);
+    } else if (layerMap.has(node.id)) {
+      const layer = layerMap.get(node.id) ?? 0;
+      const list = reachableNodesByLayer.get(layer);
       if (list) {
         list.push(node.id);
       } else {
-        nodesByLayer.set(layer, [node.id]);
+        reachableNodesByLayer.set(layer, [node.id]);
       }
+    } else {
+      orphanNodeIds.push(node.id);
     }
   }
 
-  // Assign coordinates for generated positions
-  for (const [layer, nodeIds] of nodesByLayer.entries()) {
+  // Determine bandTop: max number of auto-placed nodes in any main layer * VERTICAL_GAP + VERTICAL_GAP
+  let maxAutoInMainLayer = 0;
+  for (const list of reachableNodesByLayer.values()) {
+    if (list.length > maxAutoInMainLayer) {
+      maxAutoInMainLayer = list.length;
+    }
+  }
+
+  const bandTop = maxAutoInMainLayer === 0 ? 0 : maxAutoInMainLayer * VERTICAL_GAP + VERTICAL_GAP;
+
+  // Assign coordinates for reachable auto-placed nodes
+  for (const [layer, nodeIds] of reachableNodesByLayer.entries()) {
     for (let indexInLayer = 0; indexInLayer < nodeIds.length; indexInLayer++) {
       const nodeId = nodeIds[indexInLayer];
       if (nodeId) {
         result.set(nodeId, {
-          x: layer * 380,
-          y: indexInLayer * 140,
+          x: layer * HORIZONTAL_GAP,
+          y: indexInLayer * VERTICAL_GAP,
         });
       }
+    }
+  }
+
+  // Assign coordinates for unreachable auto-placed nodes in orphan grid below main flow
+  for (let i = 0; i < orphanNodeIds.length; i++) {
+    const nodeId = orphanNodeIds[i];
+    if (nodeId) {
+      const column = i % columns;
+      const row = Math.floor(i / columns);
+      result.set(nodeId, {
+        x: column * HORIZONTAL_GAP,
+        y: bandTop + row * VERTICAL_GAP,
+      });
     }
   }
 

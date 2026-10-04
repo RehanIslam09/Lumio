@@ -1,7 +1,26 @@
 # WORK ARCHIVE
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
-> Full entries rotated out of `recent-work.md`, newest at the top. Same template as `recent-work.md`.
+### W-009 | 2026-10-04 | Promote commit 98188ea as stable-003
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-003 promotion at commit 98188ea`
+- **Goal:** Promote commit `98188ea` as third stable baseline (`stable-003`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-003 baseline (commit 98188ea), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-009 documenting the promotion and rotated older entries
+  - `docs/context/work-archive.md`: archived full entries W-001 and W-000 per R7.4 rolling window cap
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-003 98188eab06a64c5753e39418e89a431ffceeeded`).
+  - Rotated oldest full entries (W-001, W-000) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check` -> pass (11/11 tasks successful across 4 packages, 161 tests passing)
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-003 98188eab06a64c5753e39418e89a431ffceeeded`.
+  - User to commit docs and send "go" for task W-010.
 
 ### W-008 | 2026-10-04 | First UI: apps/web read-only story canvas with live checker
 - **Status:** DONE

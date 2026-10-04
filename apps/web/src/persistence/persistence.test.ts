@@ -313,33 +313,154 @@ describe("Property Tests", () => {
       | { kind: "addNode"; idSuffix: number; title: string; nodeType: "scene" | "start" | "end" }
       | { kind: "renameProject"; name: string }
       | { kind: "updateNode"; nodeIndexPick: number; title: string }
+      | {
+          kind: "addEdge";
+          idSuffix: number;
+          fromIndexPick: number;
+          toIndexPick: number;
+          mode: "selfLoop" | "parallel" | "random";
+          condition: string | null;
+          effects: string[] | null;
+        }
+      | {
+          kind: "updateEdge";
+          edgeIndexPick: number;
+          condition: string | null | undefined;
+          effects: string[] | null | undefined;
+        }
       | { kind: "deleteEdge"; edgeIndexPick: number }
+      | {
+          kind: "addVariable";
+          idSuffix: number;
+          varType: "number" | "string" | "boolean";
+          hasInitial: boolean;
+          initialNumber: number;
+          initialString: string;
+          initialBoolean: boolean;
+        }
+      | {
+          kind: "updateVariable";
+          varIndexPick: number;
+          patchType: "name" | "initial" | "clearInitial" | "typeAndInitial";
+          name: string;
+          newType: "number" | "string" | "boolean";
+          initialNumber: number;
+          initialString: string;
+          initialBoolean: boolean;
+        }
       | { kind: "deleteVariable"; varIndexPick: number };
 
     const intentArb: fc.Arbitrary<F1Intent> = fc.oneof(
-      fc.record({
-        kind: fc.constant("addNode" as const),
-        idSuffix: fc.integer({ min: 100, max: 999 }),
-        title: fc.string({ maxLength: 20 }),
-        nodeType: fc.constantFrom("scene" as const, "start" as const, "end" as const),
-      }),
-      fc.record({
-        kind: fc.constant("renameProject" as const),
-        name: fc.string({ maxLength: 30 }),
-      }),
-      fc.record({
-        kind: fc.constant("updateNode" as const),
-        nodeIndexPick: fc.nat({ max: 50 }),
-        title: fc.string({ maxLength: 20 }),
-      }),
-      fc.record({
-        kind: fc.constant("deleteEdge" as const),
-        edgeIndexPick: fc.nat({ max: 50 }),
-      }),
-      fc.record({
-        kind: fc.constant("deleteVariable" as const),
-        varIndexPick: fc.nat({ max: 50 }),
-      }),
+      {
+        weight: 2,
+        arbitrary: fc.record({
+          kind: fc.constant("addNode" as const),
+          idSuffix: fc.integer({ min: 100, max: 999 }),
+          title: fc.string({ maxLength: 20 }),
+          nodeType: fc.constantFrom("scene" as const, "start" as const, "end" as const),
+        }),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record({
+          kind: fc.constant("renameProject" as const),
+          name: fc.string({ maxLength: 30 }),
+        }),
+      },
+      {
+        weight: 2,
+        arbitrary: fc.record({
+          kind: fc.constant("updateNode" as const),
+          nodeIndexPick: fc.nat({ max: 50 }),
+          title: fc.string({ maxLength: 20 }),
+        }),
+      },
+      {
+        weight: 4,
+        arbitrary: fc.record({
+          kind: fc.constant("addEdge" as const),
+          idSuffix: fc.integer({ min: 1000, max: 9999 }),
+          fromIndexPick: fc.nat({ max: 50 }),
+          toIndexPick: fc.nat({ max: 50 }),
+          mode: fc.constantFrom("selfLoop" as const, "parallel" as const, "random" as const),
+          condition: fc.option(
+            fc.constantFrom("sigil_power > 0", "paimon_hungry == true", "adventurer_rank >= 10"),
+            { nil: null },
+          ),
+          effects: fc.option(
+            fc.constantFrom<string[]>(
+              ["sigil_power = 20"],
+              ["adventurer_rank = 15"],
+              ["sigil_power = 5", "adventurer_rank = 10"],
+            ),
+            { nil: null },
+          ),
+        }),
+      },
+      {
+        weight: 3,
+        arbitrary: fc.record({
+          kind: fc.constant("updateEdge" as const),
+          edgeIndexPick: fc.nat({ max: 50 }),
+          condition: fc.constantFrom(
+            undefined,
+            null,
+            "sigil_power > 0",
+            "paimon_hungry == true",
+            "adventurer_rank >= 10",
+          ),
+          effects: fc.constantFrom<string[] | null | undefined>(
+            undefined,
+            null,
+            ["sigil_power = 20"],
+            ["adventurer_rank = 15"],
+          ),
+        }),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record({
+          kind: fc.constant("deleteEdge" as const),
+          edgeIndexPick: fc.nat({ max: 50 }),
+        }),
+      },
+      {
+        weight: 4,
+        arbitrary: fc.record({
+          kind: fc.constant("addVariable" as const),
+          idSuffix: fc.integer({ min: 1000, max: 9999 }),
+          varType: fc.constantFrom("number" as const, "string" as const, "boolean" as const),
+          hasInitial: fc.boolean(),
+          initialNumber: fc.integer({ min: 0, max: 100 }),
+          initialString: fc.constantFrom("active", "neutral", "bonus"),
+          initialBoolean: fc.boolean(),
+        }),
+      },
+      {
+        weight: 3,
+        arbitrary: fc.record({
+          kind: fc.constant("updateVariable" as const),
+          varIndexPick: fc.nat({ max: 50 }),
+          patchType: fc.constantFrom(
+            "name" as const,
+            "initial" as const,
+            "clearInitial" as const,
+            "typeAndInitial" as const,
+          ),
+          name: fc.constantFrom("renamed_var_a", "renamed_var_b", "renamed_var_c"),
+          newType: fc.constantFrom("number" as const, "string" as const, "boolean" as const),
+          initialNumber: fc.integer({ min: 1, max: 50 }),
+          initialString: fc.constantFrom("updated_str", "valor", "shield"),
+          initialBoolean: fc.boolean(),
+        }),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record({
+          kind: fc.constant("deleteVariable" as const),
+          varIndexPick: fc.nat({ max: 50 }),
+        }),
+      },
     );
 
     const resolveIntent = (project: Project, intent: F1Intent): EditorAction => {
@@ -369,6 +490,63 @@ describe("Property Tests", () => {
             patch: { title: intent.title },
           };
         }
+        case "addEdge": {
+          if (project.nodes.length === 0) {
+            return {
+              type: "addEdge",
+              edge: { id: `edge_f1_${intent.idSuffix}`, from: "missing", to: "missing" },
+            };
+          }
+          let fromNode = project.nodes[intent.fromIndexPick % project.nodes.length];
+          let toNode = project.nodes[intent.toIndexPick % project.nodes.length];
+          if (!fromNode || !toNode) {
+            return {
+              type: "addEdge",
+              edge: { id: `edge_f1_${intent.idSuffix}`, from: "missing", to: "missing" },
+            };
+          }
+          if (intent.mode === "selfLoop") {
+            toNode = fromNode;
+          } else if (intent.mode === "parallel" && project.edges.length > 0) {
+            const existingEdge = project.edges[intent.fromIndexPick % project.edges.length];
+            if (existingEdge) {
+              const foundFrom = project.nodes.find((n) => n.id === existingEdge.from);
+              const foundTo = project.nodes.find((n) => n.id === existingEdge.to);
+              if (foundFrom && foundTo) {
+                fromNode = foundFrom;
+                toNode = foundTo;
+              }
+            }
+          }
+          return {
+            type: "addEdge",
+            edge: {
+              id: `edge_f1_${intent.idSuffix}`,
+              from: fromNode.id,
+              to: toNode.id,
+              ...(intent.condition !== null ? { condition: intent.condition } : {}),
+              ...(intent.effects !== null ? { effects: intent.effects } : {}),
+            },
+          };
+        }
+        case "updateEdge": {
+          const target = project.edges[intent.edgeIndexPick % project.edges.length];
+          if (!target) {
+            return { type: "updateEdge", id: "missing", patch: {} };
+          }
+          const patch: { condition?: string | null; effects?: string[] | null } = {};
+          if (intent.condition !== undefined) {
+            patch.condition = intent.condition;
+          }
+          if (intent.effects !== undefined) {
+            patch.effects = intent.effects;
+          }
+          return {
+            type: "updateEdge",
+            id: target.id,
+            patch,
+          };
+        }
         case "deleteEdge": {
           const target = project.edges[intent.edgeIndexPick % project.edges.length];
           if (!target) {
@@ -377,6 +555,67 @@ describe("Property Tests", () => {
           return {
             type: "deleteEdge",
             id: target.id,
+          };
+        }
+        case "addVariable": {
+          let initial: number | string | boolean | undefined;
+          if (intent.hasInitial) {
+            if (intent.varType === "number") initial = intent.initialNumber;
+            else if (intent.varType === "string") initial = intent.initialString;
+            else initial = intent.initialBoolean;
+          }
+          return {
+            type: "addVariable",
+            variable: {
+              id: `var_f1_${intent.idSuffix}`,
+              name: `var_f1_${intent.idSuffix}`,
+              type: intent.varType,
+              ...(initial !== undefined ? { initial } : {}),
+            },
+          };
+        }
+        case "updateVariable": {
+          const target = project.variables[intent.varIndexPick % project.variables.length];
+          if (!target) {
+            return { type: "updateVariable", id: "missing", patch: {} };
+          }
+          if (intent.patchType === "name") {
+            return {
+              type: "updateVariable",
+              id: target.id,
+              patch: { name: intent.name },
+            };
+          }
+          if (intent.patchType === "clearInitial") {
+            return {
+              type: "updateVariable",
+              id: target.id,
+              patch: { initial: null },
+            };
+          }
+          if (intent.patchType === "initial") {
+            const initial =
+              target.type === "number"
+                ? intent.initialNumber
+                : target.type === "string"
+                  ? intent.initialString
+                  : intent.initialBoolean;
+            return {
+              type: "updateVariable",
+              id: target.id,
+              patch: { initial },
+            };
+          }
+          const initial =
+            intent.newType === "number"
+              ? intent.initialNumber
+              : intent.newType === "string"
+                ? intent.initialString
+                : intent.initialBoolean;
+          return {
+            type: "updateVariable",
+            id: target.id,
+            patch: { type: intent.newType, initial },
           };
         }
         case "deleteVariable": {
@@ -395,6 +634,11 @@ describe("Property Tests", () => {
     let acceptedCount = 0;
     let rejectedCount = 0;
     let noopCount = 0;
+
+    let finalWithConditionCount = 0;
+    let finalWithEffectsCount = 0;
+    let finalWithInitialCount = 0;
+    let finalWithSelfLoopOrParallelCount = 0;
 
     fc.assert(
       fc.property(fc.array(intentArb, { minLength: 1, maxLength: 8 }), (intents) => {
@@ -422,6 +666,30 @@ describe("Property Tests", () => {
         if (parsed.ok) {
           expect(parsed.project).toEqual(project);
         }
+
+        if (project.edges.some((e) => e.condition !== undefined && e.condition !== "")) {
+          finalWithConditionCount++;
+        }
+        if (project.edges.some((e) => e.effects !== undefined && e.effects.length > 0)) {
+          finalWithEffectsCount++;
+        }
+        if (project.variables.some((v) => v.initial !== undefined)) {
+          finalWithInitialCount++;
+        }
+        const hasSelfLoop = project.edges.some((e) => e.from === e.to);
+        const edgeKeys = new Set<string>();
+        let hasParallel = false;
+        for (const e of project.edges) {
+          const key = `${e.from}->${e.to}`;
+          if (edgeKeys.has(key)) {
+            hasParallel = true;
+            break;
+          }
+          edgeKeys.add(key);
+        }
+        if (hasSelfLoop || hasParallel) {
+          finalWithSelfLoopOrParallelCount++;
+        }
       }),
       { numRuns: 25 },
     );
@@ -434,8 +702,15 @@ describe("Property Tests", () => {
     console.log(
       `F1 distribution: accepted=${acceptedPct.toFixed(1)}% (${acceptedCount}), rejected=${rejectedPct.toFixed(1)}% (${rejectedCount}), noop=${noopPct.toFixed(1)}% (${noopCount}), total=${totalIntents}`,
     );
+    console.log(
+      `F1 coverage counts (over 25 runs): condition=${finalWithConditionCount}, effects=${finalWithEffectsCount}, initial=${finalWithInitialCount}, selfLoopOrParallel=${finalWithSelfLoopOrParallelCount}`,
+    );
 
     expect(acceptedCount / totalIntents).toBeGreaterThanOrEqual(0.1);
+    expect(finalWithConditionCount).toBeGreaterThanOrEqual(1);
+    expect(finalWithEffectsCount).toBeGreaterThanOrEqual(1);
+    expect(finalWithInitialCount).toBeGreaterThanOrEqual(1);
+    expect(finalWithSelfLoopOrParallelCount).toBeGreaterThanOrEqual(1);
   });
 
   it("F2 (robustness): parseProjectFile never throws and returns well-formed result on arbitrary and mutated strings", () => {
