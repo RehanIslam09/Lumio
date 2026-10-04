@@ -3,6 +3,52 @@
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 > Full entries rotated out of `recent-work.md`, newest at the top. Same template as `recent-work.md`.
 
+### W-005 | 2026-10-04 | DSL typechecker and checker rules: invalid-expression, undefined-variable, type-mismatch
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement DSL typechecker and expression consistency rules`
+- **Goal:** Implement pure DSL typechecker in @repo/dsl, extend Issue schema with location in @repo/schema, wire invalid-expression, undefined-variable, and type-mismatch rules into check() in @repo/checker, fix parser token comparisons with isPunct, and validate with comprehensive unit and property tests.
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added IssueLocationSchema, IssueLocation type, and updated IssueRuleIdSchema / IssueSchema with location field
+  - `packages/dsl/src/parser.ts`: added isPunct helper and audited all operator/punctuation comparisons to eliminate raw `tok.value ===` checks
+  - `packages/dsl/src/typechecker.ts`: implemented pure typechecker with cascade suppression and silent top-level unknown handling (`buildTypeEnv`, `typecheckCondition`, `typecheckEffect`)
+  - `packages/dsl/src/index.ts`: exported typechecker types and functions
+  - `packages/dsl/src/index.test.ts`: added regression tests for operator/keyword string literals, strengthened Property 1 generator, cleaned linting/types without any, added unit and property tests (T1-T3)
+  - `packages/checker/package.json`: added workspace dependency `@repo/dsl: "workspace:*"`
+  - `packages/checker/src/index.ts`: wired invalid-expression, undefined-variable, and type-mismatch rules into `check()`
+  - `packages/checker/src/index.test.ts`: updated Property test B duplicate key to include location, added rule unit tests, updated effect error span expectation and ordering sequence, added Property C1
+  - `pnpm-lock.yaml`: updated workspace dependency wiring
+  - `docs/ARCHITECTURE.md`: updated Repo map, Section 5 typing rules summary, Section 6 consistency checker table and Issue shape
+  - `docs/context/recent-work.md`: logged entry W-005
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `IssueLocationSchema: z.ZodObject<{ edgeId, field, effectIndex?, start, end }>`
+    - `type IssueLocation = { edgeId: string; field: 'condition' | 'effect'; effectIndex?: number; start: number; end: number; }`
+    - `IssueRuleIdSchema`: added `"invalid-expression" | "undefined-variable" | "type-mismatch"`
+    - `IssueSchema`: added optional `location?: IssueLocation`
+  - `@repo/dsl`:
+    - `type Type = VariableType | "unknown"`
+    - `type TypeEnv = ReadonlyMap<string, VariableType>`
+    - `type TypeIssue = { code: 'undefined-variable' | 'type-mismatch'; message: string; start: number; end: number; }`
+    - `buildTypeEnv(variables: Variable[]): TypeEnv`
+    - `typecheckCondition(expr: Expr, env: TypeEnv): TypeIssue[]`
+    - `typecheckEffect(effect: Effect, env: TypeEnv): TypeIssue[]`
+  - `@repo/checker`:
+    - `check(project: Project): Issue[]` outputs node-based issues followed by edge-based issues with locations.
+- **Defect found in W-004:**
+  - *What the bug was:* `parseUnary` in `packages/dsl/src/parser.ts` tested `if (tok.value === "!" || tok.value === "-")` without verifying `tok.type === "PUNCT"`. As a result, a string literal whose content was `"!"` or `"-"` (tokenized as `{ type: "STRING", value: "!" }`) was mistakenly interpreted as a unary operator token, consumed, and followed by an unexpected EOF looking for an operand. Similar unvalidated `tok.value` checks existed across binary operators.
+  - *Why old tests missed it:* W-004 property and unit tests generated string literals composed of character sequences, but didn't specifically test standalone string literals equal to operator or keyword symbols (e.g. `"!"`, `"-"`, `"=="`).
+  - *What now guards against it:* All parser operator checks now use `isPunct(tok, ...values)` requiring `tok.type === "PUNCT"`. Regression tests explicitly test each operator, punctuation, and keyword symbol as string literals in conditions and effects, and Property 1's string generator draws directly from this operator/keyword set.
+- **Decisions and why:**
+  - Implemented cascade suppression so `unknown` operand types yield no cascading errors and propagate natural result types (`+` yields `unknown`).
+  - Silent unknown at top level prevents spurious "must be boolean" or effect assignment mismatches when root causes are undefined variables.
+  - Edge-based issues set `nodeId = edge.from` and populate `location` with exact offsets within the source expression.
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (8/8 tasks successful across 3 packages, 109 tests passing)
+- **Known issues / debt:** none
+- **Next steps:**
+  - Integrate AST evaluator or AST interpreter for playtest execution mode.
+
 ### W-004 | 2026-10-03 | DSL v1: Schema additions + pure lexer & parser
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(dsl): implement condition and effect lexer, parser, and schema updates`
