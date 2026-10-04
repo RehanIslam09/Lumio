@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -15,11 +15,21 @@ import type { Issue } from "@repo/schema";
 import { getSampleProjectWithSyntaxError } from "./demo/sampleProject.js";
 import { computeLayout } from "./lib/layout.js";
 import { groupIssues } from "./lib/decorate.js";
-import { StoryNode, type StoryNodeData } from "./components/StoryNode.js";
+import {
+  StoryNode,
+  STORY_NODE_WIDTH,
+  STORY_NODE_HEIGHT,
+  type StoryNodeData,
+} from "./components/StoryNode.js";
+import { StoryEdge, type StoryEdgeData } from "./components/StoryEdge.js";
 import { IssuesPanel } from "./components/IssuesPanel.js";
 
 const nodeTypes = {
   storyNode: StoryNode,
+};
+
+const edgeTypes = {
+  storyEdge: StoryEdge,
 };
 
 function StoryCanvas({
@@ -37,38 +47,89 @@ function StoryCanvas({
   onNodeClick: (nodeId: string) => void;
   onEdgeClick: (edgeId: string) => void;
 }) {
-  const { fitView } = useReactFlow();
+  const { setCenter, getViewport } = useReactFlow();
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const grouped = useMemo(() => groupIssues(project, issues), [project, issues]);
   const layout = useMemo(() => computeLayout(project), [project]);
 
+  // Outcome 5: Pan to selected node only if it is outside current viewport
   useEffect(() => {
-    if (selectedNodeId) {
-      fitView({
-        nodes: [{ id: selectedNodeId }],
-        duration: 500,
-        maxZoom: 1.2,
+    if (!selectedNodeId) return;
+    const pos = layout.get(selectedNodeId);
+    if (!pos) return;
+
+    const targetX = pos.x + STORY_NODE_WIDTH / 2;
+    const targetY = pos.y + STORY_NODE_HEIGHT / 2;
+
+    const vp = getViewport();
+    const container = wrapperRef.current;
+    const width = container?.clientWidth || 1000;
+    const height = container?.clientHeight || 800;
+
+    const minX = -vp.x / vp.zoom;
+    const maxX = (width - vp.x) / vp.zoom;
+    const minY = -vp.y / vp.zoom;
+    const maxY = (height - vp.y) / vp.zoom;
+
+    const isOutside =
+      pos.x + STORY_NODE_WIDTH < minX ||
+      pos.x > maxX ||
+      pos.y + STORY_NODE_HEIGHT < minY ||
+      pos.y > maxY;
+
+    if (isOutside) {
+      const targetZoom = Math.max(vp.zoom, 0.65);
+      void setCenter(targetX, targetY, {
+        duration: 400,
+        zoom: targetZoom,
       });
     }
-  }, [selectedNodeId, fitView]);
+  }, [selectedNodeId, layout, getViewport, setCenter]);
 
+  // Outcome 5: Pan to selected edge only if it is outside current viewport
   useEffect(() => {
-    if (selectedEdgeId) {
-      const edge = project.edges.find((e) => e.id === selectedEdgeId);
-      if (edge) {
-        fitView({
-          nodes: [{ id: edge.from }, { id: edge.to }],
-          duration: 500,
-          padding: 0.3,
-        });
-      }
+    if (!selectedEdgeId) return;
+    const edge = project.edges.find((e) => e.id === selectedEdgeId);
+    if (!edge) return;
+    const fromPos = layout.get(edge.from);
+    const toPos = layout.get(edge.to);
+    if (!fromPos || !toPos) return;
+
+    const targetX = (fromPos.x + toPos.x + STORY_NODE_WIDTH) / 2;
+    const targetY = (fromPos.y + toPos.y + STORY_NODE_HEIGHT) / 2;
+
+    const vp = getViewport();
+    const container = wrapperRef.current;
+    const width = container?.clientWidth || 1000;
+    const height = container?.clientHeight || 800;
+
+    const minX = -vp.x / vp.zoom;
+    const maxX = (width - vp.x) / vp.zoom;
+    const minY = -vp.y / vp.zoom;
+    const maxY = (height - vp.y) / vp.zoom;
+
+    const isOutside =
+      targetX < minX ||
+      targetX > maxX ||
+      targetY < minY ||
+      targetY > maxY;
+
+    if (isOutside) {
+      const targetZoom = Math.max(vp.zoom, 0.65);
+      void setCenter(targetX, targetY, {
+        duration: 400,
+        zoom: targetZoom,
+      });
     }
-  }, [selectedEdgeId, project.edges, fitView]);
+  }, [selectedEdgeId, project.edges, layout, getViewport, setCenter]);
 
   const nodes: Node<StoryNodeData>[] = useMemo(() => {
     return project.nodes.map((node) => ({
       id: node.id,
       type: "storyNode",
       position: layout.get(node.id) ?? { x: 0, y: 0 },
+      initialWidth: STORY_NODE_WIDTH,
+      initialHeight: STORY_NODE_HEIGHT,
       data: {
         title: node.title,
         nodeType: node.type,
@@ -80,52 +141,43 @@ function StoryCanvas({
     }));
   }, [project.nodes, layout, grouped.byNode, selectedNodeId]);
 
-  const edges: Edge[] = useMemo(() => {
+  const edges: Edge<StoryEdgeData>[] = useMemo(() => {
     return project.edges.map((edge) => {
       const edgeIssues = grouped.byEdge.get(edge.id) ?? [];
       const hasIssue = edgeIssues.length > 0;
-
-      let labelText = "";
-      if (edge.condition) {
-        labelText += `[${edge.condition}] `;
-      }
-      if (edge.effects && edge.effects.length > 0) {
-        labelText += `(${edge.effects.length} fx)`;
-      }
 
       return {
         id: edge.id,
         source: edge.from,
         target: edge.to,
-        label: labelText.trim() || undefined,
+        type: "storyEdge",
         selected: selectedEdgeId === edge.id,
         animated: hasIssue,
         style: {
           stroke: hasIssue ? "var(--color-error)" : "var(--color-edge)",
           strokeWidth: hasIssue ? 2.5 : 1.5,
         },
-        labelStyle: {
-          fill: hasIssue ? "var(--color-error)" : "var(--text-secondary)",
-          fontWeight: hasIssue ? 600 : 400,
-          fontSize: 11,
-        },
-        labelBgStyle: {
-          fill: "var(--bg-surface)",
-          fillOpacity: 0.9,
-          stroke: hasIssue ? "var(--color-error)" : "var(--border-subtle)",
-          strokeWidth: 1,
+        data: {
+          condition: edge.condition,
+          effects: edge.effects,
+          hasIssue,
+          onSelect: onEdgeClick,
         },
       };
     });
-  }, [project.edges, grouped.byEdge, selectedEdgeId]);
+  }, [project.edges, grouped.byEdge, selectedEdgeId, onEdgeClick]);
 
   return (
-    <div className="canvas-wrapper">
+    <div className="canvas-wrapper" ref={wrapperRef}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
+        fitViewOptions={{ padding: 0.08, minZoom: 0.1 }}
+        minZoom={0.1}
+        maxZoom={2}
         nodesDraggable={false}
         nodesConnectable={false}
         edgesReconnectable={false}
@@ -139,14 +191,22 @@ function StoryCanvas({
       >
         <Controls showInteractive={false} className="canvas-controls" />
         <MiniMap
-          nodeStrokeWidth={3}
+          nodeStrokeWidth={2}
+          nodeStrokeColor="#1e293b"
+          nodeBorderRadius={4}
           nodeColor={(n) => {
-            const data = n.data as unknown as StoryNodeData;
-            if (data?.nodeType === "start") return "var(--color-start)";
-            if (data?.nodeType === "end") return "var(--color-end)";
-            return "var(--color-scene)";
+            const data = (n as Node<StoryNodeData>).data;
+            const issuesForNode = data?.issues ?? [];
+            const hasErrors = issuesForNode.some((i) => i.severity === "error");
+            const hasWarnings = issuesForNode.some((i) => i.severity === "warning");
+
+            if (hasErrors) return "#ef4444";
+            if (hasWarnings) return "#f59e0b";
+            if (data?.nodeType === "start") return "#10b981";
+            if (data?.nodeType === "end") return "#a855f7";
+            return "#6366f1";
           }}
-          maskColor="rgba(10, 15, 29, 0.7)"
+          maskColor="rgba(10, 15, 29, 0.75)"
           className="canvas-minimap"
         />
       </ReactFlow>

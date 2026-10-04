@@ -2,6 +2,9 @@ import React, { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { Issue } from "@repo/schema";
 
+export const STORY_NODE_WIDTH = 220;
+export const STORY_NODE_HEIGHT = 88;
+
 export interface StoryNodeData extends Record<string, unknown> {
   title: string;
   nodeType: "start" | "scene" | "end";
@@ -16,6 +19,7 @@ export const StoryNode = memo(({ data, selected }: NodeProps) => {
   return (
     <div
       className={`story-node story-node-${nodeData.nodeType} ${selected ? "selected" : ""}`}
+      style={{ width: STORY_NODE_WIDTH }}
       tabIndex={0}
       role="button"
       aria-label={`${nodeData.title} (${nodeData.nodeType})`}

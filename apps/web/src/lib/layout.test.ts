@@ -22,8 +22,8 @@ describe("computeLayout", () => {
 
     const layout = computeLayout(project);
     expect(layout.get("start")).toEqual({ x: 0, y: 0 });
-    expect(layout.get("scene1")).toEqual({ x: 280, y: 0 });
-    expect(layout.get("end")).toEqual({ x: 560, y: 0 });
+    expect(layout.get("scene1")).toEqual({ x: 380, y: 0 });
+    expect(layout.get("end")).toEqual({ x: 760, y: 0 });
   });
 
   it("branching: multiple branches share layer index order", () => {
@@ -47,9 +47,9 @@ describe("computeLayout", () => {
 
     const layout = computeLayout(project);
     expect(layout.get("start")).toEqual({ x: 0, y: 0 });
-    expect(layout.get("choiceA")).toEqual({ x: 280, y: 0 });
-    expect(layout.get("choiceB")).toEqual({ x: 280, y: 140 });
-    expect(layout.get("end")).toEqual({ x: 560, y: 0 });
+    expect(layout.get("choiceA")).toEqual({ x: 380, y: 0 });
+    expect(layout.get("choiceB")).toEqual({ x: 380, y: 140 });
+    expect(layout.get("end")).toEqual({ x: 760, y: 0 });
   });
 
   it("cycle: handles cycles without infinite loop and uses shortest path", () => {
@@ -71,8 +71,8 @@ describe("computeLayout", () => {
 
     const layout = computeLayout(project);
     expect(layout.get("start")).toEqual({ x: 0, y: 0 });
-    expect(layout.get("loop1")).toEqual({ x: 280, y: 0 });
-    expect(layout.get("loop2")).toEqual({ x: 560, y: 0 });
+    expect(layout.get("loop1")).toEqual({ x: 380, y: 0 });
+    expect(layout.get("loop2")).toEqual({ x: 760, y: 0 });
   });
 
   it("no start node: all nodes go into orphan band at layer 0", () => {
@@ -108,9 +108,9 @@ describe("computeLayout", () => {
 
     const layout = computeLayout(project);
     expect(layout.get("start")).toEqual({ x: 0, y: 0 });
-    expect(layout.get("scene1")).toEqual({ x: 280, y: 0 });
-    expect(layout.get("orphan1")).toEqual({ x: 3 * 280, y: 0 });
-    expect(layout.get("orphan2")).toEqual({ x: 3 * 280, y: 140 });
+    expect(layout.get("scene1")).toEqual({ x: 380, y: 0 });
+    expect(layout.get("orphan1")).toEqual({ x: 3 * 380, y: 0 });
+    expect(layout.get("orphan2")).toEqual({ x: 3 * 380, y: 140 });
   });
 
   it("explicit position kept exactly", () => {
@@ -127,7 +127,7 @@ describe("computeLayout", () => {
 
     const layout = computeLayout(project);
     expect(layout.get("start")).toEqual({ x: 999, y: 888 });
-    expect(layout.get("scene1")).toEqual({ x: 280, y: 0 });
+    expect(layout.get("scene1")).toEqual({ x: 380, y: 0 });
   });
 
   it("dangling edge referencing nonexistent nodes is ignored", () => {

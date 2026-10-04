@@ -177,10 +177,11 @@ Policy: under-report. A false positive costs more trust than a false negative.
 
 ## 7. UI `DECIDED`
 Read-only story canvas built with React, Vite, and `@xyflow/react` (`apps/web`).
-- **Graph Layout (`computeLayout`):** Pure deterministic layered layout algorithm. Nodes with explicit `position` keep it exactly. Reachable nodes are placed in layers determined by the shortest path from start nodes (`x = layer * 280`, `y = index * 140`). Unreachable nodes occupy an orphan band (`maxLayer + 2`).
-- **Custom Nodes (`StoryNode`):** Displays node title, type chip (start, scene, end), and error/warning count badges from node-level issues.
-- **Edges:** Labels display condition text and effect counts. Edges with issues are styled with error color and animated flow.
-- **Issues Panel (`IssuesPanel`):** Live consistency diagnostics from `check(project)`, categorized into Errors, Warnings, and Variable Issues. Clicking an issue focuses and centers the corresponding node or edge on the canvas and highlights source code spans for edge condition/effect errors (`getIssueSnippet`).
+- **Graph Layout (`computeLayout`):** Pure deterministic layered layout algorithm. Nodes with explicit `position` keep it exactly. Reachable nodes are placed in layers determined by the shortest path from start nodes (`x = layer * 380`, `y = index * 140`). Unreachable nodes occupy an orphan band (`maxLayer + 2`).
+- **Custom Nodes (`StoryNode`):** Displays node title, type chip (start, scene, end), and error/warning count badges from node-level issues. Exports named dimension constants `STORY_NODE_WIDTH` (220) and `STORY_NODE_HEIGHT` (88) as single source of truth for initial dimensions and inline styles.
+- **Custom Edges (`StoryEdge`):** Uses `BaseEdge` and `EdgeLabelRenderer`. Labels render compact condition pills truncated with ellipsis and full tooltip on hover, plus `fx N` effect chips. Does not intercept panning (`nodrag nopan`) or break edge selection.
+- **MiniMap:** Color-coded node shapes (red for errors, amber for warnings, green/purple/indigo by node type).
+- **Issues Panel (`IssuesPanel`):** 420px fixed-width consistency diagnostics panel with wrapped tags/messages and horizontally scrolling snippet blocks. Clicking an issue outside the current viewport pans smoothly to it via `setCenter`.
 
 ## 8. Realtime collaboration `DRAFT`
 Yjs documents per project/node, Hocuspocus server, awareness for cursors and presence. Persistence to Postgres via Hocuspocus extension. Auth on WebSocket connect (R8.1).

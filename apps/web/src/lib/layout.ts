@@ -5,7 +5,7 @@ import type { Project } from "@repo/schema";
  * - Nodes with an explicit `position` keep it exactly.
  * - Other reachable nodes are arranged in horizontal layers:
  *   layer = shortest path length following edge direction from the nearest 'start' node.
- *   x = layer * 280; y = (index within layer among generated nodes, in project.nodes order) * 140.
+ *   x = layer * 380; y = (index within layer among generated nodes, in project.nodes order) * 140.
  * - Unreachable nodes go in a separate orphan band: layer = (maxReachableLayer + 2).
  *   If there are no start nodes, all nodes are placed in the orphan band at layer 0.
  */
@@ -90,7 +90,7 @@ export function computeLayout(project: Project): Map<string, { x: number; y: num
       const nodeId = nodeIds[indexInLayer];
       if (nodeId) {
         result.set(nodeId, {
-          x: layer * 280,
+          x: layer * 380,
           y: indexInLayer * 140,
         });
       }

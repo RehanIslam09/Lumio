@@ -24,6 +24,37 @@
 
 ## Entries
 
+### W-010 | 2026-10-04 | UI polish pass for apps/web story canvas and diagnostics panel
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `fix(web): UI polish pass for viewport fit, minimap, edge labels, and issues panel`
+- **Goal:** Fix 5 visual issues in apps/web: initial viewport fit & fit-view, MiniMap node rendering, compact edge condition/effects labels with layer spacing, horizontal scrolling prevention in issues panel, and animated pan-to-focus for off-screen targets.
+- **Files changed:**
+  - `apps/web/src/components/StoryNode.tsx`: defined and exported `STORY_NODE_WIDTH = 220` and `STORY_NODE_HEIGHT = 88` constants, applied inline width style.
+  - `apps/web/src/components/StoryEdge.tsx`: created custom edge rendering `nodrag nopan` edge label container with compact condition pill (max-width 140px, text ellipsis, tooltip) and `fx N` count badge.
+  - `apps/web/src/lib/layout.ts`: increased horizontal layer gap from 280 to 380 per approved spec change.
+  - `apps/web/src/lib/layout.test.ts`: updated numeric layer gap test expectations from 280 to 380.
+  - `apps/web/src/index.css`: fixed issues panel width to 420px with `overflow-x: hidden`, added `overflow-wrap: anywhere` on message and target tags, scoped code snippet horizontal scrolling, and styled custom edge label pill and badge.
+  - `apps/web/src/App.tsx`: registered `StoryEdge`, provided `initialWidth` and `initialHeight` on nodes to fix React Flow dimension measurement and MiniMap rendering, configured `minZoom={0.1}`, `fitViewOptions={{ padding: 0.08, minZoom: 0.1 }}`, configured MiniMap `nodeColor` callback (error/warn/type colors), and implemented animated `setCenter` pan for off-screen focus targets.
+  - `docs/ARCHITECTURE.md`: updated Section 7 (UI) and file map with StoryEdge and node dimension constants.
+  - `docs/context/work-archive.md`: archived full W-002 entry per rolling 8-entry cap.
+  - `docs/context/recent-work.md`: logged entry W-010, rotated W-002 to older work.
+- **New/changed public APIs:**
+  - `apps/web/src/components/StoryNode.tsx`: `export const STORY_NODE_WIDTH = 220`, `export const STORY_NODE_HEIGHT = 88`
+  - `apps/web/src/components/StoryEdge.tsx`: `export function StoryEdge(props: EdgeProps): JSX.Element`
+- **Decisions and why:**
+  - Used named constants `STORY_NODE_WIDTH` and `STORY_NODE_HEIGHT` in `StoryNode.tsx` and imported them in `App.tsx` for `initialWidth`/`initialHeight` to eliminate dimension mismatch between React Flow layout/MiniMap and CSS (R3.1).
+  - Selected `minZoom=0.1` because the graph spans ~4020px with orphan band. In a 1280px viewport minus 420px panel (860px canvas), fitting 4020px with padding requires ~0.17 zoom; 0.1 provides comfortable headroom while preventing truncation.
+  - Configured edge label container with `nodrag nopan` so clicking condition pill selects edge without panning or dragging graph canvas.
+  - Animated `setCenter` over 400ms preserves current zoom unless unreadably small (<0.65, zoomed to 0.75).
+- **Assumptions / UNVERIFIED:**
+  - Visual verification with Playwright agent was unconfirmed due to azureedge CDN driver 404; code analysis and gate tests confirmed root causes.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 161 tests passing: 81 dsl, 59 checker, 21 web)
+  - `pnpm --filter @repo/web build` -> pass (built in 169ms, 0 errors)
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to review screenshot verification instructions and commit changes manually.
+
 ### W-009 | 2026-10-04 | Promote commit 98188ea as stable-003
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-003 promotion at commit 98188ea`
@@ -302,35 +333,7 @@
 - **Next steps:**
   - Implement undefined variable checking rule when DSL expression package is designed.
 
-### W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-001 promotion at commit 5296eec`
-- **Goal:** Promote walking skeleton commit `5296eec` as first stable baseline (`stable-001`) via `/promote-stable` workflow.
-- **Files changed:**
-  - `docs/context/last-stable-state.md`: updated to record stable-001 (commit 5296eec) baseline, gate result, capabilities, environment, and rollback instructions
-  - `docs/context/recent-work.md`: added entry W-002 documenting the promotion
-- **New/changed public APIs:** none
-- **Decisions and why:**
-  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
-  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-001 5296eec57cf865bf7a8069e06fed4f040a5947ab`).
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm check -- --force` -> pass
-    ```text
-    @repo/checker:lint: $ eslint .
-    @repo/schema:typecheck: $ tsc --noEmit
-    @repo/schema:lint: $ eslint .
-    @repo/checker:typecheck: $ tsc --noEmit
-    @repo/checker:test: $ vitest run
-    ✓ src/index.test.ts (11 tests) 26ms
-    Tasks: 5 successful, 5 total
-    Cached: 0 cached, 5 total
-    Time: 1.577s
-    ```
-- **Known issues / debt:** none
-- **Next steps:**
-  - User to tag commit with `git tag stable-001 5296eec57cf865bf7a8069e06fed4f040a5947ab`.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
 - W-001 | 2026-10-03 | Monorepo bootstrap and pure packages skeleton
 - W-000 | 2026-10-01 | Agent operating docs created
