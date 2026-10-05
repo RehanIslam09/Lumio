@@ -8,7 +8,8 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "check": "turbo typecheck lint test",
-    "dev": "pnpm --filter @repo/web dev"
+    "dev": "pnpm --filter @repo/web dev",
+    "dev:server": "pnpm --filter @repo/server dev"
   },
   "devDependencies": {
     "eslint": "10.12.0",

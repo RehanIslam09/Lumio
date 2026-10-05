@@ -33,14 +33,20 @@ Core differentiator: an automated **consistency checker** (static analysis over 
 | Graph editor | React Flow (@xyflow/react) for flow graph; Sigma.js/Cytoscape for large lore graph | DECIDED |
 | Rich text | Tiptap + Yjs | DRAFT |
 | Realtime | Yjs + Hocuspocus | DRAFT |
-| Backend | Node + Hono or Fastify, Zod | DRAFT |
-| DB | PostgreSQL | DRAFT |
-| ORM | Drizzle or Prisma | TODO |
+| Backend | Node + Hono, Zod | DECIDED |
+| DB | PostgreSQL (native Windows dev DB) | DECIDED |
+| ORM | Drizzle | DECIDED |
 | Auth | Better Auth or Clerk | TODO |
 | Monorepo | pnpm + Turborepo | DRAFT |
 | Tests | Vitest, fast-check, Playwright | DRAFT |
 
-<!-- FILL: change DRAFT -> DECIDED as you commit to each choice -->
+### Development database
+- Engine: PostgreSQL (installed natively on Windows)
+- Databases: `lumio`, `lumio_test`
+- Role: `lumio`
+- Port: `5432`
+- Connection string format (no password): `postgresql://lumio:<password>@localhost:5432/lumio`
+- Rule: Native Windows development only (NO WSL, NO Docker, NO containers).
 
 ## 3. Repo map `DRAFT`
 ```text
@@ -56,6 +62,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
+  server/       Hono backend skeleton (`src/config.ts`, `src/app.ts`, `src/index.ts`), CORS allowlist, and /health route
   web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), camera hook (`src/hooks/`), and UI components
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
@@ -294,6 +301,6 @@ File-based project save and open workflow implemented via pure persistence modul
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
 ## 12. Open questions
-- ORM choice (Drizzle vs Prisma)
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1
+- Manual DB setup required (no automated bootstrap script yet)

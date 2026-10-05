@@ -24,6 +24,51 @@
 
 ## Entries
 
+### W-019 | 2026-10-05 | Server skeleton: apps/server with Hono, validated config, CORS allowlist, and /health route
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): initialize apps/server skeleton with Hono, validated config, CORS allowlist, and /health endpoint`
+- **Goal:** Set up apps/server backend skeleton using Hono and @hono/node-server with test-first validated config module, CORS allowlist without wildcard, JSON 404/500 error handling, /health route, and clean process lifecycle.
+- **Files changed:**
+  - `apps/server/package.json`: initialized `@repo/server` with hono 4.13.13, @hono/node-server 2.1.3, zod 4.6.5, tsx 4.23.15, @types/node 26.6.4, typescript 6.0.3, eslint 10.12.0, typescript-eslint 8.71.0, vitest 5.0.3, fast-check 4.10.2.
+  - `apps/server/tsconfig.json`: created extending `../../tsconfig.base.json` with `node` types.
+  - `apps/server/vitest.config.ts`: configured test runner with `testTimeout: 30_000`.
+  - `apps/server/.env.example`: added tracked template with placeholder database password comment.
+  - `apps/server/src/config.ts`: implemented pure `parseConfig` with integer port bounds (1..65535, default 3001), allowed nodeEnv values (development/test/production), required postgres connection string with password secrecy preservation, and strict CORS origin validation.
+  - `apps/server/src/config.test.ts`: test-first unit and fast-check property tests covering valid configs, defaults, invalid port/nodeEnv/DATABASE_URL, password secrecy, CORS origin restrictions, and non-throwing invariant on arbitrary records.
+  - `apps/server/src/app.ts`: implemented pure `createApp` with Hono, CORS allowlist function (no "*"), GET /health route, 404 JSON error handler ({ error: { code: "not-found", message: "Not found" } }), and 500 JSON error handler ({ error: { code: "internal", message: "Internal server error" } }) with injected error logger.
+  - `apps/server/src/app.test.ts`: unit tests for GET /health (200 { status: "ok" }), 404 unknown route ({ error: { code: "not-found", message: "Not found" } }), 500 thrown error without stack trace ({ error: { code: "internal", message: "Internal server error" } }), allowed CORS origins, CORS preflight (204), and unallowed/wildcard origin rejection.
+  - `apps/server/src/index.ts`: created server entrypoint parsing `process.env`, exiting 1 on validation failure, serving on configured port, and handling SIGINT/SIGTERM with clean server close.
+  - `package.json`: added `"dev:server": "pnpm --filter @repo/server dev"` script.
+  - `pnpm-workspace.yaml`: recorded approved esbuild build script.
+  - `pnpm-lock.yaml`: updated with server dependencies.
+  - `docs/ARCHITECTURE.md`: updated Section 2 Stack (Hono, Drizzle, native Windows PostgreSQL DECIDED), added Development database section, updated Section 3 Repo map, and updated Section 12 debt list.
+  - `docs/context/work-archive.md`: archived full W-011 entry per R7.4 rolling 8-entry cap.
+  - `docs/context/recent-work.md`: recorded entry W-019, rotated W-011 to older work, maintaining 8 full entries.
+- **New/changed public APIs:**
+  - `apps/server/src/config.ts`:
+    - `type NodeEnv = "development" | "test" | "production"`
+    - `type Config = { port: number; nodeEnv: NodeEnv; databaseUrl: string; corsOrigins: string[]; }`
+    - `type ConfigResult = { ok: true; config: Config } | { ok: false; errors: string[] }`
+    - `parseConfig(env: Record<string, string | undefined> | undefined | null): ConfigResult`
+  - `apps/server/src/app.ts`:
+    - `type AppDependencies = { logError: (err: unknown) => void }`
+    - `createApp(config: Config, deps: AppDependencies): Hono`
+- **Decisions and why:**
+  - Used exact dependency pins across all new dependencies in `apps/server/package.json` matching monorepo pins: `zod: 4.6.5`, `fast-check: 4.10.2`, `vitest: 5.0.3`, `typescript: 6.0.3`, `eslint: 10.12.0`, `typescript-eslint: 8.71.0` (R2.4).
+  - Validated DATABASE_URL using protocol prefix check (`postgres://` or `postgresql://`) and `new URL()` validation without interpolating input or password in error messages to guarantee secrecy (addition A.1).
+  - Validated CORS origins against strict URL origin semantics (`origin === new URL(origin).origin`), rejecting wildcards, paths, query params, hashes, and non-http(s) schemes.
+  - Configured `origin` in `hono/cors` as a callback returning the origin only if present in `config.corsOrigins`, else returning `null`, guaranteeing no wildcard origin is emitted.
+  - Handled SIGINT and SIGTERM cleanly in `index.ts` invoking `server.close()` from `@hono/node-server`.
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 301 total tests passing: 81 dsl, 59 checker, 144 web, 17 server).
+  - `pnpm --filter @repo/server exec tsx src/index.ts` without DATABASE_URL -> exits 1 with `DATABASE_URL is required`.
+  - Smoke test with inline env -> `curl.exe -i http://localhost:3099/health` (200 { status: "ok" }), `curl.exe -i http://localhost:3099/nope` (404 { error: { code: "not-found", message: "Not found" } }), `curl.exe -i -H "Origin: http://localhost:5173" http://localhost:3099/health` (Access-Control-Allow-Origin: http://localhost:5173), `curl.exe -i -H "Origin: http://evil.com" http://localhost:3099/health` (no CORS header).
+- **Known issues / debt:**
+  - Manual DB setup required (no automated bootstrap script yet).
+- **Next steps:**
+  - Integrate Drizzle ORM and PostgreSQL migrations in subsequent task.
+
 ### W-018 | 2026-10-05 | Readable initial viewport camera and Go to start control
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): readable initial viewport camera on load and Go to start control`
@@ -327,62 +372,8 @@
   - Implement Web Worker offloading for consistency checker.
   - Implement project persistence / JSON export and import.
 
-### W-011 | 2026-10-04 | Pure TypeScript editor state module with history and referential integrity
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement pure editor state module with history and referential integrity`
-- **Goal:** Implement pure TypeScript editor state module in apps/web/src/editor/ with linear undo/redo history capped at 100, referential integrity cascading, validation against @repo/schema, no-op detection via structural equality, and unit and property tests.
-- **Files changed:**
-  - `apps/web/src/editor/types.ts`: created with `EditorState`, `EditorAction`, `ApplyResult`, `EditorError`, and `EditorErrorCode` types.
-  - `apps/web/src/editor/equal.ts`: created internal `structurallyEqual` helper (key order independent, missing/undefined equivalence, array order comparison).
-  - `apps/web/src/editor/id.ts`: created `nextId` helper finding the smallest integer n >= 1 for `${prefix}_${n}` not taken in existing IDs.
-  - `apps/web/src/editor/history.ts`: created `createEditor`, `undo`, `redo`, `canUndo`, `canRedo`, and `HISTORY_CAP = 100`.
-  - `apps/web/src/editor/apply.ts`: created `apply` function with immutability, structural sharing, entity Zod safeParse validation storing parsed output, cascade delete on deleteNode, referential integrity on addEdge/updateEdge, null patch field deletion, and no-op detection.
-  - `apps/web/src/editor/index.ts`: created public exports for editor module.
-  - `apps/web/src/editor/equal.test.ts`: created unit tests for `structurallyEqual`.
-  - `apps/web/src/editor/editor.test.ts`: created unit tests for action success paths, all four error codes, cascade delete with one-step undo, null patch removals, no-op detection, nextId, and history cap.
-  - `apps/web/src/editor/editor.property.test.ts`: created fast-check property tests E1 (integrity), E2 (undo identity), E3 (purity), and E4 (rejection leaves state alone) using an intent resolver without calling apply().
-  - `docs/ARCHITECTURE.md`: updated Repo map and added Section 8 Editor state marked DECIDED.
-  - `docs/context/work-archive.md`: archived full W-003 entry to maintain rolling 8-entry cap.
-  - `docs/context/recent-work.md`: logged entry W-011, rotated W-003 to older work.
-- **New/changed public APIs:**
-  - `apps/web/src/editor/index.ts`:
-    - `type EditorState = { present: Project; past: Project[]; future: Project[]; }`
-    - `type EditorAction`: discriminated union of 11 action types (`renameProject`, `addNode`, `updateNode`, `moveNode`, `deleteNode`, `addEdge`, `updateEdge`, `deleteEdge`, `addVariable`, `updateVariable`, `deleteVariable`).
-    - `type ApplyResult = { ok: true; state: EditorState } | { ok: false; error: EditorError }`
-    - `type EditorErrorCode = 'not-found' | 'duplicate-id' | 'invalid' | 'dangling-reference'`
-    - `type EditorError = { code: EditorErrorCode; message: string; }`
-    - `createEditor(project: Project): EditorState`
-    - `apply(state: EditorState, action: EditorAction): ApplyResult`
-    - `undo(state: EditorState): EditorState`
-    - `redo(state: EditorState): EditorState`
-    - `canUndo(state: EditorState): boolean`
-    - `canRedo(state: EditorState): boolean`
-    - `nextId(existingIds: readonly string[], prefix: string): string`
-    - `structurallyEqual(a: unknown, b: unknown): boolean`
-    - `HISTORY_CAP: 100`
-- **Decisions and why:**
-  - Preserved pure TypeScript isolation in `apps/web/src/editor/`: zero imports from React, DOM, or browser APIs; imports only from `@repo/schema` (R2.4, R3.4, R4.1).
-  - Maintained strict reference equality (`Object.is`) on all untouched entities and arrays during actions to optimize downstream React reconciliation and selectors (R3.1).
-  - Stored parsed schema output (`result.data`) for mutated entities so Zod transforms and normalizations apply cleanly.
-  - Used internal `structurallyEqual` to compare objects irrespective of key order and treating missing vs `undefined` as equal, preventing spurious history entries on no-op actions.
-  - Explicitly deleted entity keys when patch properties are set to `null` (e.g. `delete updated.position`), preventing persistent dangling `undefined` properties.
-  - `deleteNode` cascade-deletes all incident incoming and outgoing edges in a single atomic history step, restored simultaneously by a single `undo`.
-  - Project name validation follows `ProjectSchema.shape.name.safeParse(action.name)`. Since `ProjectSchema` currently defines `name: z.string()` without `.min(1)`, empty names `""` are accepted; no non-schema rules were added.
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 198 tests passing: 81 dsl, 59 checker, 58 web).
-  - `pnpm --filter @repo/web exec vitest run src/editor --reporter=verbose` -> pass (37/37 tests passing: 6 equal, 27 editor, 4 property).
-  - `pnpm --filter @repo/web build` -> pass (built in 171ms, 0 errors).
-- **Known issues / debt:**
-  - No expression-rewriting rename refactor (renaming a variable does not automatically update references in edge conditions/effects).
-  - No duplicate-variable-name rule (editor permits variables with duplicate names; first-wins semantic handled by checker).
-  - Project name schema allows empty string `""` (`z.string()` lacks `.min(1)`).
-  - Editor state is not wired to UI yet (apps/web canvas remains read-only).
-  - No persistence (in-memory state only).
-- **Next steps:**
-  - Wire editor actions and history into `apps/web` UI (connect canvas node dragging, edge creation/deletion, node editing modal).
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-011 | 2026-10-04 | Pure TypeScript editor state module with history and referential integrity
 - W-010 | 2026-10-04 | UI polish pass for apps/web story canvas and diagnostics panel
 - W-009 | 2026-10-04 | Promote commit 98188ea as stable-003
 - W-008 | 2026-10-04 | First UI: apps/web read-only story canvas with live checker
@@ -394,5 +385,3 @@
 - W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
 - W-001 | 2026-10-03 | Monorepo bootstrap and pure packages skeleton
 - W-000 | 2026-10-01 | Agent operating docs created
-
-

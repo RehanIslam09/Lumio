@@ -2,6 +2,61 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-011 | 2026-10-04 | Pure TypeScript editor state module with history and referential integrity
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement pure editor state module with history and referential integrity`
+- **Goal:** Implement pure TypeScript editor state module in apps/web/src/editor/ with linear undo/redo history capped at 100, referential integrity cascading, validation against @repo/schema, no-op detection via structural equality, and unit and property tests.
+- **Files changed:**
+  - `apps/web/src/editor/types.ts`: created with `EditorState`, `EditorAction`, `ApplyResult`, `EditorError`, and `EditorErrorCode` types.
+  - `apps/web/src/editor/equal.ts`: created internal `structurallyEqual` helper (key order independent, missing/undefined equivalence, array order comparison).
+  - `apps/web/src/editor/id.ts`: created `nextId` helper finding the smallest integer n >= 1 for `${prefix}_${n}` not taken in existing IDs.
+  - `apps/web/src/editor/history.ts`: created `createEditor`, `undo`, `redo`, `canUndo`, `canRedo`, and `HISTORY_CAP = 100`.
+  - `apps/web/src/editor/apply.ts`: created `apply` function with immutability, structural sharing, entity Zod safeParse validation storing parsed output, cascade delete on deleteNode, referential integrity on addEdge/updateEdge, null patch field deletion, and no-op detection.
+  - `apps/web/src/editor/index.ts`: created public exports for editor module.
+  - `apps/web/src/editor/equal.test.ts`: created unit tests for `structurallyEqual`.
+  - `apps/web/src/editor/editor.test.ts`: created unit tests for action success paths, all four error codes, cascade delete with one-step undo, null patch removals, no-op detection, nextId, and history cap.
+  - `apps/web/src/editor/editor.property.test.ts`: created fast-check property tests E1 (integrity), E2 (undo identity), E3 (purity), and E4 (rejection leaves state alone) using an intent resolver without calling apply().
+  - `docs/ARCHITECTURE.md`: updated Repo map and added Section 8 Editor state marked DECIDED.
+  - `docs/context/work-archive.md`: archived full W-003 entry to maintain rolling 8-entry cap.
+  - `docs/context/recent-work.md`: logged entry W-011, rotated W-003 to older work.
+- **New/changed public APIs:**
+  - `apps/web/src/editor/index.ts`:
+    - `type EditorState = { present: Project; past: Project[]; future: Project[]; }`
+    - `type EditorAction`: discriminated union of 11 action types (`renameProject`, `addNode`, `updateNode`, `moveNode`, `deleteNode`, `addEdge`, `updateEdge`, `deleteEdge`, `addVariable`, `updateVariable`, `deleteVariable`).
+    - `type ApplyResult = { ok: true; state: EditorState } | { ok: false; error: EditorError }`
+    - `type EditorErrorCode = 'not-found' | 'duplicate-id' | 'invalid' | 'dangling-reference'`
+    - `type EditorError = { code: EditorErrorCode; message: string; }`
+    - `createEditor(project: Project): EditorState`
+    - `apply(state: EditorState, action: EditorAction): ApplyResult`
+    - `undo(state: EditorState): EditorState`
+    - `redo(state: EditorState): EditorState`
+    - `canUndo(state: EditorState): boolean`
+    - `canRedo(state: EditorState): boolean`
+    - `nextId(existingIds: readonly string[], prefix: string): string`
+    - `structurallyEqual(a: unknown, b: unknown): boolean`
+    - `HISTORY_CAP: 100`
+- **Decisions and why:**
+  - Preserved pure TypeScript isolation in `apps/web/src/editor/`: zero imports from React, DOM, or browser APIs; imports only from `@repo/schema` (R2.4, R3.4, R4.1).
+  - Maintained strict reference equality (`Object.is`) on all untouched entities and arrays during actions to optimize downstream React reconciliation and selectors (R3.1).
+  - Stored parsed schema output (`result.data`) for mutated entities so Zod transforms and normalizations apply cleanly.
+  - Used internal `structurallyEqual` to compare objects irrespective of key order and treating missing vs `undefined` as equal, preventing spurious history entries on no-op actions.
+  - Explicitly deleted entity keys when patch properties are set to `null` (e.g. `delete updated.position`), preventing persistent dangling `undefined` properties.
+  - `deleteNode` cascade-deletes all incident incoming and outgoing edges in a single atomic history step, restored simultaneously by a single `undo`.
+  - Project name validation follows `ProjectSchema.shape.name.safeParse(action.name)`. Since `ProjectSchema` currently defines `name: z.string()` without `.min(1)`, empty names `""` are accepted; no non-schema rules were added.
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 198 tests passing: 81 dsl, 59 checker, 58 web).
+  - `pnpm --filter @repo/web exec vitest run src/editor --reporter=verbose` -> pass (37/37 tests passing: 6 equal, 27 editor, 4 property).
+  - `pnpm --filter @repo/web build` -> pass (built in 171ms, 0 errors).
+- **Known issues / debt:**
+  - No expression-rewriting rename refactor (renaming a variable does not automatically update references in edge conditions/effects).
+  - No duplicate-variable-name rule (editor permits variables with duplicate names; first-wins semantic handled by checker).
+  - Project name schema allows empty string `""` (`z.string()` lacks `.min(1)`).
+  - Editor state is not wired to UI yet (apps/web canvas remains read-only).
+  - No persistence (in-memory state only).
+- **Next steps:**
+  - Wire editor actions and history into `apps/web` UI (connect canvas node dragging, edge creation/deletion, node editing modal).
+
 ### W-010 | 2026-10-04 | UI polish pass for apps/web story canvas and diagnostics panel
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `fix(web): UI polish pass for viewport fit, minimap, edge labels, and issues panel`
