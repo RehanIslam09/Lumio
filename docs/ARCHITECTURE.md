@@ -56,7 +56,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), and UI components
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), camera hook (`src/hooks/`), and UI components
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -181,6 +181,11 @@ Policy: under-report. A false positive costs more trust than a false negative.
 ## 7. UI `DECIDED`
 Interactive story canvas and narrative authoring environment built with React, Vite, and `@xyflow/react` (`apps/web`).
 - **Graph Layout (`computeLayout`):** Pure deterministic layered layout algorithm using named constants `HORIZONTAL_GAP = 380` and `VERTICAL_GAP = 140`. Nodes with explicit `position` keep it exactly. Reachable nodes are placed in horizontal layers determined by the shortest path from start nodes (`x = layer * HORIZONTAL_GAP`, `y = indexInLayer * VERTICAL_GAP`). Unreachable nodes without explicit position occupy an orphan grid below the main flow: `mainLayerCount = startNodeIds.length === 0 ? 0 : maxReachableLayer + 1`, `columns = Math.max(3, mainLayerCount)`, `bandTop = maxAutoInMainLayer === 0 ? 0 : maxAutoInMainLayer * VERTICAL_GAP + VERTICAL_GAP`; orphan `i`: `column = i % columns`, `row = Math.floor(i / columns)`, `x = column * HORIZONTAL_GAP`, `y = bandTop + row * VERTICAL_GAP`. Explicit positions on orphans are kept and do not consume grid slots.
+- **Initial Camera & Viewport (`computeInitialViewport`, `useInitialViewport`):**
+  - **Opening Rule (fit vs start):** Determines initial viewport based on fit readability. If `fitZoom >= 0.6` (`FIT_READABLE_THRESHOLD`), mode is `'fit'`, centering the bounding box of all positioned nodes with zoom clamped to `[MIN_ZOOM, MAX_ZOOM]`. Otherwise, mode is `'start'`, focusing the first start node (or first positioned node) at readable zoom (`READABLE_ZOOM = 0.85`), placing its left edge at `VIEW_PADDING = 48` on screen and vertically centered in the canvas.
+  - **Named Constants:** `READABLE_ZOOM = 0.85`, `FIT_READABLE_THRESHOLD = 0.6`, `FIT_MAX_ZOOM = 1`, `VIEW_PADDING = 48`, `MIN_ZOOM = 0.1`, `MAX_ZOOM = 2`, `PAN_DURATION = 400`.
+  - **Camera Reset Lifecycle (`loadCounter`):** Canvas camera applies exactly once per `loadCounter` value via `shouldApplyInitialViewport` when canvas dimensions are measured (`width > 0` and `height > 0`). `loadCounter` increments on: initial mount, Open (success), New project, and Reset sample. The camera must NOT reset or move on graph edits, undo, redo, node drags, or issue clicks. Canvas starts with `visibility: hidden` until the first viewport is applied (with a 1000ms safety net timeout), preventing flashes of default unscaled views.
+  - **"Go to start" Control:** Rendered via `ControlButton` inside `<Controls>` next to the fit button with a flag SVG icon and accessible name/title "Go to start". Re-applies `computeInitialViewport` on current project and canvas dimensions with a 400ms pan animation (`PAN_DURATION`), while preserving existing fit-view functionality.
 - **Custom Nodes (`StoryNode`):** Displays node title, type chip (start, scene, end), and error/warning count badges from node-level issues. Exports named dimension constants `STORY_NODE_WIDTH` (220) and `STORY_NODE_HEIGHT` (88) as single source of truth for initial dimensions and inline styles.
 - **Custom Edges (`StoryEdge`):** Uses `BaseEdge` and `EdgeLabelRenderer`. Labels render compact condition pills truncated with ellipsis and full tooltip on hover, plus `fx N` effect chips. Does not intercept panning (`nodrag nopan`). Clicking edge label selects the edge.
 - **MiniMap:** Color-coded node shapes (red for errors, amber for warnings, green/purple/indigo by node type).

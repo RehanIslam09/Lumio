@@ -24,6 +24,52 @@
 
 ## Entries
 
+### W-018 | 2026-10-05 | Readable initial viewport camera and Go to start control
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): readable initial viewport camera on load and Go to start control`
+- **Goal:** Provide a readable first view on load by focusing the first start node at 85% zoom for graphs that would fit at <60% zoom, while retaining fit-view for small graphs and as an overview button; add "Go to start" button to Controls.
+- **Files changed:**
+  - `apps/web/src/lib/initialViewport.ts`: created pure module with named constants (`READABLE_ZOOM = 0.85`, `FIT_READABLE_THRESHOLD = 0.6`, `FIT_MAX_ZOOM = 1`, `VIEW_PADDING = 48`, `MIN_ZOOM = 0.1`, `MAX_ZOOM = 2`, `PAN_DURATION = 400`), `computeInitialViewport`, and `shouldApplyInitialViewport`.
+  - `apps/web/src/lib/initialViewport.test.ts`: created test-first unit tests (17 tests) and fast-check property tests (2 tests) verifying empty project, invalid canvases, small graph fit, large graph start focus, explicit positions, determinism, and property invariants.
+  - `apps/web/src/hooks/useInitialViewport.ts`: created custom camera hook with two separate primitive `useStore` selectors (`width`, `height`), latest-ref synchronization for project and positions, `loadCounter` single-application camera effect, 1000ms safety net timeout, and animated `goToStart` handler.
+  - `apps/web/src/App.tsx`: wired `loadCounter` state (starts at 1; batched increments on Open, New, and Reset sample); replaced `fitView` boolean with `useInitialViewport`; added "Go to start" `ControlButton` with flag icon; set canvas visibility to hidden until initial camera is applied.
+  - `apps/web/src/index.css`: added stroke styles matching text-secondary and text-primary on `.canvas-controls button`.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 7 UI with initial camera opening rules, constants, lifecycle, and controls.
+  - `docs/context/work-archive.md`: archived full entry W-010 per R7.4 rolling 8-entry cap.
+  - `docs/context/recent-work.md`: recorded entry W-018 at top of Entries, rotated W-010 to older work.
+- **New/changed public APIs:**
+  - `apps/web/src/lib/initialViewport.ts`:
+    - `READABLE_ZOOM: 0.85`, `FIT_READABLE_THRESHOLD: 0.6`, `FIT_MAX_ZOOM: 1`, `VIEW_PADDING: 48`, `MIN_ZOOM: 0.1`, `MAX_ZOOM: 2`, `PAN_DURATION: 400`
+    - `type ViewportMode = 'fit' | 'start'`
+    - `type InitialViewport = { x: number; y: number; zoom: number; mode: ViewportMode; }`
+    - `type InitialViewportInput = { project: Project; positions: ReadonlyMap<string, { x: number; y: number }>; canvas: { width: number; height: number }; minZoom: number; maxZoom: number; }`
+    - `computeInitialViewport(input: InitialViewportInput): InitialViewport`
+    - `shouldApplyInitialViewport(input: { loadCounter: number; lastApplied: number; width: number; height: number; }): boolean`
+  - `apps/web/src/hooks/useInitialViewport.ts`:
+    - `useInitialViewport(params: UseInitialViewportParams): UseInitialViewportResult`
+- **Decisions and why:**
+  - Canvas measurement reads width and height using two separate primitive selectors (`useStore(s => s.width)` and `useStore(s => s.height)`) without creating fresh selector objects or importing extra shallow helpers (Clarification 1).
+  - Used latest-value ref pattern (`latestRef`) for `project` and `positions` inside `useInitialViewport` so camera effect depends solely on `[loadCounter, width, height, setViewport]`, avoiding camera jumps on node edits, drags, undo, or issue clicks (Clarification 4).
+  - Batched `loadCounter` increments in the exact same event handlers as `setEditorState` and `setSavedPresent` on Open, New, and Reset sample (Clarification 4).
+  - Hid canvas wrapper with `visibility: hidden` (NOT `display: none`) until first viewport is applied at duration 0, with a 1000ms safety net timeout to ensure the canvas reveals even if resize measurement is delayed (Clarification 3).
+  - Extracted single source of truth zoom constants `MIN_ZOOM = 0.1` and `MAX_ZOOM = 2` into `initialViewport.ts` shared across ReactFlow props and viewport math (Clarification 5).
+  - Removed `fitView` boolean prop while preserving `fitViewOptions={{ padding: 0.08, minZoom: MIN_ZOOM }}`; verified in installed `@xyflow/react` source that the Controls fit button calls `fitView(fitViewOptions)` and does not rely on the `fitView` boolean prop (Clarification 6).
+- **Assumptions / UNVERIFIED:**
+  - Visual readability of 0.85 zoom on physical user screens is UNVERIFIED until screenshot confirmation.
+  - Absence of visual flash during first paint with `visibility: hidden` is UNVERIFIED until manual browser verification.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages; 284 total tests passing: 81 dsl, 59 checker, 144 web).
+    - Tasks: 11 successful, 11 total. Time: 8.377s.
+    - Slowest tests: Property T2 in dsl (2795ms), Property C1 in checker (2856ms), Property U2 in checker (2049ms), Property listConnections in web (1540ms), Property 1 in web initialViewport (61ms), F1 in web (72ms), E1 in web (68ms).
+  - `pnpm --filter @repo/web build` -> pass (built production bundle in 223ms, 0 errors).
+- **Known issues / debt:**
+  - The constants (READABLE_ZOOM = 0.85, FIT_READABLE_THRESHOLD = 0.6, VIEW_PADDING = 48) are estimates tuned by eye.
+  - The focus node is the first start node only (no multi-start handling beyond first in project.nodes order).
+  - No camera persistence across reloads (resets to initial camera on fresh load).
+  - The first view does not account for the issues panel being resized.
+- **Next steps:**
+  - User to execute manual test script and commit changes manually.
+
 ### W-017 | 2026-10-04 | Orphan grid layout below main flow and extended F1 persistence property coverage
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): place orphan nodes in grid below main flow and extend F1 round-trip property coverage`
@@ -336,38 +382,8 @@
 - **Next steps:**
   - Wire editor actions and history into `apps/web` UI (connect canvas node dragging, edge creation/deletion, node editing modal).
 
-### W-010 | 2026-10-04 | UI polish pass for apps/web story canvas and diagnostics panel
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `fix(web): UI polish pass for viewport fit, minimap, edge labels, and issues panel`
-- **Goal:** Fix 5 visual issues in apps/web: initial viewport fit & fit-view, MiniMap node rendering, compact edge condition/effects labels with layer spacing, horizontal scrolling prevention in issues panel, and animated pan-to-focus for off-screen targets.
-- **Files changed:**
-  - `apps/web/src/components/StoryNode.tsx`: defined and exported `STORY_NODE_WIDTH = 220` and `STORY_NODE_HEIGHT = 88` constants, applied inline width style.
-  - `apps/web/src/components/StoryEdge.tsx`: created custom edge rendering `nodrag nopan` edge label container with compact condition pill (max-width 140px, text ellipsis, tooltip) and `fx N` count badge.
-  - `apps/web/src/lib/layout.ts`: increased horizontal layer gap from 280 to 380 per approved spec change.
-  - `apps/web/src/lib/layout.test.ts`: updated numeric layer gap test expectations from 280 to 380.
-  - `apps/web/src/index.css`: fixed issues panel width to 420px with `overflow-x: hidden`, added `overflow-wrap: anywhere` on message and target tags, scoped code snippet horizontal scrolling, and styled custom edge label pill and badge.
-  - `apps/web/src/App.tsx`: registered `StoryEdge`, provided `initialWidth` and `initialHeight` on nodes to fix React Flow dimension measurement and MiniMap rendering, configured `minZoom={0.1}`, `fitViewOptions={{ padding: 0.08, minZoom: 0.1 }}`, configured MiniMap `nodeColor` callback (error/warn/type colors), and implemented animated `setCenter` pan for off-screen focus targets.
-  - `docs/ARCHITECTURE.md`: updated Section 7 (UI) and file map with StoryEdge and node dimension constants.
-  - `docs/context/work-archive.md`: archived full W-002 entry per rolling 8-entry cap.
-  - `docs/context/recent-work.md`: logged entry W-010, rotated W-002 to older work.
-- **New/changed public APIs:**
-  - `apps/web/src/components/StoryNode.tsx`: `export const STORY_NODE_WIDTH = 220`, `export const STORY_NODE_HEIGHT = 88`
-  - `apps/web/src/components/StoryEdge.tsx`: `export function StoryEdge(props: EdgeProps): JSX.Element`
-- **Decisions and why:**
-  - Used named constants `STORY_NODE_WIDTH` and `STORY_NODE_HEIGHT` in `StoryNode.tsx` and imported them in `App.tsx` for `initialWidth`/`initialHeight` to eliminate dimension mismatch between React Flow layout/MiniMap and CSS (R3.1).
-  - Selected `minZoom=0.1` because the graph spans ~4020px with orphan band. In a 1280px viewport minus 420px panel (860px canvas), fitting 4020px with padding requires ~0.17 zoom; 0.1 provides comfortable headroom while preventing truncation.
-  - Configured edge label container with `nodrag nopan` so clicking condition pill selects edge without panning or dragging graph canvas.
-  - Animated `setCenter` over 400ms preserves current zoom unless unreadably small (<0.65, zoomed to 0.75).
-- **Assumptions / UNVERIFIED:**
-  - Visual verification with Playwright agent was unconfirmed due to azureedge CDN driver 404; code analysis and gate tests confirmed root causes.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 161 tests passing: 81 dsl, 59 checker, 21 web)
-  - `pnpm --filter @repo/web build` -> pass (built in 169ms, 0 errors)
-- **Known issues / debt:** none
-- **Next steps:**
-  - User to review screenshot verification instructions and commit changes manually.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-010 | 2026-10-04 | UI polish pass for apps/web story canvas and diagnostics panel
 - W-009 | 2026-10-04 | Promote commit 98188ea as stable-003
 - W-008 | 2026-10-04 | First UI: apps/web read-only story canvas with live checker
 - W-007 | 2026-10-04 | Variable-usage analysis: initial values + usage rules (W-006 task spec)
@@ -378,4 +394,5 @@
 - W-002 | 2026-10-03 | Promote commit 5296eec as stable-001
 - W-001 | 2026-10-03 | Monorepo bootstrap and pure packages skeleton
 - W-000 | 2026-10-01 | Agent operating docs created
+
 

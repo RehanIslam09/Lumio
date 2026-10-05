@@ -208,12 +208,14 @@ body {
   border-bottom: 1px solid var(--border-subtle) !important;
   color: var(--text-secondary) !important;
   fill: var(--text-secondary) !important;
+  stroke: var(--text-secondary) !important;
 }
 
 .canvas-controls button:hover {
   background: var(--bg-hover) !important;
   color: var(--text-primary) !important;
   fill: var(--text-primary) !important;
+  stroke: var(--text-primary) !important;
 }
 
 .canvas-minimap {

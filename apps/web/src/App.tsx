@@ -3,6 +3,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Controls,
+  ControlButton,
   MiniMap,
   useReactFlow,
   type Node,
@@ -20,6 +21,8 @@ import { groupIssues } from "./lib/decorate.js";
 import { projectToFlow, type Selection } from "./lib/flowModel.js";
 import { makeNode, makeEdge, makeVariable } from "./lib/defaults.js";
 import { interpretKey, isTargetEditable } from "./lib/keymap.js";
+import { MIN_ZOOM, MAX_ZOOM } from "./lib/initialViewport.js";
+import { useInitialViewport } from "./hooks/useInitialViewport.js";
 import {
   createEditor,
   apply,
@@ -63,6 +66,7 @@ function StoryCanvas({
   issues,
   selection,
   layout,
+  loadCounter,
   onNodeSelect,
   onEdgeSelect,
   onPaneClick,
@@ -73,6 +77,7 @@ function StoryCanvas({
   issues: Issue[];
   selection: Selection;
   layout: Map<string, { x: number; y: number }>;
+  loadCounter: number;
   onNodeSelect: (id: string) => void;
   onEdgeSelect: (id: string) => void;
   onPaneClick: () => void;
@@ -85,6 +90,12 @@ function StoryCanvas({
   const [dragOverrides, setDragOverrides] = useState<Map<string, { x: number; y: number }>>(
     new Map(),
   );
+
+  const { isReady, goToStart } = useInitialViewport({
+    project,
+    positions: layout,
+    loadCounter,
+  });
 
   // Controlled position tracking for live dragging
   const effectivePositions = useMemo(() => {
@@ -174,7 +185,11 @@ function StoryCanvas({
   }, [selection, project.edges, layout, getViewport, setCenter]);
 
   return (
-    <div className="canvas-wrapper" ref={wrapperRef}>
+    <div
+      className="canvas-wrapper"
+      ref={wrapperRef}
+      style={{ visibility: isReady ? "visible" : "hidden" }}
+    >
       {!tipDismissed && (
         <div className="canvas-tip-overlay" role="note">
           <div className="canvas-tip-card">
@@ -214,13 +229,34 @@ function StoryCanvas({
         onNodeClick={(_event, node) => onNodeSelect(node.id)}
         onEdgeClick={(_event, edge) => onEdgeSelect(edge.id)}
         onPaneClick={onPaneClick}
-        fitView
-        fitViewOptions={{ padding: 0.08, minZoom: 0.1 }}
-        minZoom={0.1}
-        maxZoom={2}
+        fitViewOptions={{ padding: 0.08, minZoom: MIN_ZOOM }}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
         proOptions={{ hideAttribution: true }}
       >
-        <Controls showInteractive={false} className="canvas-controls" />
+        <Controls showInteractive={false} className="canvas-controls">
+          <ControlButton
+            onClick={goToStart}
+            title="Go to start"
+            aria-label="Go to start"
+            className="react-flow__controls-gotostart"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+              <line x1="4" y1="22" x2="4" y2="15" />
+            </svg>
+          </ControlButton>
+        </Controls>
         <MiniMap
           nodeStrokeWidth={2}
           nodeStrokeColor="#1e293b"
@@ -251,6 +287,7 @@ function MainStudio() {
     createEditor(getSampleProjectWithSyntaxError(false)),
   );
   const [savedPresent, setSavedPresent] = useState<Project>(() => editorState.present);
+  const [loadCounter, setLoadCounter] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selection, setSelected] = useState<Selection>(null);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
@@ -292,6 +329,7 @@ function MainStudio() {
     const sample = getSampleProjectWithSyntaxError(false);
     setEditorState(createEditor(sample));
     setSavedPresent(sample);
+    setLoadCounter((c) => c + 1);
     setSelected(null);
     setSelectedIssue(null);
     setErrorMessage(null);
@@ -305,6 +343,7 @@ function MainStudio() {
     const empty = makeEmptyProject(crypto.randomUUID(), "Untitled story");
     setEditorState(createEditor(empty));
     setSavedPresent(empty);
+    setLoadCounter((c) => c + 1);
     setSelected(null);
     setSelectedIssue(null);
     setErrorMessage(null);
@@ -358,6 +397,7 @@ function MainStudio() {
 
         setEditorState(createEditor(res.project));
         setSavedPresent(res.project);
+        setLoadCounter((c) => c + 1);
         setSelected(null);
         setSelectedIssue(null);
 
@@ -534,6 +574,7 @@ function MainStudio() {
           issues={issues}
           selection={effectiveSelection}
           layout={layout}
+          loadCounter={loadCounter}
           onNodeSelect={(id) => {
             setSelected({ kind: "node", id });
             setActiveTab("inspector");
