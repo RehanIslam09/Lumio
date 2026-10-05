@@ -35,8 +35,9 @@ Core differentiator: an automated **consistency checker** (static analysis over 
 | Realtime | Yjs + Hocuspocus | DRAFT |
 | Backend | Node + Hono, Zod | DECIDED |
 | DB | PostgreSQL (native Windows dev DB) | DECIDED |
-| ORM | Drizzle | DECIDED |
+| ORM | Drizzle + node-postgres | DECIDED |
 | Auth | Better Auth or Clerk | TODO |
+
 | Monorepo | pnpm + Turborepo | DRAFT |
 | Tests | Vitest, fast-check, Playwright | DRAFT |
 
@@ -62,7 +63,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  server/       Hono backend skeleton (`src/config.ts`, `src/app.ts`, `src/index.ts`), CORS allowlist, and /health route
+  server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/index.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`)
   web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), camera hook (`src/hooks/`), and UI components
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
@@ -75,18 +76,60 @@ AGENTS.md
 ```
 <!-- Agents: replace this block with the real tree once code exists; keep one line per file/dir that matters. -->
 
-## 4. Data model `DRAFT`
-| Entity | Key fields | Notes |
-|---|---|---|
-| Project | id, name, nodes, edges, variables, ownerId | |
-| Member | projectId, userId, role (viewer/writer/lead) | |
-| FlowNode | id, projectId, type, title, body (rich text), position (optional { x: number, y: number }) | `type`: scene, dialogue, branch, start, end; position coordinates must be finite |
-| FlowEdge | id, from, to, label, condition (optional string), effects (optional string[]) | |
-| Variable | id, name, type ('number' \| 'string' \| 'boolean'), initial (optional number \| string \| boolean) | Referenced by DSL; initial type must match type and numbers must be finite |
-| Entity | id, projectId, kind (character/faction/place/event), name, attributes (JSONB) | Rename/delete must cascade-warn |
-| Relation | id, fromEntityId, toEntityId, type, attributes | Typed edge in lore graph |
-| NodeEntityLink | nodeId, entityId | Connects flow and lore layers |
-| NodeVersion | nodeId, version, snapshot, authorId, createdAt | Per-node history |
+## 4. Data model `DECIDED`
+
+### Relational Schema (PostgreSQL via Drizzle ORM)
+- **`users`**:
+  - `id`: `uuid` PRIMARY KEY DEFAULT `gen_random_uuid()`
+  - `email`: `text` NOT NULL, UNIQUE (`users_email_unique`)
+  - `password_hash`: `text` NOT NULL
+  - `created_at`: `timestamptz` NOT NULL DEFAULT `now()`
+  - Constraints:
+    - CHECK `users_email_normalized_check`: `email = lower(btrim(email))`
+    - CHECK `users_email_shape_check`: `char_length(email) between 3 and 254 and position('@' in email) > 1`
+    - CHECK `users_password_hash_not_empty_check`: `char_length(password_hash) > 0`
+
+- **`projects`**:
+  - `id`: `uuid` PRIMARY KEY DEFAULT `gen_random_uuid()`
+  - `owner_id`: `uuid` NOT NULL, FK `projects_owner_id_fkey` -> `users(id)` ON DELETE CASCADE
+  - `name`: `text` NOT NULL
+  - `created_at`: `timestamptz` NOT NULL DEFAULT `now()`
+  - `updated_at`: `timestamptz` NOT NULL DEFAULT `now()`
+  - Constraints & Indexes:
+    - CHECK `projects_name_length_check`: `char_length(btrim(name)) between 1 and 200`
+    - INDEX `projects_owner_updated_idx` ON `(owner_id, updated_at DESC)`
+
+- **`project_versions`**:
+  - `id`: `uuid` PRIMARY KEY DEFAULT `gen_random_uuid()`
+  - `project_id`: `uuid` NOT NULL, FK `project_versions_project_id_fkey` -> `projects(id)` ON DELETE CASCADE
+  - `version_number`: `integer` NOT NULL
+  - `schema_version`: `integer` NOT NULL
+  - `document`: `jsonb` NOT NULL (typed as `unknown` in Drizzle; validated at application boundary in next task)
+  - `created_by`: `uuid` NULL, FK `project_versions_created_by_fkey` -> `users(id)` ON DELETE SET NULL
+  - `created_at`: `timestamptz` NOT NULL DEFAULT `now()`
+  - Constraints & Indexes:
+    - UNIQUE `project_versions_project_version_unique` ON `(project_id, version_number)`
+    - CHECK `project_versions_version_number_check`: `version_number >= 1`
+    - CHECK `project_versions_schema_version_check`: `schema_version >= 1`
+    - CHECK `project_versions_document_object_check`: `jsonb_typeof(document) = 'object'`
+    - CHECK `project_versions_document_size_check`: `octet_length(document::text) <= 5000000` (named constant `MAX_DOCUMENT_BYTES = 5_000_000` mirroring web file limit)
+    - INDEX `project_versions_created_by_idx` ON `(created_by)`
+
+### Rules & Semantic Constraints
+- **Version numbering:** Assigned per-project by the application as `max + 1` under a project row lock in the next task; contiguity is not enforced by the database.
+- **U+0000 rejection:** PostgreSQL jsonb parser rejects strings containing `\u0000` with SQLSTATE `22P05`; the next task must reject or strip `\u0000` before insert.
+- **Document size limit measure:** The database checks `octet_length(document::text)` (PostgreSQL's canonical JSONB text representation), not raw HTTP upload bytes. The next task must enforce a request-body size limit before JSON parsing.
+
+### Migrations
+- Tooling: `drizzle-kit` (`db:generate` via `drizzle.config.ts`, dialect: postgresql).
+- Strategy: Forward-only, committed SQL migrations under `apps/server/drizzle/`.
+- Runtime: `runMigrations(db)` applies committed migrations idempotently using `drizzle-orm/node-postgres/migrator`. CLI script: `pnpm --filter @repo/server db:migrate` via `src/db/migrate-cli.ts`.
+
+### Database Tests
+- Safety guard: `checkTestDatabaseUrl(testUrl, devUrl)` in `src/db/testSafety.ts` refuses non-test DBs (must end with `_test`), non-localhost hosts, or collision with dev DB. Never leaks credentials in failure reasons.
+- Fail-loudly rule: DB tests fail loudly (never skip) with clear instructions when `TEST_DATABASE_URL` is missing or the database is unreachable.
+- Test isolation: Clean slate on each run by recreating schemas (`public` and `drizzle`), running `runMigrations`, and truncating tables `CASCADE` between tests. `fileParallelism: false` configured in `vitest.config.ts`. `TEST_DATABASE_URL` is loaded via native `process.loadEnvFile`.
+
 
 ## 5. DSL `DECIDED`
 Small expression language for edge conditions and effects. Pure hand-written lexer, recursive descent parser, and typechecker in `@repo/dsl`. Parsed and interpreted, never executed as code (R8.3).
@@ -300,7 +343,18 @@ File-based project save and open workflow implemented via pure persistence modul
 ## 11. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
-## 12. Open questions
+## 12. Open questions & technical debt
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1
-- Manual DB setup required (no automated bootstrap script yet)
+- **Database layer technical debt (S2 / W-020):**
+  - No `ProjectSchema` validation at database level (`document` is stored as `jsonb` object; app validates in next task)
+  - `updated_at` timestamp is updated by application logic, no database trigger
+  - No soft delete (hard cascading deletes on foreign keys)
+  - No sharing or granular collaborator roles yet
+  - `MAX_DOCUMENT_BYTES` (5 MB) duplicates the web client file limit (`MAX_FILE_BYTES`)
+  - Database counts the jsonb TEXT form (not raw upload bytes), so the next task must also enforce a request-body size limit before JSON parsing
+  - No connection retry or exponential backoff in client pool
+  - Migrations are forward-only (no down migrations)
+  - No automated backup or restore procedures
+  - U+0000 limitation: PostgreSQL rejects `\u0000` in jsonb strings (SQLSTATE `22P05`); app must reject or sanitize before insert
+  - DB integration tests require local PostgreSQL 18 service running on localhost:5432 and fail loudly without it

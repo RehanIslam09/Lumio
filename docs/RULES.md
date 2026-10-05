@@ -11,6 +11,11 @@
 - **R1.5** If you cannot find something, say so. Do not create a plausible-looking substitute.
 - **R1.6** No fabricated benchmarks, URLs, citations, version numbers, or sample data presented as real.
 - **R1.7** `ARCHITECTURE.md` sections marked `DRAFT` or `TODO` are suggestions, not facts. Ask before building on them.
+- **R1.8** Final reports quote only facts captured from commands or files in
+  the SAME session. Test counts, versions, constraint names, file lists and SQL
+  are copied from tool output, never reconstructed from memory. Re-run the
+  commands a report cites right before writing it. Anything not just observed
+  is labelled UNVERIFIED.
 
 ## 2. Scope and change control
 - **R2.1** Do only what the task asks. List the files you will touch before editing.
@@ -63,3 +68,4 @@
 
 ## 9. When to stop and ask
 Stop and ask instead of proceeding if: requirements conflict, a rule blocks the task, you need an R2.5 change, you have been stuck on the same failure three attempts in a row, or the task would touch more than ~10 files.
+
