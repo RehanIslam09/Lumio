@@ -51,3 +51,5 @@ If you are running out of budget or blocked, still write the entry with `Status:
 | Last known-good commit + how to run it | `docs/context/last-stable-state.md` |
 | Old work, full detail | `docs/context/work-archive.md` (on demand only) |
 | Workflows | `.agent/workflows/` (`/start-task`, `/finish-task`, `/promote-stable`) |
+
+- Environment: native Windows + PowerShell only. Never use or suggest WSL, Docker, bash-only commands, or Linux-only tooling. The dev database is a native Windows PostgreSQL install.
