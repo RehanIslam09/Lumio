@@ -16,7 +16,8 @@
 9. Realtime collaboration `DRAFT`
 10. Persistence `DECIDED`
 11. Export format `TODO`
-12. Open questions
+12. Authentication `DECIDED`
+13. Open questions
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -36,10 +37,20 @@ Core differentiator: an automated **consistency checker** (static analysis over 
 | Backend | Node + Hono, Zod | DECIDED |
 | DB | PostgreSQL (native Windows dev DB) | DECIDED |
 | ORM | Drizzle + node-postgres | DECIDED |
-| Auth | Better Auth or Clerk | TODO |
+| Auth | Argon2id + server-side sessions (httpOnly cookies) | DECIDED |
 
 | Monorepo | pnpm + Turborepo | DRAFT |
 | Tests | Vitest, fast-check, Playwright | DRAFT |
+
+### Backend Configuration
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `PORT` | integer (1..65535) | `3001` | HTTP server port |
+| `NODE_ENV` | enum | `development` | Environment (`development`, `test`, `production`) |
+| `DATABASE_URL` | string (url) | required | PostgreSQL connection string |
+| `TEST_DATABASE_URL` | string (url) | required for tests | PostgreSQL connection string for test database (`lumio_test`) |
+| `CORS_ORIGINS` | comma-separated URLs | `[]` | Allowed origins for CORS and CSRF |
+| `SESSION_TTL_DAYS` | integer (1..90) | `30` | Session lifetime in days |
 
 ### Development database
 - Engine: PostgreSQL (installed natively on Windows)
@@ -63,7 +74,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/index.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`)
+  server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,drizzleRepos,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`)
   web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), camera hook (`src/hooks/`), and UI components
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
@@ -113,7 +124,18 @@ AGENTS.md
     - CHECK `project_versions_schema_version_check`: `schema_version >= 1`
     - CHECK `project_versions_document_object_check`: `jsonb_typeof(document) = 'object'`
     - CHECK `project_versions_document_size_check`: `octet_length(document::text) <= 5000000` (named constant `MAX_DOCUMENT_BYTES = 5_000_000` mirroring web file limit)
-    - INDEX `project_versions_created_by_idx` ON `(created_by)`
+- **`sessions`**:
+  - `id`: `uuid` PRIMARY KEY DEFAULT `gen_random_uuid()`
+  - `user_id`: `uuid` NOT NULL, FK `sessions_user_id_fkey` -> `users(id)` ON DELETE CASCADE
+  - `token_hash`: `text` NOT NULL
+  - `created_at`: `timestamptz` NOT NULL DEFAULT `now()`
+  - `expires_at`: `timestamptz` NOT NULL
+  - Constraints & Indexes:
+    - UNIQUE `sessions_token_hash_unique` ON `(token_hash)`
+    - CHECK `sessions_token_hash_shape_check`: `token_hash ~ '^[0-9a-f]{64}$'`
+    - CHECK `sessions_expiry_check`: `expires_at > created_at`
+    - INDEX `sessions_user_id_idx` ON `(user_id)`
+    - INDEX `sessions_expires_at_idx` ON `(expires_at)`
 
 ### Rules & Semantic Constraints
 - **Version numbering:** Assigned per-project by the application as `max + 1` under a project row lock in the next task; contiguity is not enforced by the database.
@@ -343,7 +365,50 @@ File-based project save and open workflow implemented via pure persistence modul
 ## 11. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
-## 12. Open questions & technical debt
+## 12. Authentication `DECIDED`
+
+### Session Tokens and Password Hashing
+- **Session tokens:** 32 cryptographically secure random bytes generated via `crypto.randomBytes`, encoded as a 43-character `base64url` string.
+- **Token storage:** Stored exclusively as a deterministic SHA-256 hash (64 hex characters) in PostgreSQL `sessions.token_hash`. The raw token is returned to the client once upon login or register via an httpOnly cookie and is never stored in the database.
+- **Password hashing:** Argon2id via `@node-rs/argon2` (pinned to `2.2.1`).
+  - Parameters: `memoryCost: 19456` (19 MiB), `timeCost: 2`, `parallelism: 1`, `outputLen: 32`.
+  - Format: PHC string starting with `$argon2id$v=19$m=19456,t=2,p=1$`.
+  - Timing parity: A dummy hash is computed once when `createAuthService` is constructed and verified against on unknown-email logins to ensure identical response times for nonexistent users and wrong passwords.
+
+### Cookie Attributes
+- **Cookie name:** `lumio_session` in development and test; `__Host-lumio_session` in production.
+- **Attributes:** `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age=ttl`, `Secure` (production only), NO `Domain` attribute.
+- **Clearing:** Calling `/logout` clears the cookie using the identical name and path with `Max-Age=0`.
+
+### CSRF & Security Policy
+- **Origin check:** For mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) under `/api/*`, the `Origin` header must be present and match an origin listed in `config.corsOrigins`. Missing or untrusted origins return `403 { error: { code: "csrf" } }`. `GET`, `HEAD`, and `OPTIONS` requests are exempt.
+- **Content-Type check:** Mutating requests with a body must declare `Content-Type: application/json`, else `415 { error: { code: "unsupported-media-type" } }`.
+- **Body limit:** 16 KB (`MAX_AUTH_BODY_BYTES = 16 * 1024`). Payloads exceeding this limit return `413 { error: { code: "payload-too-large" } }` via Hono's `bodyLimit({ onError })`.
+- **JSON parsing:** Malformed JSON returns `400 { error: { code: "invalid-request" } }` and never propagates to the 500 internal error handler.
+- **Cache-Control:** All `/api/auth` responses carry `Cache-Control: no-store`.
+- **Secrecy:** Response bodies never contain passwords, password hashes, hash parameters, or raw session tokens.
+
+### Rate Limiting
+- **Registration:** Capped at 5 requests per hour per client address (returns `429` with `Retry-After`).
+- **Login:** Capped at 10 failed attempts per 15 minutes per client address AND per normalized email (returns `429` with `Retry-After`). Only failures are recorded; successful logins neither count nor reset failure counters.
+- **Storage:** Pure sliding-window rate limiter in memory, capped at 10,000 keys (evicts expired entries first, then oldest).
+
+### Endpoints Table
+| Endpoint | Method | Success | Errors | Description |
+|---|---|---|---|---|
+| `/api/auth/register` | `POST` | `201 { user }` + Set-Cookie | 400, 403, 409, 413, 415, 429 | Register new user with email and password |
+| `/api/auth/login` | `POST` | `200 { user }` + Set-Cookie | 400, 401, 403, 413, 415, 429 | Login user; rotates session and deletes old session |
+| `/api/auth/logout` | `POST` | `204` (No content) + Clear-Cookie | 403 | Invalidate current session and clear cookie |
+| `/api/auth/me` | `GET` | `200 { user }` | 401 | Retrieve currently authenticated user profile |
+
+### Password & Email Policies
+- **Email:** Normalized by trimming and lowercasing. Length: 3..254 characters. Valid per Zod `email()` and strictly ASCII-only. Failure messages never echo user input.
+- **Password:** Length: 10..128 Unicode code points (counted by code points, correctly handling multi-byte UTF-16 characters and emojis). Failure messages never echo passwords.
+
+### Downstream Route Protection
+- `requireAuth(service, config)` middleware sets the authenticated user on a typed context variable (`c.get("user")`) or returns `401 { error: { code: "unauthenticated" } }`.
+
+## 13. Open questions & technical debt
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1
 - **Database layer technical debt (S2 / W-020):**
@@ -357,4 +422,19 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - Migrations are forward-only (no down migrations)
   - No automated backup or restore procedures
   - U+0000 limitation: PostgreSQL rejects `\u0000` in jsonb strings (SQLSTATE `22P05`); app must reject or sanitize before insert
-  - DB integration tests require local PostgreSQL 18 service running on localhost:5432 and fail loudly without it
+  - DB integration tests require local PostgreSQL 18 service running on localhost:5432 and fail loudly without it
+- **Authentication technical debt (S3a / W-021):**
+  - No email verification (registration reveals whether an email already exists via 409)
+  - No password reset or password change workflow
+  - No logout-everywhere or user session list / revocation
+  - No multi-factor authentication (MFA)
+  - In-memory rate limiter (per process, resets on restart, not shared across multiple backend instances)
+  - `X-Forwarded-For` header is not trusted; all clients behind a reverse proxy appear identical
+  - No common-password / haveibeenpwned dictionary check
+  - No background worker / scheduled job to purge expired sessions from the database
+  - `SameSite=Lax` requires web frontend and API backend to share the same site; cross-site deployment would require `SameSite=None; Secure`
+  - `__Host-` prefix is only used in production environments
+  - No per-session user-agent, IP, or geo-location tracking in the database
+  - No automated password hash parameter upgrade upon login
+  - No anti-CSRF token (the `Origin` header allowlist check is the sole CSRF defense)
+  - Unbounded concurrent Argon2 hashing can exhaust memory under extreme load (19 MiB per thread); rate limits only reduce this risk

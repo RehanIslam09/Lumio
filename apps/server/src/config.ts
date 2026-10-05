@@ -5,6 +5,7 @@ export interface Config {
   nodeEnv: NodeEnv;
   databaseUrl: string;
   corsOrigins: string[];
+  sessionTtlDays: number;
 }
 
 export type ConfigResult =
@@ -104,6 +105,23 @@ export function parseConfig(
       }
     }
 
+    // 5. SESSION_TTL_DAYS: optional, default 30; must be integer 1..90
+    let sessionTtlDays = 30;
+    if (raw.SESSION_TTL_DAYS !== undefined) {
+      const rawTtl = raw.SESSION_TTL_DAYS.trim();
+      const parsedTtl = Number(rawTtl);
+      if (
+        rawTtl === "" ||
+        !Number.isInteger(parsedTtl) ||
+        parsedTtl < 1 ||
+        parsedTtl > 90
+      ) {
+        errors.push("SESSION_TTL_DAYS must be an integer between 1 and 90");
+      } else {
+        sessionTtlDays = parsedTtl;
+      }
+    }
+
     if (errors.length > 0) {
       return { ok: false, errors };
     }
@@ -115,6 +133,7 @@ export function parseConfig(
         nodeEnv,
         databaseUrl,
         corsOrigins,
+        sessionTtlDays,
       },
     };
   } catch (err: unknown) {

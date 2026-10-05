@@ -1,7 +1,8 @@
 import process from "node:process";
 import { serve } from "@hono/node-server";
 import { parseConfig } from "./config.js";
-import { createApp } from "./app.js";
+import { composeApp } from "./compose.js";
+import { createDb } from "./db/client.js";
 
 const result = parseConfig(process.env);
 if (!result.ok) {
@@ -14,10 +15,15 @@ if (!result.ok) {
 
 const config = result.config;
 
-const app = createApp(config, {
-  logError: (err: unknown) => {
-    console.error("Unhandled server error:", err);
-  },
+const logError = (err: unknown) => {
+  console.error("Unhandled server error:", err);
+};
+
+const dbInstance = createDb(config.databaseUrl, { logError });
+
+const app = composeApp(config, {
+  db: dbInstance.db,
+  logError,
 });
 
 const server = serve(
@@ -35,9 +41,17 @@ const shutdown = (signal: string) => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`Received ${signal}, closing server...`);
-  server.close((err?: Error) => {
+  server.close(async (err?: Error) => {
     if (err) {
       console.error("Error during server shutdown:", err);
+    }
+    try {
+      await dbInstance.close();
+      console.log("Database pool closed.");
+    } catch (dbErr) {
+      console.error("Error closing database pool:", dbErr);
+    }
+    if (err) {
       process.exit(1);
     }
     console.log("Server closed cleanly.");

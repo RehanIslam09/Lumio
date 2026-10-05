@@ -20,6 +20,7 @@ describe("parseConfig", () => {
       nodeEnv: "production",
       databaseUrl: "postgresql://lumio:secret@localhost:5432/lumio",
       corsOrigins: ["http://localhost:5173", "https://lumio.app"],
+      sessionTtlDays: 30,
     });
   });
 
@@ -37,7 +38,57 @@ describe("parseConfig", () => {
       nodeEnv: "development",
       databaseUrl: "postgres://localhost:5432/lumio",
       corsOrigins: [],
+      sessionTtlDays: 30,
     });
+  });
+
+  it("parses valid SESSION_TTL_DAYS and defaults to 30", () => {
+    const resDefault = parseConfig({ DATABASE_URL: "postgres://localhost/db" });
+    expect(resDefault.ok).toBe(true);
+    if (resDefault.ok) {
+      expect(resDefault.config.sessionTtlDays).toBe(30);
+    }
+
+    const resCustom = parseConfig({
+      DATABASE_URL: "postgres://localhost/db",
+      SESSION_TTL_DAYS: "14",
+    });
+    expect(resCustom.ok).toBe(true);
+    if (resCustom.ok) {
+      expect(resCustom.config.sessionTtlDays).toBe(14);
+    }
+
+    const resMin = parseConfig({
+      DATABASE_URL: "postgres://localhost/db",
+      SESSION_TTL_DAYS: "1",
+    });
+    expect(resMin.ok).toBe(true);
+    if (resMin.ok) {
+      expect(resMin.config.sessionTtlDays).toBe(1);
+    }
+
+    const resMax = parseConfig({
+      DATABASE_URL: "postgres://localhost/db",
+      SESSION_TTL_DAYS: "90",
+    });
+    expect(resMax.ok).toBe(true);
+    if (resMax.ok) {
+      expect(resMax.config.sessionTtlDays).toBe(90);
+    }
+  });
+
+  it("rejects invalid SESSION_TTL_DAYS values", () => {
+    const invalid = ["0", "91", "-5", "30.5", "abc", "", "   "];
+    for (const val of invalid) {
+      const res = parseConfig({
+        DATABASE_URL: "postgres://localhost/db",
+        SESSION_TTL_DAYS: val,
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.errors.some((e) => e.includes("SESSION_TTL_DAYS"))).toBe(true);
+      }
+    }
   });
 
   it("rejects invalid PORT values", () => {

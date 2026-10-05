@@ -7,6 +7,7 @@ const testConfig: Config = {
   nodeEnv: "test",
   databaseUrl: "postgresql://lumio:secret@localhost:5432/lumio_test",
   corsOrigins: ["http://localhost:5173", "https://lumio.app"],
+  sessionTtlDays: 30,
 };
 
 describe("createApp", () => {

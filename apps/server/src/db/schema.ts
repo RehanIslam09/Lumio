@@ -93,3 +93,30 @@ export const projectVersions = pgTable(
     index("project_versions_created_by_idx").on(t.createdBy),
   ]
 );
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: "sessions_user_id_fkey",
+      columns: [t.userId],
+      foreignColumns: [users.id],
+    }).onDelete("cascade"),
+    unique("sessions_token_hash_unique").on(t.tokenHash),
+    check(
+      "sessions_token_hash_shape_check",
+      sql`"token_hash" ~ '^[0-9a-f]{64}$'`
+    ),
+    check("sessions_expiry_check", sql`"expires_at" > "created_at"`),
+    index("sessions_user_id_idx").on(t.userId),
+    index("sessions_expires_at_idx").on(t.expiresAt),
+  ]
+);
+

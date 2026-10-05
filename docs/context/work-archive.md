@@ -2,6 +2,26 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-013 | 2026-10-04 | Promote commit f34bb71 as stable-004
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-004 promotion at commit f34bb71`
+- **Goal:** Promote commit `f34bb71` as fourth stable baseline (`stable-004`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-004 baseline (commit f34bb71), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-013 documenting the promotion, rotated W-005 to archive
+  - `docs/context/work-archive.md`: archived full entry W-005 per R7.4 rolling window cap
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-004 f34bb71eaf0526ae96a1191e52ce946358807df4`).
+  - Rotated oldest full entry (W-005) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass (11/11 tasks successful across 4 packages, 227 tests passing: 81 dsl, 59 checker, 87 web).
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-004 f34bb71eaf0526ae96a1191e52ce946358807df4`.
+
 ### W-012 | 2026-10-04 | Wire pure editor state to interactive story canvas and 3-tab sidebar
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): wire pure editor state to interactive canvas and 3-tab sidebar`
