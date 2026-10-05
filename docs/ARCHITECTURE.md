@@ -17,7 +17,8 @@
 10. Persistence `DECIDED`
 11. Export format `TODO`
 12. Authentication `DECIDED`
-13. Open questions
+13. Projects API `DECIDED`
+14. Open questions
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -74,7 +75,7 @@ README.md
 tsconfig.base.json
 turbo.json
 apps/
-  server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,drizzleRepos,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`)
+  server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
   web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), camera hook (`src/hooks/`), and UI components
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
@@ -408,16 +409,69 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 ### Downstream Route Protection
 - `requireAuth(service, config)` middleware sets the authenticated user on a typed context variable (`c.get("user")`) or returns `401 { error: { code: "unauthenticated" } }`.
 
-## 13. Open questions & technical debt
+## 13. Projects API `DECIDED`
+
+### Endpoints Table
+| Endpoint | Method | Success | Errors | Description |
+|---|---|---|---|---|
+| `/api/projects` | `GET` | `200 { projects: [...] }` | 401 | List caller's projects (newest `updatedAt` first, ties by `id`, max 200, no pagination) |
+| `/api/projects` | `POST` | `201 { project, version }` | 400, 401, 403, 409, 413, 415, 422, 429 | Create project and version 1 in one transaction under user row lock |
+| `/api/projects/:id` | `GET` | `200 { project, version, document }` | 401, 404 | Get project and latest version document |
+| `/api/projects/:id` | `PUT` | `200 { project, version }` | 400, 401, 403, 404, 409, 413, 415, 422, 429 | Save new version with optimistic concurrency under project row lock |
+| `/api/projects/:id/versions` | `GET` | `200 { versions: [...] }` | 401, 404 | List project versions (newest first, max 200, metadata only) |
+| `/api/projects/:id/versions/:n` | `GET` | `200 { version, document }` | 401, 404 | Get specific version metadata and document |
+| `/api/projects/:id` | `DELETE` | `204` (No content) | 401, 403, 404, 429 | Delete project (versions cascade) |
+
+### Optimistic Concurrency Flow
+- Every project mutation uses explicit row-level locking with SQL ownership checks (`WHERE id = :id AND owner_id = :ownerId`).
+- Lock mode: `FOR NO KEY UPDATE` is used to prevent blocking foreign-key checks from other transactions (such as user logins inserting sessions).
+- Under the row lock, `max(version_number)` is read in a statement executed after the lock is acquired.
+- If `baseVersion !== maxVersion`, the transaction aborts and returns `409 { error: { code: "version-conflict", currentVersion: maxVersion } }` with nothing written.
+- If `baseVersion === maxVersion`, version `maxVersion + 1` is inserted, `projects.name` is updated from `document.name`, and `projects.updated_at` is set to the injected clock.
+- Defense in depth: duplicate key violation (`23505`) on `project_versions_project_version_unique` maps to the same 409 error.
+
+### Project ID vs Client ID
+- The cloud project ID (`projects.id` / `:id` in URL) is a server-generated UUID primary key.
+- The document's own `document.id` field is the client's internal local identifier and is preserved intact inside the JSONB document; it is distinct from the cloud project ID.
+
+### Name Synchronization
+- `projects.name` is always synchronized with `document.name` upon project creation and version update.
+- Validation guarantees that `document.name.trim().length > 0` and `Array.from(document.name).length <= 200` Unicode code points, ensuring database check constraint `projects_name_length_check` cannot fail.
+
+### JSONB Key Order
+- PostgreSQL `jsonb` parses JSON and normalizes it into decomposed binary format without preserving original object key insertion order.
+- Document comparison in tests and clients must rely on structural deep equality, not serialized string comparisons.
+
+### Limits Table
+| Parameter | Value | Scope | Enforcement |
+|---|---|---|---|
+| `MAX_PROJECTS_PER_USER` | `200` (default, injected) | Per user account | Enforced under `SELECT ... FOR NO KEY UPDATE` on caller's `users` row |
+| `PROJECT_BODY_LIMIT_BYTES` | `6_000_000` bytes (6 MB) | Request payload | Enforced before body parsing; returns `413 payload-too-large` |
+| `MAX_DOCUMENT_BYTES` | `5_000_000` bytes (5 MB) | `document::text` octet length | PostgreSQL check constraint `project_versions_document_size_check`; returns `413 document-too-large` |
+| `WRITE_RATE_LIMIT` | `60` requests per minute | Per user account | Sliding-window in-memory limiter on `POST`, `PUT`, `DELETE`; returns `429` + `Retry-After` |
+| Version number limit | `2_147_483_647` (int32) | Path parameter `:n` | Validated in route / service; invalid `n` returns unified 404 |
+
+### Text Safety Rules
+- Non-recursive iterative walk over the parsed document using an explicit stack.
+- Inspects all string values and object keys for:
+  - Disallowed null bytes (`\u0000`, which PostgreSQL jsonb rejects with `22P05`).
+  - Lone or unpaired Unicode surrogates (`\uD800..\uDFFF`, which PostgreSQL jsonb rejects with `22P02`).
+- Rejections return `400 invalid-request` before any database query is issued.
+- Error paths point to the offending property path; error messages and details never echo document content.
+
+### Duplicated Validation Note
+- Validation rules (unique node/edge/variable IDs, referential integrity, and `CURRENT_SCHEMA_VERSION = 1`) duplicate the web client's file persistence validation (`apps/web/src/persistence/{parse,types}.ts`) independently on the server to prevent cross-package client imports (R4).
+
+## 14. Open questions & technical debt
 - Whether flow nodes are one Yjs doc each or one per project
 - DSL grammar scope for v1
 - **Database layer technical debt (S2 / W-020):**
-  - No `ProjectSchema` validation at database level (`document` is stored as `jsonb` object; app validates in next task)
+  - No `ProjectSchema` validation at database level (`document` is stored as `jsonb` object; app validates in application layer)
   - `updated_at` timestamp is updated by application logic, no database trigger
   - No soft delete (hard cascading deletes on foreign keys)
   - No sharing or granular collaborator roles yet
   - `MAX_DOCUMENT_BYTES` (5 MB) duplicates the web client file limit (`MAX_FILE_BYTES`)
-  - Database counts the jsonb TEXT form (not raw upload bytes), so the next task must also enforce a request-body size limit before JSON parsing
+  - Database counts the jsonb TEXT form (not raw upload bytes), so the request-body size limit must also be enforced before JSON parsing
   - No connection retry or exponential backoff in client pool
   - Migrations are forward-only (no down migrations)
   - No automated backup or restore procedures
@@ -437,4 +491,17 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - No per-session user-agent, IP, or geo-location tracking in the database
   - No automated password hash parameter upgrade upon login
   - No anti-CSRF token (the `Origin` header allowlist check is the sole CSRF defense)
-  - Unbounded concurrent Argon2 hashing can exhaust memory under extreme load (19 MiB per thread); rate limits only reduce this risk
+  - Unbounded concurrent Argon2 hashing can exhaust memory under extreme load (19 MiB per thread); rate limits only reduce this risk
+- **Projects API technical debt (S3b / W-023):**
+  - No idempotency key: a retried `PUT` after a lost network response conflicts with its own success (`409 version-conflict`)
+  - No dedupe of identical consecutive saves: repeated saves of unchanged documents create new versions
+  - Unlimited version history per project: no pruning or retention policy for older versions
+  - No pagination on project list or version list (capped at 200)
+  - Single owner only: no project sharing, team workspaces, or fine-grained RBAC permissions
+  - Validation rules and schema-version constant (`SUPPORTED_SCHEMA_VERSION = 1`) duplicated from `apps/web` (should move into `@repo/schema`)
+  - Unknown keys in uploaded projects are silently dropped by Zod parser rather than flagged
+  - PostgreSQL `jsonb` reorders object keys, altering serialized text ordering
+  - No separate rename endpoint: project name can only be changed via document body during a version save
+  - No soft delete: project deletion cascades immediately and permanently to all versions
+  - Write rate limiter is in-memory per process (not shared across horizontally scaled instances)
+  - No `ETag` or `If-Match` HTTP headers: concurrency control relies entirely on `baseVersion` in the JSON request body

@@ -5,11 +5,11 @@
 
 | Field | Value |
 |---|---|
-| Promoted on | 2026-10-04 |
+| Promoted on | 2026-10-05 |
 | Branch | `main` |
-| Commit | `7d909786de148d7253e91b356c534d54bd37c94a` |
-| Tag | `stable-005` |
-| Gate result | `pnpm check -- --force` passed (11/11 tasks successful: typecheck, lint, test with 258 Vitest/fast-check tests across 4 packages) |
+| Commit | `ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3` |
+| Tag | `stable-006` |
+| Gate result | `pnpm check -- --force` passed (14/14 tasks successful: typecheck, lint, test with 375 Vitest/fast-check tests across 5 packages) |
 | Approved by | Rehan Islam |
 
 ## What exists and works
@@ -20,12 +20,18 @@
 - `@repo/checker` pure package implementing static analysis for unreachable nodes (`findUnreachableNodes`), nodes unable to reach end (`findNodesThatCannotReachEnd`), expression validation, typechecking, and variable usage rules (`unused-variable`, `variable-never-written`, `variable-never-read`).
 - `@repo/web` frontend application (`apps/web`):
   - Pure TypeScript editor state module (`apps/web/src/editor`) with linear undo/redo history (capped at 100), referential integrity cascade deletion, validation against `@repo/schema`, no-op detection via structural equality, and 11 distinct action handlers.
-  - Pure utility modules (`flowModel`, `defaults`, `draftCheck`, `keymap`, `layout`, `decorate`, `snippet`, `connections`, `persistence`) with 118 unit and property tests.
-  - Interactive story canvas built on `@xyflow/react` 12: node dragging with transient drag coordinates and single-step commit on move, enlarged 14px handles with relaxed 30px connection radius, duplicate/self-loop rejection, non-blocking dismissible tip overlay, click-to-focus and pan animations.
+  - Pure utility modules (`flowModel`, `defaults`, `draftCheck`, `keymap`, `layout`, `decorate`, `snippet`, `connections`, `persistence`, `initialViewport`) with 144 unit and property tests.
+  - Interactive story canvas built on `@xyflow/react` 12: node dragging with transient drag coordinates and single-step commit on move, enlarged 14px handles with relaxed 30px connection radius, duplicate/self-loop rejection, non-blocking dismissible tip overlay, click-to-focus and pan animations, readable initial camera (0.85 zoom on start node for large graphs, fit-view for small graphs), orphan grid layout below main flow, and "Go to start" button in Controls.
   - 3-tab sidebar: Issues tab (grouped errors/warnings/variables with code snippets and click-to-focus), Inspector tab (contextual node title/type/content/position and edge condition/effects with live syntax & type validation, incoming/outgoing connections with edge focus and Connect-to dropdown, edge navigation buttons to jump to source or target), and Variables tab (name, type, initial value manager with inline diagnostics).
   - Undo/redo toolbar, reset sample button, unsaved changes indicator, project statistics pill, editable project title with inline draft commit/revert, and dismissible polite aria-live error message bar.
   - Pure file persistence: deterministic JSON project save and open (`lumio-project` format, schemaVersion 1) with 5MB byte size limits, format/version checks, version migration table, ProjectSchema validation, graph integrity validation, unknown keys warnings, Toolbar New/Open/Save triggers, and reference-based `isDirty` unsaved changes tracking with `beforeunload` warning.
-- Vitest unit tests and `fast-check` property tests across all packages (258 tests passing: 81 in dsl, 59 in checker, 118 in web).
+- `@repo/server` backend application (`apps/server`):
+  - Hono HTTP server running on Node with `@hono/node-server`, validated config parser (`DATABASE_URL`, port, `NODE_ENV`, CORS origins allowlist, `SESSION_TTL_DAYS`), `/health` endpoint, JSON 404/500 error handlers, and graceful shutdown.
+  - PostgreSQL database layer using Drizzle ORM and `node-postgres` with committed forward-only SQL migrations (`0000_salty_trauma.sql`, `0001_public_firedrake.sql`), client factory with connection pool limits, safety guard against running tests against non-test databases, and 11 database integrity tests against `lumio_test`.
+  - Database schema: `users` (id, email, password_hash, created_at), `projects` (id, owner_id FK cascade, title, created_at, updated_at), `project_versions` (id, project_id FK cascade, version 1..N, document jsonb with 5 MB octet check constraint, created_at), and `sessions` (id, token_hash unique with shape check, user_id FK cascade, expires_at with expiry check, created_at).
+  - Authentication and session management: Argon2id password hashing (`@node-rs/argon2`), 32-byte cryptographically secure session tokens hashed with SHA-256, session fixation defense, session trimming (max 10 per user), sliding-window in-memory rate limiting with capacity eviction, timing parity dummy hash for nonexistent users, CSRF origin check, 16 KB body limit, and httpOnly cookie management with production `__Host-` prefix.
+  - Composition root (`composeApp`) wiring real database, Drizzle repositories, Argon2 hasher, auth service, and routes.
+- Vitest unit tests and `fast-check` property tests across all packages (375 tests passing: 81 in dsl, 59 checker, 144 in web, 91 in server).
 - Root gate script `pnpm check` verifying typecheck, lint, and tests across all packages.
 
 ## How to run
@@ -33,25 +39,33 @@
 pnpm install
 pnpm check
 pnpm dev # runs apps/web via Vite dev server
+pnpm dev:server # runs apps/server via tsx (requires local PostgreSQL with DATABASE_URL)
 ```
 
 ## Environment
 - Node: `v24.20.0` (pinned via `.nvmrc`)
 - pnpm: `12.8.1`
-- Postgres: not yet integrated / required
-- Required env vars: none
+- Postgres: PostgreSQL 18 (native Windows dev DB running on `localhost:5432` with databases `lumio` and `lumio_test`)
+- Required env vars:
+  - `apps/server/.env`: `DATABASE_URL=postgres://postgres:<password>@localhost:5432/lumio`
+  - `apps/server/.env` (for test suite): `TEST_DATABASE_URL=postgres://postgres:<password>@localhost:5432/lumio_test`
 
 ## Known broken / not implemented
 - Web Worker: checker currently runs synchronously on main thread inside `useMemo`.
-- Server backend (`apps/server`), database, migrations, auth, and realtime collaboration not yet wired.
-- No autosave or crash recovery (in-memory state lost on unconfirmed page reload; manual Save to file required).
+- Project CRUD services and HTTP endpoints in `apps/server` not yet implemented (database tables and migrations exist).
+- Realtime collaboration (WebSocket / Yjs / Hocuspocus) not yet wired.
+- Web client not yet connected to backend server or auth endpoints (currently uses file persistence).
+- No email verification, password reset, or session list / revocation UI.
+- Unbounded concurrent Argon2 hashing can exhaust memory under extreme load (rate limits reduce risk).
+- In-memory rate limiter is per-process (not shared across cluster instances).
+- PostgreSQL rejects `\u0000` in jsonb strings (SQLSTATE `22P05`).
 - Browser save dialog cancellation cannot be detected: `savedPresent` marks clean when download triggers even if user cancels native save dialog.
-- Multi-node selection / multi-delete not supported.
+- Multi-node selection / multi-delete not supported in canvas.
 - Reconnecting existing edges by dragging their ends not supported (handle dragging creates new edges).
 - Renaming or deleting variables does not rewrite expressions in conditions/effects.
 - No import/export from third-party tools (Twine, Ink, Articy).
 
 ## Rollback
 ```bash
-git switch -c recover/2026-10-04 7d909786de148d7253e91b356c534d54bd37c94a
+git switch -c recover/2026-10-05 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3
 ```

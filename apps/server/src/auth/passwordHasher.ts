@@ -1,12 +1,12 @@
-import { Algorithm, hash, verify } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
 
 export interface PasswordHasher {
   hash(password: string): Promise<string>;
   verify(hash: string, password: string): Promise<boolean>;
 }
 
-// Algorithm.Argon2id === 2 per @node-rs/argon2 index.d.ts line 19
-export const ARGON2ID_ALGORITHM: number = Algorithm.Argon2id ?? 2;
+// Argon2id in the const enum Algorithm; the test pins the "$argon2id$v=19$m=19456,t=2,p=1$" prefix
+export const ARGON2ID_ALGORITHM: number = 2;
 
 export const ARGON2_CONFIG = {
   algorithm: ARGON2ID_ALGORITHM,

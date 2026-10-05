@@ -24,6 +24,75 @@
 
 ## Entries
 
+### W-023 | 2026-10-05 | Project save/load API for apps/server: CRUD, optimistic concurrency, version history, text safety, and rate limiting
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement project save/load API with optimistic concurrency, versioning, and text safety`
+- **Goal:** Implement project CRUD API for apps/server (list, create, read latest, save new version under row lock with optimistic concurrency, version history, version read, and delete) with text safety, envelope validation, rate limiting, and S3a session auth.
+- **Files changed:**
+  - `apps/server/package.json`: added `@repo/schema: workspace:*` dependency.
+  - `apps/server/src/auth/passwordHasher.ts`: replaced `Algorithm.Argon2id ?? 2` with constant `2`, removed `Algorithm` import.
+  - `apps/server/src/app.ts`: added optional `projects?: { service }` to `AppDependencies` and mounted `createProjectRoutes` at `/api/projects`.
+  - `apps/server/src/compose.ts`: wired `createDrizzleProjectRepo`, `createProjectService`, and injected rate limit / project limits into `createApp`.
+  - `apps/server/src/projects/validate.ts`: implemented pure envelope validation, schema parse, graph integrity, text safety, and name code-point constraints.
+  - `apps/server/src/projects/validate.test.ts`: 26 unit tests for envelope, schema version, graph integrity, text safety, and name rules.
+  - `apps/server/src/projects/repositories.ts`: `ProjectRepo` interface, DTOs, and `DocumentTooLargeError`.
+  - `apps/server/src/projects/fakes.ts`: in-memory `FakeProjectRepo` for unit testing.
+  - `apps/server/src/projects/drizzleProjectRepo.ts`: Drizzle ORM implementation with `FOR NO KEY UPDATE` row locks, `max(version_number)` query, and Postgres error code mappings.
+  - `apps/server/src/projects/service.ts`: `createProjectService` orchestrating business rules, rate limits, UUID and int32 validation, and returning discriminated unions.
+  - `apps/server/src/projects/service.test.ts`: 7 unit tests covering rules, 404, conflicts, rate limiting, and project limits.
+  - `apps/server/src/projects/routes.ts`: Hono routes for all 7 endpoints with exact middleware sequence (`no-store`, CSRF, `requireAuth`, `Content-Type`, 6 MB `bodyLimit`, handlers).
+  - `apps/server/src/projects/routes.test.ts`: 10 route tests via `app.request()` covering auth, CSRF, OPTIONS preflight, 415, 413, 100 KB payload, and secrecy.
+  - `apps/server/src/projects/projects.int.test.ts`: 10 integration tests against `lumio_test` (lifecycle, round-trip, concurrency race, cap race, delete-vs-save race, authorization, text safety, size check, name sync, and cascade).
+  - `docs/ARCHITECTURE.md`: added Section 13 "Projects API `DECIDED`" with endpoints table, limits table, concurrency flow, updated repo map, and technical debt.
+  - `docs/context/work-archive.md`: archived full entry W-015 per R7.4 rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-023, rotated W-015 to older work, deduplicated older work list.
+- **New/changed public APIs:**
+  - `apps/server/src/projects/validate.ts`: `validateProjectInput(raw: unknown): Result<Project, ValidationError>`
+  - `apps/server/src/projects/repositories.ts`: `ProjectRepo`, `ProjectSummary`, `ProjectWithLatest`, `ProjectVersionSummary`, `ProjectVersionDetail`, `DocumentTooLargeError`
+  - `apps/server/src/projects/service.ts`: `createProjectService(deps: ProjectServiceDependencies): ProjectService`
+  - `apps/server/src/projects/routes.ts`: `createProjectRoutes(deps: ProjectRoutesDependencies): Hono`
+  - `apps/server/src/projects/drizzleProjectRepo.ts`: `createDrizzleProjectRepo(db: NodePgDatabase<typeof schema>): ProjectRepo`
+  - `apps/server/src/projects/fakes.ts`: `FakeProjectRepo`
+- **Decisions and why:**
+  - Middleware scoping: S3a 16 KB body limit and Content-Type check are scoped inside `createAuthRoutes` (`apps/server/src/auth/routes.ts:110-152`). Project routes mount `PROJECT_BODY_LIMIT_BYTES = 6_000_000` (6 MB) independently. Auth runs *before* body parsing so unauthenticated requests get 401, not 413.
+  - Preflight: OPTIONS requests under `/api/projects` succeed without a session (handled by global CORS middleware in `app.ts`, returning 204 with CORS headers and skipping `requireAuth` and CSRF).
+  - Lock mode: `FOR NO KEY UPDATE` used on `users` (create cap) and `projects` (save and delete) in Drizzle via `sql` select so foreign-key checks from other transactions (e.g. login inserting session) are not blocked while serializing creates/saves.
+  - Read committed & lock sequence: `max(version_number)` is read in a statement issued strictly *after* acquiring the row lock on `projects`.
+  - Zero rows under lock: If `FOR NO KEY UPDATE` returns 0 rows (e.g. project deleted while waiting), repo returns null and service returns unified 404 (never an error or race crash).
+  - Text safety: Pure `isWellFormedUnicode` helper scans UTF-16 code units (every high surrogate 0xD800..0xDBFF followed by low surrogate 0xDC00..0xDFFF; no lone surrogates) without TypeScript lib typing issues or `as`/`any` casts.
+  - Rate limiting: Rate limiter injected into `createApp`/`composeApp` to allow integration tests to pass 60+ write concurrency tests without 429 false positives while enforcing 60/min default in production.
+- **Assumptions / UNVERIFIED:**
+  - Manual PowerShell 7 test script is UNVERIFIED until executed against running server.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful, 428 tests passing: 81 dsl, 59 checker, 144 web, 144 server in 11.239s).
+  - `1..3 | ForEach-Object { pnpm --filter @repo/server exec vitest run }` -> pass (3 consecutive runs: 144/144 tests passing each, run durations: 6.79s, 6.86s, 7.75s).
+- **Known issues / debt:**
+  - Per-process in-memory rate limiter is not shared across multi-node server deployments (future task: Redis-backed rate limiting).
+  - Document diffing/patching not yet implemented (entire JSON document stored per version).
+- **Next steps:**
+  - User to review changes and commit manually.
+  - Connect web client to project API in subsequent task.
+
+### W-022 | 2026-10-05 | Promote commit ccc3d70 as stable-006
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-006 promotion at commit ccc3d70`
+- **Goal:** Promote commit `ccc3d70` as sixth stable baseline (`stable-006`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-006 baseline (commit ccc3d70), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-022 documenting the promotion, rotated W-014 to archive
+  - `docs/context/work-archive.md`: archived full entry W-014 per R7.4 rolling window cap
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`).
+  - Rotated oldest full entry (W-014) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass (14/14 tasks successful across 5 packages, 375 tests passing: 81 dsl, 59 checker, 144 web, 91 server).
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`.
+
 ### W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement accounts and sessions with Argon2id, httpOnly cookies, CSRF protection, and rate limiting`
@@ -336,111 +405,9 @@
 - **Next steps:**
   - User to tag commit with `git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`.
 
-### W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement file persistence with save, open, and editable project name`
-- **Goal:** Implement pure persistence module (serialize, parse, slug, dirty, empty) with unit & property tests; wire New, Open, and Save to Toolbar with hidden file input and temporary object URL download; make project title editable; wire isDirty reference tracking to unsaved changes badge and beforeunload dialog.
-- **Files changed:**
-  - `apps/web/vite.config.ts`: configured testTimeout: 30_000 mirroring packages/dsl and packages/checker.
-  - `apps/web/src/persistence/types.ts`: created with persistence constants (MAX_FILE_BYTES = 5_000_000, CURRENT_SCHEMA_VERSION = 1, format = "lumio-project") and ParseFileResult error taxonomy.
-  - `apps/web/src/persistence/serialize.ts`: created pure `serializeProject` producing deterministic 2-space indented JSON with trailing newline.
-  - `apps/web/src/persistence/slug.ts`: created pure `fileNameFor` sanitizing project names to lowercase alphanumeric slugs capped at 60 characters with `.lumio.json` extension.
-  - `apps/web/src/persistence/dirty.ts`: created pure `isDirty` with strict reference equality comparison (`state.present !== saved`).
-  - `apps/web/src/persistence/empty.ts`: created pure `makeEmptyProject` producing minimal valid project with single start node.
-  - `apps/web/src/persistence/parse.ts`: created pure `parseProjectFile` and `checkFileSizeBytes` with byte size limit check, JSON parsing, format/version validation, version migration table, `ProjectSchema` validation, graph integrity validation, and unknown keys warning detection.
-  - `apps/web/src/persistence/index.ts`: exported public API for persistence module.
-  - `apps/web/src/persistence/persistence.test.ts`: created with 18 unit and property tests (round trip, determinism, byte size boundaries, error taxonomy, migration table, slug sanitization, dirty tracking, F1 generative round trip with intent resolver, F2 robustness).
-  - `apps/web/src/components/FileActions.tsx`: created with New, Open…, and Save buttons triggering hidden file input and temporary object URL download.
-  - `apps/web/src/components/EditableTitle.tsx`: created with inline editable project name adhering to draft-field blur/Enter commit and Escape revert pattern.
-  - `apps/web/src/components/Toolbar.tsx`: integrated FileActions and EditableTitle; wired isDirty to "Unsaved changes" indicator.
-  - `apps/web/src/App.tsx`: wired `savedPresent` baseline state, `dirty` calculation, `handleNew`, `handleOpen` (with pre-check and confirm), `handleSave` (with immediate baseline commit), and updated `beforeunload` warning.
-  - `apps/web/src/index.css`: styled editable header title and message bar multiline formatted text.
-  - `docs/ARCHITECTURE.md`: updated Repo map, Section 10 Persistence marked DECIDED.
-  - `docs/context/work-archive.md`: archived full entries W-007 and W-006.
-  - `docs/context/recent-work.md`: recorded entry W-015, kept 8 newest entries in rolling window.
-- **New/changed public APIs:**
-  - `apps/web/src/persistence/index.ts`:
-    - `MAX_FILE_BYTES: 5_000_000`, `CURRENT_SCHEMA_VERSION: 1`, `PROJECT_FORMAT: 'lumio-project'`
-    - `type ParseFileErrorCode = 'too-large' | 'not-json' | 'wrong-format' | 'unsupported-version' | 'invalid-project' | 'integrity'`
-    - `type ParseFileError = { code: ParseFileErrorCode; message: string; details: string[]; }`
-    - `type ParseFileResult = { ok: true; project: Project; warnings: string[] } | { ok: false; error: ParseFileError; }`
-    - `type SerializedProjectFile = { format: "lumio-project"; schemaVersion: number; exportedAt: string; project: Project; }`
-    - `serializeProject(project: Project, exportedAt: string): string`
-    - `parseProjectFile(text: string): ParseFileResult`
-    - `checkFileSizeBytes(bytes: number): ParseFileResult | null`
-    - `fileNameFor(projectName: string): string`
-    - `isDirty(state: EditorState, saved: Project): boolean`
-    - `makeEmptyProject(id: string, name: string): Project`
-    - `MIGRATIONS: Record<number, MigrationFn>`
-- **Decisions and why:**
-  - Strict isolation: persistence module is completely pure and imports only from `@repo/schema` and type-only `EditorState` from editor module (R2.4, R3.4, R4.1).
-  - Pre-checked `file.size` against `MAX_FILE_BYTES` in Open via shared pure `checkFileSizeBytes` helper to return identical error structure before file reading (addition 4).
-  - Saved baseline `savedPresent` is committed immediately upon triggering download. Noted that web browsers provide no callback or cancellation status for native save dialogs (addition 3).
-  - Unknown keys on project, nodes, edges, or variables are detected prior to Zod schema parsing and surfaced as non-fatal warnings in `MessageBar` (addition 5).
-  - `EditableTitle` synchronizes during render without `useEffect`, adhering to React 19 rules.
-  - F1 generator rewrite: replaced dynamic `fc.sample()` inside the loop with an intent generator inside `fc.property` and test-level resolver, speeding up F1 from 1420ms to 11ms alone.
-  - Added `testTimeout: 30_000` to `apps/web/vite.config.ts`, verified against installed Vitest 5.0.3 `config.d.BxjInJat.d.ts` types, mirroring packages/dsl and packages/checker.
-- **Assumptions / UNVERIFIED:**
-  - Browser native `<input type="file">` file picker dialog, `<a download>` trigger, and `window.confirm` dialogs require manual verification in browser.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 258 tests passing: 81 dsl, 59 checker, 118 web).
-  - `pnpm --filter @repo/web exec vitest run src/persistence/persistence.test.ts --reporter=verbose` -> pass (18/18 tests passing).
-  - `pnpm --filter @repo/web build` -> pass (built in 434ms, 0 errors).
-- **Known issues / debt:**
-  - Browser save dialog cancellation cannot be detected: `savedPresent` marks clean when download triggers even if user cancels native save dialog.
-  - Property tests take 1-3 s each under load; consider fewer runs for fast CI plus a slower nightly profile.
-  - No autosave or crash recovery (in-memory state lost on unconfirmed page reload).
-  - No repair of corrupt or imperfect files.
-  - Project file contains no canvas layout beyond explicit node positions.
-  - No import/export from third-party tools (Twine, Ink, Articy).
-- **Next steps:**
-  - User to execute manual test script and commit changes.
-
-### W-014 | 2026-10-04 | Connections UX for apps/web: pure connections module, enlarged handles, navigation, and Inspector wiring
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add connections UX with enlarged handles, edge navigation, and inspector connections section`
-- **Goal:** Implement pure connections library module with unit & fast-check property tests; enlarge handles to 14px with connectionRadius={30} and non-blocking dismissible tip overlay; add incoming/outgoing lists with click-to-focus and Connect-to dropdown in Node Inspector; add Go-to-source and Go-to-target navigation in Edge Inspector.
-- **Files changed:**
-  - `apps/web/src/lib/connections.ts`: created with pure `listConnections`, `connectTargets`, and `summarizeCondition`.
-  - `apps/web/src/lib/connections.test.ts`: created with 13 unit and fast-check property tests (ordering, self-loops, parallel edges, dangling nodes, summarize edge cases, incident edge invariant).
-  - `apps/web/src/components/ConnectionsSection.tsx`: created with incoming/outgoing connections list, condition summaries, fx chips, click-to-focus edge, and Connect-to dropdown with auto-reset on target removal or node switch.
-  - `apps/web/src/components/EdgeNavButtons.tsx`: created with Go to source and Go to target navigation buttons with click-to-focus and dangling reference disable.
-  - `apps/web/src/components/EdgeEffectsSection.tsx`: extracted from InspectorPanel to maintain component line limits.
-  - `apps/web/src/components/InspectorPanel.tsx`: integrated ConnectionsSection and EdgeNavButtons while maintaining < 250 lines.
-  - `apps/web/src/components/RightPanel.tsx`: forwarded navigation and connect handlers to InspectorPanel.
-  - `apps/web/src/App.tsx`: added connectionRadius={30}, non-blocking dismissible canvas tip overlay, and handleConnectNodes dispatch handler.
-  - `apps/web/src/index.css`: styled 14px handles with hover growth, non-blocking tip overlay card, connection rows, fx chips, and edge navigation buttons.
-  - `docs/ARCHITECTURE.md`: updated UI section with connection flows, enlarged handles, and updated repo map.
-  - `docs/context/recent-work.md`: recorded entry W-014.
-- **New/changed public APIs:**
-  - `apps/web/src/lib/connections.ts`:
-    - `type ConnectionRow = { edgeId: string; otherNodeId: string; otherTitle: string | undefined; condition: string | undefined; effectCount: number; }`
-    - `type NodeConnections = { outgoing: ConnectionRow[]; incoming: ConnectionRow[]; }`
-    - `type ConnectTarget = { id: string; label: string; }`
-    - `summarizeCondition(condition: string | undefined, maxLength: number): string`
-    - `listConnections(project: Project, nodeId: string): NodeConnections`
-    - `connectTargets(project: Project, nodeId?: string): ConnectTarget[]`
-- **Decisions and why:**
-  - Verified `@xyflow/react` connection radius prop directly in installed types: `connectionRadius?: number` (`component-props.d.ts:598`) and set to 30 for relaxed target dragging (R1.1).
-  - Canvas tip overlay uses `pointer-events: none` on container and `pointer-events: auto` on dismiss button so background panning/dragging is completely unimpeded (addition 1).
-  - Connect-to chosen target state is local to `ConnectionsSection`, keyed by `nodeId`, and validates against current project nodes on every render to automatically reset to empty if deleted or undone (addition 2).
-  - Extracted `EdgeNavButtons.tsx` and `EdgeEffectsSection.tsx` to keep all components under ~300 lines (`InspectorPanel.tsx` is 242 lines, `ConnectionsSection.tsx` is 115 lines) (addition 3).
-  - Maintained zero non-null assertions and strict type safety across all test and source files (R3.1).
-- **Assumptions / UNVERIFIED:**
-  - Visual ergonomics of 14px handles and canvas tip overlay position need manual verification in browser.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages, 240 tests passing: 81 dsl, 59 checker, 100 web).
-  - `pnpm --filter @repo/web exec vitest run src/lib/connections.test.ts --reporter=verbose` -> pass (13/13 tests passing).
-  - `pnpm --filter @repo/web build` -> pass (built in 218ms, 0 errors).
-- **Known issues / debt:**
-  - No reconnecting existing edges by dragging their ends (handle drag creates new edges only).
-  - No batch actions (multi-node selection / multi-delete not supported).
-  - No persistence (editor state is in-memory; resets on page reload).
-  - Positions of auto-laid-out nodes can shift when the graph changes.
-- **Next steps:**
-  - User to run manual test script and commit changes.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
+- W-014 | 2026-10-04 | Connections UX for apps/web: pure connections module, enlarged handles, navigation, and Inspector wiring
 - W-013 | 2026-10-04 | Promote commit f34bb71 as stable-004
 - W-012 | 2026-10-04 | Wire pure editor state to interactive story canvas and 3-tab sidebar
 - W-011 | 2026-10-04 | Pure TypeScript editor state module with history and referential integrity

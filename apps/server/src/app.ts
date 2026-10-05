@@ -2,12 +2,16 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createAuthRoutes, type AuthRoutesDependencies } from "./auth/routes.js";
 import type { Config } from "./config.js";
+import { createProjectRoutes, type ProjectRoutesDependencies } from "./projects/routes.js";
 
 export interface AppDependencies {
   logError: (err: unknown) => void;
   auth?: {
     service: AuthRoutesDependencies["service"];
     getClientAddress?: AuthRoutesDependencies["getClientAddress"];
+  };
+  projects?: {
+    service: ProjectRoutesDependencies["service"];
   };
 }
 
@@ -49,6 +53,16 @@ export function createApp(config: Config, deps: AppDependencies): Hono {
       getClientAddress: deps.auth.getClientAddress,
     });
     app.route("/api/auth", authApp);
+  }
+
+  // Mount projects sub-app at /api/projects if provided
+  if (deps.projects && deps.auth) {
+    const projectsApp = createProjectRoutes({
+      service: deps.projects.service,
+      authService: deps.auth.service,
+      config,
+    });
+    app.route("/api/projects", projectsApp);
   }
 
   // Unknown route -> 404 JSON error
