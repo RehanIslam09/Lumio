@@ -24,6 +24,45 @@
 
 ## Entries
 
+### W-025 | 2026-10-06 | Benchmark story generator, scale measurements, and defect injection
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add benchmark story generator, defect injection, and scale measurements`
+- **Goal:** Implement deterministic benchmark story generator (`generateBenchmarkProject`, `generateBenchmarkWithDefects`) with layered layout and isolated defect grafting; run scale measurements up to 3,000 nodes; export benchmark-300.json and benchmark-3000.json for local UI testing.
+- **Files changed:**
+  - `.gitignore`: added `benchmark-output/` to ignore benchmark export files.
+  - `apps/web/src/benchmark/types.ts`: created `BenchmarkOptions`, `PlantedDefect`, and `BenchmarkWithDefectsResult` interfaces.
+  - `apps/web/src/benchmark/ambient.d.ts`: ambient type definitions for node standard modules (`node:fs`, `node:path`, `node:url`, `process`) in web tsconfig.
+  - `apps/web/src/benchmark/generator.ts`: implemented deterministic generator using Mulberry32 PRNG, layered 2D layout, round-robin cast assignment, well-typed DSL conditions/effects with zero warnings on clean mode, and clean graph grafting for isolated planted defects (`unreachable-from-start`, `cannot-reach-end`, `undefined-variable`).
+  - `apps/web/src/benchmark/generator.test.ts`: 14 unit and property tests covering determinism, exact node/ending counts, cast density, DSL syntax parse, 0-issue clean checker mode, exact defect matching on planted mode, multi-seed sweeps (seeds 1..100 across sizes 20, 50, 300), and fast-check properties.
+  - `apps/web/src/benchmark/measure.ts`: measurement script for 300, 1000, 3000 nodes recording generation, serialization, parse round-trip, checker, `listConnections`, and `computeLayout` min/median timings over 5 runs.
+  - `apps/web/src/benchmark/generateFiles.ts`: CLI script generating `benchmark-300.json` (123.66 KB) and `benchmark-3000.json` (1204.51 KB) in `benchmark-output/`.
+  - `docs/ARCHITECTURE.md`: updated index, Section 3 repo map, and Section 15 Benchmarks & Scale Measurements with timing table and capacity headroom.
+  - `docs/context/work-archive.md`: archived full entry W-017 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-025, rotated W-017 to older work, maintained 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/benchmark/types.ts`: `BenchmarkOptions`, `PlantedDefect`, `BenchmarkWithDefectsResult`
+  - `apps/web/src/benchmark/generator.ts`:
+    - `generateBenchmarkProject(options: BenchmarkOptions & { defects: "planted" }): BenchmarkWithDefectsResult`
+    - `generateBenchmarkProject(options?: BenchmarkOptions): Project`
+    - `generateBenchmarkWithDefects(options: BenchmarkOptions): BenchmarkWithDefectsResult`
+- **Decisions and why:**
+  - Pure TypeScript with zero bundle footprint: Generator and scripts placed in `apps/web/src/benchmark/` without being imported by the app runtime (`App.tsx`), keeping production web bundle size unchanged at 582.18 kB.
+  - Clean graph grafting for defect isolation: Clean DAG with redundant incoming/outgoing edges is built first, then 3 defects are grafted so no clean node depends on defect nodes, ensuring exactly 3 issues fire with zero cascade.
+  - Cast density constraint: Node titles follow `${speaker}: ${title}` for all node types (`start`, `scene`, `end`) using round-robin assignment from `castPool`, ensuring unique speaker count equals `castSize` exactly.
+  - Extrapolation and limits: At 3,000 nodes, document serialized size is 1.20 MB (25% of 5 MB limit), confirming `benchmark-3000.json` opens cleanly through the local file persistence path.
+- **Assumptions / UNVERIFIED:**
+  - Performance numbers are measured on a single Windows development box; general cross-platform performance is UNVERIFIED.
+  - Canvas rendering and Web Worker performance are UNVERIFIED (measurements execute purely on Node main thread).
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 4 packages; 510 total tests passing: 81 dsl, 59 checker, 226 web, 144 server in 11.865s).
+    - Tasks: 14 successful, 14 total. Time: 11.865s.
+  - `pnpm --filter @repo/web build` -> pass (built in 161ms; JS bundle size 582.18 kB identical before and after).
+  - Scale measurements (`pnpm --filter @repo/server exec tsx ../web/src/benchmark/measure.ts`) -> 300 nodes (123.66 KB, 0.88ms gen, 0.68ms check), 1000 nodes (399.19 KB, 8.52ms gen, 0.85ms check), 3000 nodes (1204.51 KB, 66.78ms gen, 2.13ms check).
+- **Known issues / debt:**
+  - Benchmark generator is not wired into the UI (intended: only accessible via file generation / test scripts).
+- **Next steps:**
+  - User can test loading `benchmark-300.json` and `benchmark-3000.json` via local "Open file" button.
+
 ### W-024 | 2026-10-05 | Cloud features in apps/web: session auth, cloud save/open, conflict resolution, and dirty state tracking
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add cloud persistence, session authentication, and conflict resolution`
@@ -410,45 +449,8 @@
 - **Next steps:**
   - User to execute manual test script and commit changes manually.
 
-### W-017 | 2026-10-04 | Orphan grid layout below main flow and extended F1 persistence property coverage
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): place orphan nodes in grid below main flow and extend F1 round-trip property coverage`
-- **Goal:** Position unreachable nodes in an orphan grid below the main graph to eliminate extreme horizontal stretching; extend F1 persistence property test with addEdge, updateEdge, addVariable, and updateVariable actions, asserting coverage across conditions, effects, initial values, and self-loops/parallel edges.
-- **Files changed:**
-  - `apps/web/src/lib/layout.ts`: implemented orphan grid layout below main flow using named constants `HORIZONTAL_GAP = 380` and `VERTICAL_GAP = 140`; grouped reachable auto-nodes and placed orphans at `y = bandTop + row * VERTICAL_GAP`, `x = col * HORIZONTAL_GAP` with `columns = max(3, mainLayerCount)`.
-  - `apps/web/src/lib/layout.test.ts`: added 7 new unit tests for orphan grid positioning, column wrapping, explicit position preservation, zero auto-node edge case, and determinism; updated 2 existing tests that encoded old `maxLayer + 2` position.
-  - `apps/web/src/persistence/persistence.test.ts`: extended F1 property test with `addEdge`, `updateEdge`, `addVariable`, and `updateVariable` intents; biased generator with weighted `fc.oneof`; added run-wide coverage counters and asserted at least one occurrence of condition, effects, initial value, and self-loop/parallel edge.
-  - `docs/ARCHITECTURE.md`: updated Section 7 (UI) layout description with orphan grid formulas and named constants.
-  - `docs/context/work-archive.md`: archived full entry W-009 per R7.4 rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-017, rotated W-009 to older work, maintained 8 full entries.
-- **New/changed public APIs:**
-  - `apps/web/src/lib/layout.ts`:
-    - `export const HORIZONTAL_GAP = 380;`
-    - `export const VERTICAL_GAP = 140;`
-- **Decisions and why:**
-  - Implemented orphan grid with `columns = Math.max(3, mainLayerCount)` and `bandTop = maxAutoInMainLayer === 0 ? 0 : maxAutoInMainLayer * VERTICAL_GAP + VERTICAL_GAP` (R3.4).
-  - Explicitly positioned nodes are preserved exactly and do not consume orphan grid slots.
-  - If a main flow has nodes but zero auto-placed nodes, `bandTop = 0` and orphans start at the origin (Clarification 2 edge case).
-  - Sample project bounding box shrank horizontally from 4020px to 3260px; estimated fit zoom in 860x700 viewport improved from ~19.6% to ~24.2% (well above `minZoom = 0.1`). However, the fit zoom stays low because the main flow alone spans ~3260px across 9 layers, so this task does NOT make fit-view text readable without manual zoom/pan (Clarification 3).
-  - Biased F1 generator using weighted `fc.oneof` to ensure coverage criteria are reliably met within 25 runs without slowing down property execution.
-  - F1 duration alone ran in 46-79ms (average ~50ms, well under the 1s ceiling).
-- **Assumptions / UNVERIFIED:**
-  - Visual layout rendering and viewport ergonomics are UNVERIFIED until screenshot confirmation.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages; 265 total tests passing: 81 dsl, 59 checker, 125 web).
-    - Tasks: 11 successful, 11 total. Time: 9.389s.
-    - Slowest tests: Property T2 in dsl (3111ms), Property C1 in checker (2693ms), Property U2 in checker (2074ms), Property listConnections in web (1216ms), E1 property in web (112ms), F1 property in web (102ms).
-  - Persistence 20-run loop (`1..20 | ForEach-Object { pnpm --filter @repo/web exec vitest run src/persistence }`) -> 20/20 passed; F1 duration range 46ms - 79ms.
-  - `pnpm --filter @repo/web build` -> pass (built in 281ms, 0 errors).
-- **Known issues / debt:**
-  - The orphan band has no visual label or separator line yet in the canvas UI.
-  - Orphans may visually overlap explicitly positioned nodes when `bandTop = 0` or if explicit positions lie within the orphan grid area.
-  - F1 still does not generate drag-created positions or checker-relevant invalid expressions (it only needs valid editor actions).
-  - Fit zoom remains around ~24% due to wide 9-layer main flow width (3260px); text remains small at fit-view until zoomed.
-- **Next steps:**
-  - User to run manual test script and commit changes manually.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-017 | 2026-10-04 | Orphan grid layout below main flow and extended F1 persistence property coverage
 - W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
 - W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
 - W-014 | 2026-10-04 | Connections UX for apps/web: pure connections module, enlarged handles, navigation, and Inspector wiring

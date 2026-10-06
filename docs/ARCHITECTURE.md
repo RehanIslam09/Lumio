@@ -19,6 +19,7 @@
 12. Authentication `DECIDED`
 13. Projects API `DECIDED`
 14. Open questions
+15. Benchmarks & Scale Measurements `DECIDED`
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -76,7 +77,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), hooks (`src/hooks/useCloud.ts`, `useInitialViewport.ts`), and UI components (`src/components/`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/useCloud.ts`, `useInitialViewport.ts`), and UI components (`src/components/`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -575,4 +576,21 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - Delete uses `window.confirm` rather than a custom accessible modal
   - No loading skeletons: uses textual loading states
   - Retry-After is shown to the user but never automatically retried
-  - `127.0.0.1` is unsupported in development (requires `http://localhost:5173` for cookie origin parity)
+  - `127.0.0.1` is unsupported in development (requires `http://localhost:5173` for cookie origin parity)
+
+## 15. Benchmarks & Scale Measurements `DECIDED`
+
+Date: 2026-10-06  
+Caveat: Measured on single Windows dev box; UNVERIFIED as general performance. Main thread Node execution; canvas rendering and Web Worker performance UNVERIFIED.
+
+### Scale Measurements (5 runs each, min / median)
+
+| Node Count | Serialized Size | Headroom (5MB) | Gen Time | Parse Round-trip | check() | listConnections | computeLayout |
+|---|---|---|---|---|---|---|---|
+| **300** | 123.66 KB | 4759.15 KB (3%) | 0.83 / 0.88 ms | 0.75 / 1.29 ms | 0.43 / 0.68 ms | 0.04 / 0.07 ms | 0.23 / 0.25 ms |
+| **1000** | 399.19 KB | 4483.62 KB (8%) | 8.42 / 8.52 ms | 1.80 / 2.06 ms | 0.70 / 0.85 ms | 0.04 / 0.04 ms | 0.30 / 0.56 ms |
+| **3000** | 1204.51 KB | 3678.30 KB (25%) | 66.65 / 66.78 ms | 4.48 / 6.73 ms | 2.00 / 2.13 ms | 0.17 / 0.28 ms | 0.95 / 1.02 ms |
+
+- **Capacity Headroom:** At 3,000 nodes, document size is ~1.20 MB (25% of the 5 MB `MAX_FILE_BYTES` / `MAX_DOCUMENT_BYTES` limit), leaving 3.68 MB headroom. Linear extrapolation estimates ~12,100 nodes before hitting the 5 MB ceiling.
+- **Whole-graph Operations:** All pure editor algorithms (`computeLayout`, `listConnections`, `check`, `parseProjectFile`) execute in under 7 ms even at 3,000 nodes.
+

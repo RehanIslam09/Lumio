@@ -2,6 +2,44 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-017 | 2026-10-04 | Orphan grid layout below main flow and extended F1 persistence property coverage
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): place orphan nodes in grid below main flow and extend F1 round-trip property coverage`
+- **Goal:** Position unreachable nodes in an orphan grid below the main graph to eliminate extreme horizontal stretching; extend F1 persistence property test with addEdge, updateEdge, addVariable, and updateVariable actions, asserting coverage across conditions, effects, initial values, and self-loops/parallel edges.
+- **Files changed:**
+  - `apps/web/src/lib/layout.ts`: implemented orphan grid layout below main flow using named constants `HORIZONTAL_GAP = 380` and `VERTICAL_GAP = 140`; grouped reachable auto-nodes and placed orphans at `y = bandTop + row * VERTICAL_GAP`, `x = col * HORIZONTAL_GAP` with `columns = max(3, mainLayerCount)`.
+  - `apps/web/src/lib/layout.test.ts`: added 7 new unit tests for orphan grid positioning, column wrapping, explicit position preservation, zero auto-node edge case, and determinism; updated 2 existing tests that encoded old `maxLayer + 2` position.
+  - `apps/web/src/persistence/persistence.test.ts`: extended F1 property test with `addEdge`, `updateEdge`, `addVariable`, and `updateVariable` intents; biased generator with weighted `fc.oneof`; added run-wide coverage counters and asserted at least one occurrence of condition, effects, initial value, and self-loop/parallel edge.
+  - `docs/ARCHITECTURE.md`: updated Section 7 (UI) layout description with orphan grid formulas and named constants.
+  - `docs/context/work-archive.md`: archived full entry W-009 per R7.4 rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-017, rotated W-009 to older work, maintained 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/lib/layout.ts`:
+    - `export const HORIZONTAL_GAP = 380;`
+    - `export const VERTICAL_GAP = 140;`
+- **Decisions and why:**
+  - Implemented orphan grid with `columns = Math.max(3, mainLayerCount)` and `bandTop = maxAutoInMainLayer === 0 ? 0 : maxAutoInMainLayer * VERTICAL_GAP + VERTICAL_GAP` (R3.4).
+  - Explicitly positioned nodes are preserved exactly and do not consume orphan grid slots.
+  - If a main flow has nodes but zero auto-placed nodes, `bandTop = 0` and orphans start at the origin (Clarification 2 edge case).
+  - Sample project bounding box shrank horizontally from 4020px to 3260px; estimated fit zoom in 860x700 viewport improved from ~19.6% to ~24.2% (well above `minZoom = 0.1`). However, the fit zoom stays low because the main flow alone spans ~3260px across 9 layers, so this task does NOT make fit-view text readable without manual zoom/pan (Clarification 3).
+  - Biased F1 generator using weighted `fc.oneof` to ensure coverage criteria are reliably met within 25 runs without slowing down property execution.
+  - F1 duration alone ran in 46-79ms (average ~50ms, well under the 1s ceiling).
+- **Assumptions / UNVERIFIED:**
+  - Visual layout rendering and viewport ergonomics are UNVERIFIED until screenshot confirmation.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages; 265 total tests passing: 81 dsl, 59 checker, 125 web).
+    - Tasks: 11 successful, 11 total. Time: 9.389s.
+    - Slowest tests: Property T2 in dsl (3111ms), Property C1 in checker (2693ms), Property U2 in checker (2074ms), Property listConnections in web (1216ms), E1 property in web (112ms), F1 property in web (102ms).
+  - Persistence 20-run loop (`1..20 | ForEach-Object { pnpm --filter @repo/web exec vitest run src/persistence }`) -> 20/20 passed; F1 duration range 46ms - 79ms.
+  - `pnpm --filter @repo/web build` -> pass (built in 281ms, 0 errors).
+- **Known issues / debt:**
+  - The orphan band has no visual label or separator line yet in the canvas UI.
+  - Orphans may visually overlap explicitly positioned nodes when `bandTop = 0` or if explicit positions lie within the orphan grid area.
+  - F1 still does not generate drag-created positions or checker-relevant invalid expressions (it only needs valid editor actions).
+  - Fit zoom remains around ~24% due to wide 9-layer main flow width (3260px); text remains small at fit-view until zoomed.
+- **Next steps:**
+  - User to run manual test script and commit changes manually.
+
 ### W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-005 promotion at commit 7d90978`
