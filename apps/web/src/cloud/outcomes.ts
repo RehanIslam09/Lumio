@@ -7,7 +7,9 @@ import {
 import type {
   AuthOutcome,
   DeleteOutcome,
+  FetchVersionOutcome,
   ListOutcome,
+  ListVersionsOutcome,
   OpenOutcome,
   ProjectBinding,
   SaveOutcome,
@@ -133,6 +135,61 @@ export async function runCloudList(params: {
   if (res.code === "unauthenticated") return { kind: "unauthenticated" };
   return { kind: "error", message: res.message };
 }
+
+export async function runCloudListVersions(params: {
+  client: ApiClient;
+  projectId: string;
+}): Promise<ListVersionsOutcome> {
+  const res = await params.client.listVersions(params.projectId);
+  if (res.ok) {
+    return { kind: "listed", versions: res.data.versions };
+  }
+  if (res.kind === "network") return { kind: "network" };
+  if (res.kind === "timeout") return { kind: "timeout" };
+  if (res.code === "not-found") return { kind: "not-found" };
+  if (res.code === "unauthenticated") return { kind: "unauthenticated" };
+  return { kind: "error", message: res.message };
+}
+
+export async function runCloudFetchVersion(params: {
+  client: ApiClient;
+  projectId: string;
+  versionNumber: number;
+}): Promise<FetchVersionOutcome> {
+  const res = await params.client.getVersion(params.projectId, params.versionNumber);
+  if (!res.ok) {
+    if (res.kind === "network") return { kind: "network" };
+    if (res.kind === "timeout") return { kind: "timeout" };
+    if (res.code === "not-found") return { kind: "not-found" };
+    if (res.code === "unauthenticated") return { kind: "unauthenticated" };
+    return { kind: "error", message: res.message };
+  }
+
+  const { version, document: rawDocument } = res.data;
+
+  if (version.schemaVersion > CURRENT_SCHEMA_VERSION) {
+    return {
+      kind: "unsupported-schema",
+      supported: CURRENT_SCHEMA_VERSION,
+    };
+  }
+
+  const validated = validateProjectDocument(rawDocument);
+  if (!validated.ok) {
+    return {
+      kind: "invalid-document",
+      details: validated.error.details,
+    };
+  }
+
+  return {
+    kind: "loaded",
+    version,
+    project: validated.project,
+    warnings: validated.warnings,
+  };
+}
+
 
 export async function runCloudOpen(params: {
   client: ApiClient;

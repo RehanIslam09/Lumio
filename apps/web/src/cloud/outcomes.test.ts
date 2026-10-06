@@ -7,6 +7,8 @@ import {
   runCloudList,
   runCloudOpen,
   runCloudDelete,
+  runCloudListVersions,
+  runCloudFetchVersion,
   runAuthRegister,
   runAuthLogin,
   runAuthLogout,
@@ -50,6 +52,8 @@ describe("Cloud Outcomes controllers", () => {
       getProject: async () => ({ ok: false, kind: "network", message: "net" }),
       saveProject: async () => ({ ok: false, kind: "network", message: "net" }),
       deleteProject: async () => ({ ok: false, kind: "network", message: "net" }),
+      listVersions: async () => ({ ok: false, kind: "network", message: "net" }),
+      getVersion: async () => ({ ok: false, kind: "network", message: "net" }),
       ...overrides,
     };
   }
@@ -431,4 +435,216 @@ describe("Cloud Outcomes controllers", () => {
       expect(outcome.kind).toBe("anonymous");
     });
   });
+
+  describe("runCloudListVersions", () => {
+    it("returns listed on success", async () => {
+      const client = makeClient({
+        listVersions: async () => ({
+          ok: true,
+          status: 200,
+          data: {
+            versions: [
+              {
+                versionNumber: 2,
+                schemaVersion: 1,
+                createdAt: "2026-10-06T10:00:00Z",
+                createdByMe: true,
+              },
+            ],
+          },
+        }),
+      });
+
+      const outcome = await runCloudListVersions({ client, projectId: "cloud-proj-1" });
+      expect(outcome.kind).toBe("listed");
+      if (outcome.kind === "listed") {
+        expect(outcome.versions).toHaveLength(1);
+        expect(outcome.versions[0]?.versionNumber).toBe(2);
+      }
+    });
+
+    it("returns not-found on 404", async () => {
+      const client = makeClient({
+        listVersions: async () => ({
+          ok: false,
+          kind: "http",
+          status: 404,
+          code: "not-found",
+          message: "Not found",
+        }),
+      });
+
+      const outcome = await runCloudListVersions({ client, projectId: "missing" });
+      expect(outcome.kind).toBe("not-found");
+    });
+
+    it("returns unauthenticated on 401", async () => {
+      const client = makeClient({
+        listVersions: async () => ({
+          ok: false,
+          kind: "http",
+          status: 401,
+          code: "unauthenticated",
+          message: "Unauthenticated",
+        }),
+      });
+
+      const outcome = await runCloudListVersions({ client, projectId: "cloud-proj-1" });
+      expect(outcome.kind).toBe("unauthenticated");
+    });
+
+    it("returns network on network failure", async () => {
+      const client = makeClient({
+        listVersions: async () => ({ ok: false, kind: "network", message: "Network error" }),
+      });
+
+      const outcome = await runCloudListVersions({ client, projectId: "cloud-proj-1" });
+      expect(outcome.kind).toBe("network");
+    });
+
+    it("returns timeout on timeout", async () => {
+      const client = makeClient({
+        listVersions: async () => ({ ok: false, kind: "timeout", message: "Timeout" }),
+      });
+
+      const outcome = await runCloudListVersions({ client, projectId: "cloud-proj-1" });
+      expect(outcome.kind).toBe("timeout");
+    });
+
+    it("returns error on other errors", async () => {
+      const client = makeClient({
+        listVersions: async () => ({
+          ok: false,
+          kind: "http",
+          status: 500,
+          code: "server-error",
+          message: "Internal server error",
+        }),
+      });
+
+      const outcome = await runCloudListVersions({ client, projectId: "cloud-proj-1" });
+      expect(outcome.kind).toBe("error");
+      if (outcome.kind === "error") {
+        expect(outcome.message).toBe("Internal server error");
+      }
+    });
+  });
+
+  describe("runCloudFetchVersion", () => {
+    it("returns loaded with version and validated document on success", async () => {
+      const client = makeClient({
+        getVersion: async () => ({
+          ok: true,
+          status: 200,
+          data: {
+            version: sampleVersion,
+            document: sampleProject,
+          },
+        }),
+      });
+
+      const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 1 });
+      expect(outcome.kind).toBe("loaded");
+      if (outcome.kind === "loaded") {
+        expect(outcome.version.versionNumber).toBe(1);
+        expect(outcome.project.name).toBe(sampleProject.name);
+        expect(outcome.warnings).toEqual([]);
+      }
+    });
+
+    it("returns invalid-document when document fails validation", async () => {
+      const client = makeClient({
+        getVersion: async () => ({
+          ok: true,
+          status: 200,
+          data: {
+            version: sampleVersion,
+            document: { id: "bad", missing: "everything" },
+          },
+        }),
+      });
+
+      const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 1 });
+      expect(outcome.kind).toBe("invalid-document");
+      if (outcome.kind === "invalid-document") {
+        expect(outcome.details.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("returns unsupported-schema when schemaVersion is greater than 1", async () => {
+      const client = makeClient({
+        getVersion: async () => ({
+          ok: true,
+          status: 200,
+          data: {
+            version: { ...sampleVersion, schemaVersion: 2 },
+            document: sampleProject,
+          },
+        }),
+      });
+
+      const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 1 });
+      expect(outcome.kind).toBe("unsupported-schema");
+      if (outcome.kind === "unsupported-schema") {
+        expect(outcome.supported).toBe(1);
+      }
+    });
+
+    it("returns not-found on 404", async () => {
+      const client = makeClient({
+        getVersion: async () => ({
+          ok: false,
+          kind: "http",
+          status: 404,
+          code: "not-found",
+          message: "Not found",
+        }),
+      });
+
+      const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 99 });
+      expect(outcome.kind).toBe("not-found");
+    });
+
+    it("returns unauthenticated on 401", async () => {
+      const client = makeClient({
+        getVersion: async () => ({
+          ok: false,
+          kind: "http",
+          status: 401,
+          code: "unauthenticated",
+          message: "Unauthenticated",
+        }),
+      });
+
+      const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 1 });
+      expect(outcome.kind).toBe("unauthenticated");
+    });
+
+    it("returns network, timeout, or error on failures", async () => {
+      const clientNet = makeClient({
+        getVersion: async () => ({ ok: false, kind: "network", message: "Network error" }),
+      });
+      const netOutcome = await runCloudFetchVersion({ client: clientNet, projectId: "p", versionNumber: 1 });
+      expect(netOutcome.kind).toBe("network");
+
+      const clientTimeout = makeClient({
+        getVersion: async () => ({ ok: false, kind: "timeout", message: "Timeout" }),
+      });
+      const timeoutOutcome = await runCloudFetchVersion({ client: clientTimeout, projectId: "p", versionNumber: 1 });
+      expect(timeoutOutcome.kind).toBe("timeout");
+
+      const clientErr = makeClient({
+        getVersion: async () => ({
+          ok: false,
+          kind: "http",
+          status: 500,
+          code: "error",
+          message: "Boom",
+        }),
+      });
+      const errOutcome = await runCloudFetchVersion({ client: clientErr, projectId: "p", versionNumber: 1 });
+      expect(errOutcome.kind).toBe("error");
+    });
+  });
 });
+

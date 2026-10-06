@@ -8,6 +8,9 @@ import type {
   ServerErrorResponse,
   UserDto,
   VersionDto,
+  VersionGetResponse,
+  VersionListResponse,
+  VersionSummaryDto,
 } from "./types.js";
 
 export function isRecord(val: unknown): val is Record<string, unknown> {
@@ -98,3 +101,26 @@ export function isServerErrorResponse(val: unknown): val is ServerErrorResponse 
   }
   return true;
 }
+
+export function isVersionSummaryDto(val: unknown): val is VersionSummaryDto {
+  if (!isRecord(val)) return false;
+  return (
+    typeof val.versionNumber === "number" &&
+    Number.isInteger(val.versionNumber) &&
+    typeof val.schemaVersion === "number" &&
+    Number.isInteger(val.schemaVersion) &&
+    typeof val.createdAt === "string" &&
+    typeof val.createdByMe === "boolean"
+  );
+}
+
+export function isVersionListResponse(val: unknown): val is VersionListResponse {
+  if (!isRecord(val)) return false;
+  return Array.isArray(val.versions) && val.versions.every(isVersionSummaryDto);
+}
+
+export function isVersionGetResponse(val: unknown): val is VersionGetResponse {
+  if (!isRecord(val)) return false;
+  return isVersionDto(val.version) && "document" in val;
+}
+

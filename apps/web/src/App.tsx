@@ -42,6 +42,7 @@ import {
 } from "./persistence/index.js";
 import {
   createCleanMarker,
+  isHistoryEnabled,
   isMarkerDirty,
   type CleanMarker,
 } from "./cloud/state.js";
@@ -51,6 +52,7 @@ import { AuthDialog } from "./components/AuthDialog.js";
 import { ConflictDialog } from "./components/ConflictDialog.js";
 import { CloudOpenDialog } from "./components/CloudOpenDialog.js";
 import { SaveNotFoundDialog } from "./components/SaveNotFoundDialog.js";
+import { HistoryDialog } from "./components/HistoryDialog.js";
 
 import {
   StoryNode,
@@ -335,24 +337,37 @@ function MainStudio() {
   });
 
   /**
-   * ONE unified project replacement function in App.tsx.
-   * Called by local file Open, New, Reset sample, Cloud Open, and Conflict "Load latest".
-   * Increments loadCounter, updates clean marker, clears selection, and bumps cloud generation.
+   * Core project load helper in App.tsx.
+   * Shared between full project replacement (replaceActiveProject) and
+   * working copy version restore (restoreWorkingCopy).
    */
+  const loadProjectIntoEditor = useCallback((projectToLoad: Project) => {
+    setEditorState(createEditor(projectToLoad));
+    setLoadCounter((c) => c + 1);
+    setSelected(null);
+    setSelectedIssue(null);
+  }, []);
+
   const replaceActiveProject = useCallback(
     (nextProject: Project, nextBinding: ProjectBinding | null) => {
-      setEditorState(createEditor(nextProject));
+      loadProjectIntoEditor(nextProject);
       setSavedMarker(createCleanMarker(nextProject));
-      setLoadCounter((c) => c + 1);
-      setSelected(null);
-      setSelectedIssue(null);
       cloud.dispatch({
         type: "replaceProject",
         source: nextBinding ? "cloud" : "local",
         binding: nextBinding,
       });
     },
-    [cloud],
+    [loadProjectIntoEditor, cloud],
+  );
+
+  const restoreWorkingCopy = useCallback(
+    (restoredProject: Project) => {
+      loadProjectIntoEditor(restoredProject);
+      // clean marker untouched: restored copy is marked dirty against remote baseVersion
+      cloud.dispatch({ type: "versionRestored" });
+    },
+    [loadProjectIntoEditor, cloud],
   );
 
   const dispatch = useCallback((action: EditorAction): boolean => {
@@ -606,6 +621,17 @@ function MainStudio() {
         onSave={handleSave}
         onSaveCloud={() => void cloud.saveToCloud(project)}
         onOpenCloud={() => cloud.setCloudOpenDialogOpen(true)}
+        onOpenHistory={() => cloud.setHistoryDialogOpen(true)}
+        isHistoryEnabled={isHistoryEnabled(cloud.state)}
+        historyTitle={
+          cloud.state.auth.kind !== "signedIn"
+            ? "Sign in to access version history"
+            : !cloud.state.binding
+              ? "Save project to cloud to view version history"
+              : cloud.state.operation.kind !== "idle"
+                ? "Operation in progress"
+                : "View project version history"
+        }
         onSignIn={() => cloud.setAuthDialogOpen(true)}
         onSignOut={() => void cloud.handleSignOut()}
         onAddNode={handleAddNode}
@@ -670,9 +696,23 @@ function MainStudio() {
 
       <SaveNotFoundDialog
         isOpen={cloud.state.operation.kind === "notFound"}
+        context={cloud.notFoundContext}
         onSaveAsNew={() => cloud.handleSaveAsNew(project)}
         onCancel={() => cloud.dispatch({ type: "dismissOperation" })}
       />
+
+      {cloud.state.binding && (
+        <HistoryDialog
+          isOpen={cloud.historyDialogOpen}
+          onClose={() => cloud.setHistoryDialogOpen(false)}
+          baseVersion={cloud.state.binding.baseVersion}
+          isDirty={dirty}
+          onListVersions={cloud.listVersions}
+          onFetchVersion={cloud.fetchVersion}
+          onRestore={restoreWorkingCopy}
+          onDownload={downloadProjectAsFile}
+        />
+      )}
 
       <main className="app-main">
         <StoryCanvas

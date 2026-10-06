@@ -4,12 +4,14 @@ export interface SaveNotFoundDialogProps {
   isOpen: boolean;
   onSaveAsNew: () => void;
   onCancel: () => void;
+  context?: "save" | "history";
 }
 
 export const SaveNotFoundDialog: React.FC<SaveNotFoundDialogProps> = ({
   isOpen,
   onSaveAsNew,
   onCancel,
+  context = "save",
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -46,8 +48,9 @@ export const SaveNotFoundDialog: React.FC<SaveNotFoundDialogProps> = ({
         </h2>
 
         <p className="dialog-description">
-          The cloud project this document was linked to no longer exists (it may have been deleted from another browser session).
-          Would you like to save it as a new cloud project?
+          {context === "history"
+            ? "The cloud project this document was linked to no longer exists (it may have been deleted from another browser session). You can save your current local work as a new cloud project."
+            : "The cloud project this document was linked to no longer exists (it may have been deleted from another browser session). Would you like to save it as a new cloud project?"}
         </p>
 
         <div className="dialog-actions">

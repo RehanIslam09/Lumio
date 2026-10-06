@@ -222,7 +222,89 @@ describe("ApiClient", () => {
       expect(capturedUrl).toBe("http://localhost:3001/api/projects/p1");
       expect(capturedInit?.method).toBe("DELETE");
     });
+
+    it("GET /api/projects/:id/versions with URL encoding", async () => {
+      let capturedUrl = "";
+      let capturedInit: RequestInit | undefined;
+      const mockFetch = createMockFetch(async (url, init) => {
+        capturedUrl = String(url);
+        capturedInit = init;
+        return jsonResponse({
+          versions: [
+            {
+              versionNumber: 2,
+              schemaVersion: 1,
+              createdAt: "2026-10-06T10:00:00.000Z",
+              createdByMe: true,
+            },
+          ],
+        });
+      });
+
+      const client = createApiClient({ baseUrl, fetch: mockFetch });
+      const res = await client.listVersions("p/special id");
+
+      expect(res.ok).toBe(true);
+      expect(capturedUrl).toBe("http://localhost:3001/api/projects/p%2Fspecial%20id/versions");
+      expect(capturedInit?.method).toBe("GET");
+      expect(capturedInit?.credentials).toBe("include");
+      if (res.ok) {
+        expect(res.data.versions).toHaveLength(1);
+        expect(res.data.versions[0]?.versionNumber).toBe(2);
+      }
+    });
+
+    it("GET /api/projects/:id/versions/:n with URL encoding", async () => {
+      let capturedUrl = "";
+      let capturedInit: RequestInit | undefined;
+      const mockFetch = createMockFetch(async (url, init) => {
+        capturedUrl = String(url);
+        capturedInit = init;
+        return jsonResponse({
+          version: {
+            versionNumber: 3,
+            schemaVersion: 1,
+            createdAt: "2026-10-06T10:00:00.000Z",
+          },
+          document: { id: "p1", name: "Versioned Doc", nodes: [], edges: [], variables: [] },
+        });
+      });
+
+      const client = createApiClient({ baseUrl, fetch: mockFetch });
+      const res = await client.getVersion("p/special id", 3);
+
+      expect(res.ok).toBe(true);
+      expect(capturedUrl).toBe("http://localhost:3001/api/projects/p%2Fspecial%20id/versions/3");
+      expect(capturedInit?.method).toBe("GET");
+      expect(capturedInit?.credentials).toBe("include");
+      if (res.ok) {
+        expect(res.data.version.versionNumber).toBe(3);
+        expect(res.data.document).toBeDefined();
+      }
+    });
+
+    it("getVersion rejects invalid or non-integer versionNumber without network request", async () => {
+      let fetchCalled = false;
+      const mockFetch = createMockFetch(async () => {
+        fetchCalled = true;
+        return jsonResponse({});
+      });
+
+      const client = createApiClient({ baseUrl, fetch: mockFetch });
+      const res1 = await client.getVersion("p1", 0);
+      const res2 = await client.getVersion("p1", -5);
+      const res3 = await client.getVersion("p1", 1.5);
+      const res4 = await client.getVersion("p1", NaN);
+
+      expect(fetchCalled).toBe(false);
+      expect(res1.ok).toBe(false);
+      expect(res2.ok).toBe(false);
+      expect(res3.ok).toBe(false);
+      expect(res4.ok).toBe(false);
+      if (!res1.ok) expect(res1.kind).toBe("malformed");
+    });
   });
+
 
   describe("Error classes and status handling", () => {
     it("handles network rejection without throwing", async () => {

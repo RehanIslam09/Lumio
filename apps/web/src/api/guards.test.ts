@@ -6,6 +6,9 @@ import {
   isProjectGetResponse,
   isServerErrorResponse,
   isUserDto,
+  isVersionSummaryDto,
+  isVersionListResponse,
+  isVersionGetResponse,
 } from "./guards.js";
 
 describe("api runtime guards", () => {
@@ -159,4 +162,119 @@ describe("api runtime guards", () => {
       expect(isServerErrorResponse({ error: { message: "msg" } })).toBe(false);
     });
   });
+
+  describe("isVersionSummaryDto", () => {
+    const validSummary = {
+      versionNumber: 2,
+      schemaVersion: 1,
+      createdAt: "2026-10-06T10:00:00.000Z",
+      createdByMe: true,
+    };
+
+    it("accepts valid version summary and allows extra keys", () => {
+      expect(isVersionSummaryDto(validSummary)).toBe(true);
+      expect(isVersionSummaryDto({ ...validSummary, createdByMe: false })).toBe(true);
+      expect(isVersionSummaryDto({ ...validSummary, extraProp: "ignored" })).toBe(true);
+    });
+
+    it("rejects non-objects, null, undefined, arrays", () => {
+      expect(isVersionSummaryDto(null)).toBe(false);
+      expect(isVersionSummaryDto(undefined)).toBe(false);
+      expect(isVersionSummaryDto(42)).toBe(false);
+      expect(isVersionSummaryDto("string")).toBe(false);
+      expect(isVersionSummaryDto([])).toBe(false);
+      expect(isVersionSummaryDto({})).toBe(false);
+    });
+
+    it("rejects missing fields", () => {
+      expect(
+        isVersionSummaryDto({
+          schemaVersion: 1,
+          createdAt: "2026-10-06T10:00:00.000Z",
+          createdByMe: true,
+        }),
+      ).toBe(false);
+      expect(
+        isVersionSummaryDto({
+          versionNumber: 2,
+          createdAt: "2026-10-06T10:00:00.000Z",
+          createdByMe: true,
+        }),
+      ).toBe(false);
+      expect(
+        isVersionSummaryDto({
+          versionNumber: 2,
+          schemaVersion: 1,
+          createdByMe: true,
+        }),
+      ).toBe(false);
+      expect(
+        isVersionSummaryDto({
+          versionNumber: 2,
+          schemaVersion: 1,
+          createdAt: "2026-10-06T10:00:00.000Z",
+        }),
+      ).toBe(false);
+    });
+
+    it("rejects wrong types, including createdByMe not a real boolean", () => {
+      expect(isVersionSummaryDto({ ...validSummary, versionNumber: "2" })).toBe(false);
+      expect(isVersionSummaryDto({ ...validSummary, schemaVersion: "1" })).toBe(false);
+      expect(isVersionSummaryDto({ ...validSummary, createdAt: 123456 })).toBe(false);
+      expect(isVersionSummaryDto({ ...validSummary, createdByMe: "true" })).toBe(false);
+      expect(isVersionSummaryDto({ ...validSummary, createdByMe: 1 })).toBe(false);
+      expect(isVersionSummaryDto({ ...validSummary, createdByMe: null })).toBe(false);
+      expect(isVersionSummaryDto({ ...validSummary, createdByMe: undefined })).toBe(false);
+    });
+  });
+
+  describe("isVersionListResponse", () => {
+    const validSummary = {
+      versionNumber: 1,
+      schemaVersion: 1,
+      createdAt: "2026-10-06T10:00:00.000Z",
+      createdByMe: true,
+    };
+
+    it("accepts empty and populated versions arrays, allows extra keys", () => {
+      expect(isVersionListResponse({ versions: [] })).toBe(true);
+      expect(isVersionListResponse({ versions: [validSummary] })).toBe(true);
+      expect(isVersionListResponse({ versions: [validSummary], extra: 123 })).toBe(true);
+    });
+
+    it("rejects non-objects, null, undefined, wrong types, missing versions", () => {
+      expect(isVersionListResponse(null)).toBe(false);
+      expect(isVersionListResponse(undefined)).toBe(false);
+      expect(isVersionListResponse([])).toBe(false);
+      expect(isVersionListResponse({})).toBe(false);
+      expect(isVersionListResponse({ versions: "not-an-array" })).toBe(false);
+      expect(isVersionListResponse({ versions: null })).toBe(false);
+      expect(isVersionListResponse({ versions: [{ versionNumber: 1 }] })).toBe(false);
+    });
+  });
+
+  describe("isVersionGetResponse", () => {
+    const validEnvelope = {
+      version: sampleVersion,
+      document: { anyDocumentField: true },
+    };
+
+    it("accepts valid envelope and verifies envelope-only check for document", () => {
+      expect(isVersionGetResponse(validEnvelope)).toBe(true);
+      expect(isVersionGetResponse({ version: sampleVersion, document: null })).toBe(true);
+      expect(isVersionGetResponse({ version: sampleVersion, document: "raw-string" })).toBe(true);
+      expect(isVersionGetResponse({ version: sampleVersion, document: {}, extra: true })).toBe(true);
+    });
+
+    it("rejects non-objects, null, missing version, invalid version, or missing document", () => {
+      expect(isVersionGetResponse(null)).toBe(false);
+      expect(isVersionGetResponse(undefined)).toBe(false);
+      expect(isVersionGetResponse([])).toBe(false);
+      expect(isVersionGetResponse({})).toBe(false);
+      expect(isVersionGetResponse({ version: sampleVersion })).toBe(false);
+      expect(isVersionGetResponse({ document: {} })).toBe(false);
+      expect(isVersionGetResponse({ version: { versionNumber: "bad" }, document: {} })).toBe(false);
+    });
+  });
 });
+

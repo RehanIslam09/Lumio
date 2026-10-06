@@ -4,6 +4,7 @@ import {
   cloudReducer,
   initialCloudState,
   isMarkerDirty,
+  isHistoryEnabled,
   computeNextCleanMarker,
   createUnboundMarker,
   type CloudState,
@@ -256,4 +257,209 @@ describe("cloud state reducer and clean marker", () => {
       expect(isMarkerDirty(inFlightEdit, marker)).toBe(true);
     });
   });
+
+  describe("Version history state transitions and invariants", () => {
+    it("versionRestored sets operation back to idle, bumps generation, keeps binding baseVersion UNCHANGED", () => {
+      const stateBefore: CloudState = {
+        auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+        binding: { projectId: "p-123", baseVersion: 3, name: "Project Name" },
+        operation: { kind: "pending", op: "fetchVersion" },
+        generation: 5,
+      };
+
+      const stateAfter = cloudReducer(stateBefore, { type: "versionRestored" });
+
+      expect(stateAfter.operation).toEqual({ kind: "idle" });
+      expect(stateAfter.generation).toBe(6);
+      expect(stateAfter.binding).toBe(stateBefore.binding);
+      expect(stateAfter.binding?.baseVersion).toBe(3);
+    });
+
+    it("ignores every other trigger while listVersions or fetchVersion is pending", () => {
+      const listState = cloudReducer(initialCloudState, {
+        type: "startOperation",
+        op: "listVersions",
+      });
+      expect(listState.operation).toEqual({ kind: "pending", op: "listVersions" });
+
+      const stateAttempt1 = cloudReducer(listState, { type: "startOperation", op: "save" });
+      expect(stateAttempt1.operation).toEqual({ kind: "pending", op: "listVersions" });
+
+      const fetchState = cloudReducer(initialCloudState, {
+        type: "startOperation",
+        op: "fetchVersion",
+      });
+      expect(fetchState.operation).toEqual({ kind: "pending", op: "fetchVersion" });
+
+      const stateAttempt2 = cloudReducer(fetchState, { type: "startOperation", op: "open" });
+      expect(stateAttempt2.operation).toEqual({ kind: "pending", op: "fetchVersion" });
+    });
+
+    it("drops stale generation results and changes nothing", () => {
+      const state: CloudState = {
+        ...initialCloudState,
+        binding: initialBinding,
+        generation: 4,
+        operation: { kind: "pending", op: "listVersions" },
+      };
+
+      const res1 = cloudReducer(state, {
+        type: "saveSucceeded",
+        binding: { projectId: "stale", baseVersion: 99, name: "stale" },
+        generation: 3,
+      });
+      expect(res1).toBe(state);
+
+      const res2 = cloudReducer(state, {
+        type: "operationFailed",
+        message: "Stale error",
+        generation: 2,
+      });
+      expect(res2).toBe(state);
+
+      const res3 = cloudReducer(state, {
+        type: "saveNotFound",
+        generation: 1,
+      });
+      expect(res3).toBe(state);
+    });
+  });
+
+  describe("isHistoryEnabled predicate table test", () => {
+    interface TestCase {
+      name: string;
+      state: CloudState;
+      expected: boolean;
+    }
+
+    const cases: TestCase[] = [
+      {
+        name: "anonymous, unbound, idle -> false",
+        state: {
+          auth: { kind: "anonymous" },
+          binding: null,
+          operation: { kind: "idle" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "anonymous, bound, idle -> false",
+        state: {
+          auth: { kind: "anonymous" },
+          binding: initialBinding,
+          operation: { kind: "idle" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, unbound, idle -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: null,
+          operation: { kind: "idle" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, bound, idle -> true",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "idle" },
+          generation: 1,
+        },
+        expected: true,
+      },
+      {
+        name: "signedIn, bound, pending save -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "pending", op: "save" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, bound, pending listVersions -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "pending", op: "listVersions" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, bound, pending fetchVersion -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "pending", op: "fetchVersion" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, bound, conflict -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "conflict", currentVersion: 2, snapshot: sampleProject1 },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, bound, notFound -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "notFound" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "signedIn, bound, failed -> false",
+        state: {
+          auth: { kind: "signedIn", user: { id: "u-1", email: "a@b.com" } },
+          binding: initialBinding,
+          operation: { kind: "failed", message: "Boom" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "offline, bound, idle -> false",
+        state: {
+          auth: { kind: "offline" },
+          binding: initialBinding,
+          operation: { kind: "idle" },
+          generation: 1,
+        },
+        expected: false,
+      },
+      {
+        name: "unknown auth, bound, idle -> false",
+        state: {
+          auth: { kind: "unknown" },
+          binding: initialBinding,
+          operation: { kind: "idle" },
+          generation: 1,
+        },
+        expected: false,
+      },
+    ];
+
+    for (const tc of cases) {
+      it(tc.name, () => {
+        expect(isHistoryEnabled(tc.state)).toBe(tc.expected);
+      });
+    }
+  });
 });
+

@@ -24,6 +24,60 @@
 
 ## Entries
 
+### W-026 | 2026-10-06 | Version history UI: dialog, list/restore/download, and generation-ref guards
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add version history dialog, restore, download, and generation-ref guards`
+- **Goal:** Implement Version History dialog in apps/web: fetch version history list, restore version as a working copy (dirty against baseVersion), download version as JSON file, format timestamps, and fix generation guards across useCloud async callbacks using a synchronized generationRef.
+- **Files changed:**
+  - `apps/web/src/api/types.ts`: added `VersionSummaryDto`, `VersionListResponse`, and `VersionGetResponse` interfaces.
+  - `apps/web/src/api/guards.ts`: implemented runtime guards `isVersionSummaryDto`, `isVersionListResponse`, and `isVersionGetResponse` (envelope-only validation for document).
+  - `apps/web/src/api/guards.test.ts`: 8 new unit tests covering valid DTOs, wrong types, missing fields, arrays, null, extra keys, boolean check on `createdByMe`, and envelope-only document check.
+  - `apps/web/src/api/client.ts`: added `listVersions(projectId)` and `getVersion(projectId, versionNumber)` client methods.
+  - `apps/web/src/api/client.test.ts`: 3 new unit tests for `listVersions` and `getVersion` (200, 401, 404, network error, retry-after).
+  - `apps/web/src/cloud/types.ts`: added `ListVersionsOutcome` and `FetchVersionOutcome` type unions.
+  - `apps/web/src/cloud/outcomes.ts`: implemented pure controllers `runCloudListVersions` and `runCloudFetchVersion`.
+  - `apps/web/src/cloud/outcomes.test.ts`: 12 new unit tests for `runCloudListVersions` and `runCloudFetchVersion` (success, auth, 404, validation errors).
+  - `apps/web/src/cloud/state.ts`: added `listVersions` and `fetchVersion` to `OperationKind`, added `{ type: "versionRestored" }` action, bumped generation on restore, and exported pure `isHistoryEnabled(state)`.
+  - `apps/web/src/cloud/state.test.ts`: 13 new unit tests for `versionRestored` transition, operation pending exclusion, stale generation dropping, and 12-case table test for `isHistoryEnabled`.
+  - `apps/web/src/hooks/useCloud.ts`: implemented `generationRef = useRef(state.generation)` guard across all post-await side effects (`saveToCloud`, `resolveConflictKeepMine`, `resolveConflictLoadLatest`, `openFromCloud`, `handleSignOut`, `listVersions`, `fetchVersion`); exposed `listVersions`, `fetchVersion`, `historyDialogOpen`, `setHistoryDialogOpen`, and `notFoundContext`.
+  - `apps/web/src/lib/formatDate.ts`: extracted `formatProjectDate` pure date formatting helper.
+  - `apps/web/src/lib/formatDate.test.ts`: 2 unit tests for `formatProjectDate` (valid ISO string, invalid date string fallback).
+  - `apps/web/src/components/SaveNotFoundDialog.tsx`: added `context?: "save" | "history"` prop with tailored descriptive copy.
+  - `apps/web/src/components/CloudOpenDialog.tsx`: updated to use shared `formatProjectDate`.
+  - `apps/web/src/components/HistoryDialog.tsx`: modal dialog with version list, creation dates, author chips ("You"/"Other"), status markers ("Synced" on `baseVersion`, "Latest"), schema compatibility check, Restore and Download buttons.
+  - `apps/web/src/components/FileActions.tsx`: added History button with `isHistoryEnabled`, `historyTitle`, `onOpenHistory`.
+  - `apps/web/src/components/Toolbar.tsx`: wired History button props.
+  - `apps/web/src/App.tsx`: extracted shared `loadProjectIntoEditor`, implemented `restoreWorkingCopy` (dirty working copy restore), wired `HistoryDialog` and `SaveNotFoundDialog` with `notFoundContext`.
+  - `apps/web/src/index.css`: styles for `HistoryDialog`, version list rows, chips, and metadata.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 10 Persistence with Version History UI details, restore semantics, generation-ref pattern, and limits.
+  - `docs/context/work-archive.md`: archived full entry W-018 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-026, rotated W-018 to older work, maintained 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/api/types.ts`: `VersionSummaryDto`, `VersionListResponse`, `VersionGetResponse`
+  - `apps/web/src/api/guards.ts`: `isVersionSummaryDto(value: unknown): value is VersionSummaryDto`, `isVersionListResponse(value: unknown): value is VersionListResponse`, `isVersionGetResponse(value: unknown): value is VersionGetResponse`
+  - `apps/web/src/api/client.ts`: `listVersions(projectId: string): Promise<ApiResult<VersionListResponse>>`, `getVersion(projectId: string, versionNumber: number): Promise<ApiResult<VersionGetResponse>>`
+  - `apps/web/src/cloud/types.ts`: `ListVersionsOutcome`, `FetchVersionOutcome`
+  - `apps/web/src/cloud/outcomes.ts`: `runCloudListVersions`, `runCloudFetchVersion`
+  - `apps/web/src/cloud/state.ts`: `isHistoryEnabled(state: CloudState): boolean`
+  - `apps/web/src/lib/formatDate.ts`: `formatProjectDate(isoString: string): string`
+- **Decisions and why:**
+  - Restore semantics: restoring a version replaces the working copy in the editor and clears undo/redo history, but deliberately keeps `binding.baseVersion` unchanged and leaves the clean baseline marker untouched (or unbound). Because `validateProjectDocument` returns a fresh object in memory, reference comparison `isMarkerDirty` immediately evaluates to true, presenting the "Unsaved changes" badge and protecting users from unintentionally overwriting the cloud without a conscious Save.
+  - Generation-ref pattern: fixed lexical closure race in `useCloud.ts` callbacks where `currentGen === state.generation` compared closed-over state with itself. Kept `generationRef = useRef(state.generation)` updated via `useEffect` and guarded every post-await branch across all async cloud methods with `if (currentGen !== generationRef.current) return;`.
+  - Single project loading helper: in `App.tsx`, unified `replaceActiveProject` and `restoreWorkingCopy` over `loadProjectIntoEditor(validatedProject, { resetHistory: true })`, preventing duplicate editor initialization logic.
+  - Reused 404 dialog: reused `SaveNotFoundDialog` by adding an optional `context?: "save" | "history"` prop to toggle the explanation text between save ("Would you like to save it as a new cloud project?") and history ("You can save your current local work as a new cloud project."), keeping dialog logic unified.
+  - 401 unauthenticated handling: when a 401 occurs while `HistoryDialog` is open, `HistoryDialog` closes immediately before transitioning cloud auth to anonymous and popping `AuthDialog`, ensuring modals never stack or trap focus.
+- **Assumptions / UNVERIFIED:**
+  - Visual layout and dialog interactions in physical browser are UNVERIFIED until manual browser verification.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 4 packages; 550 total tests passing: 81 dsl, 59 checker, 266 web, 144 server in 17.584s).
+  - `pnpm --filter @repo/web build` -> pass (built in 363ms; JS bundle size 591.38 kB gzip 176.44 kB; CSS 38.78 kB gzip 6.93 kB; delta +9.20 kB JS, +1.80 kB CSS).
+- **Known issues / debt:**
+  - No visual diff viewer for versions.
+  - Versions cannot be named or tagged with custom commit messages.
+  - Version history is capped at newest 200 versions returned by server.
+- **Next steps:**
+  - Manual browser test verification.
+
 ### W-025 | 2026-10-06 | Benchmark story generator, scale measurements, and defect injection
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add benchmark story generator, defect injection, and scale measurements`
@@ -403,53 +457,8 @@
 - **Next steps:**
   - Integrate Drizzle ORM and PostgreSQL migrations in subsequent task.
 
-### W-018 | 2026-10-05 | Readable initial viewport camera and Go to start control
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): readable initial viewport camera on load and Go to start control`
-- **Goal:** Provide a readable first view on load by focusing the first start node at 85% zoom for graphs that would fit at <60% zoom, while retaining fit-view for small graphs and as an overview button; add "Go to start" button to Controls.
-- **Files changed:**
-  - `apps/web/src/lib/initialViewport.ts`: created pure module with named constants (`READABLE_ZOOM = 0.85`, `FIT_READABLE_THRESHOLD = 0.6`, `FIT_MAX_ZOOM = 1`, `VIEW_PADDING = 48`, `MIN_ZOOM = 0.1`, `MAX_ZOOM = 2`, `PAN_DURATION = 400`), `computeInitialViewport`, and `shouldApplyInitialViewport`.
-  - `apps/web/src/lib/initialViewport.test.ts`: created test-first unit tests (17 tests) and fast-check property tests (2 tests) verifying empty project, invalid canvases, small graph fit, large graph start focus, explicit positions, determinism, and property invariants.
-  - `apps/web/src/hooks/useInitialViewport.ts`: created custom camera hook with two separate primitive `useStore` selectors (`width`, `height`), latest-ref synchronization for project and positions, `loadCounter` single-application camera effect, 1000ms safety net timeout, and animated `goToStart` handler.
-  - `apps/web/src/App.tsx`: wired `loadCounter` state (starts at 1; batched increments on Open, New, and Reset sample); replaced `fitView` boolean with `useInitialViewport`; added "Go to start" `ControlButton` with flag icon; set canvas visibility to hidden until initial camera is applied.
-  - `apps/web/src/index.css`: added stroke styles matching text-secondary and text-primary on `.canvas-controls button`.
-  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 7 UI with initial camera opening rules, constants, lifecycle, and controls.
-  - `docs/context/work-archive.md`: archived full entry W-010 per R7.4 rolling 8-entry cap.
-  - `docs/context/recent-work.md`: recorded entry W-018 at top of Entries, rotated W-010 to older work.
-- **New/changed public APIs:**
-  - `apps/web/src/lib/initialViewport.ts`:
-    - `READABLE_ZOOM: 0.85`, `FIT_READABLE_THRESHOLD: 0.6`, `FIT_MAX_ZOOM: 1`, `VIEW_PADDING: 48`, `MIN_ZOOM: 0.1`, `MAX_ZOOM: 2`, `PAN_DURATION: 400`
-    - `type ViewportMode = 'fit' | 'start'`
-    - `type InitialViewport = { x: number; y: number; zoom: number; mode: ViewportMode; }`
-    - `type InitialViewportInput = { project: Project; positions: ReadonlyMap<string, { x: number; y: number }>; canvas: { width: number; height: number }; minZoom: number; maxZoom: number; }`
-    - `computeInitialViewport(input: InitialViewportInput): InitialViewport`
-    - `shouldApplyInitialViewport(input: { loadCounter: number; lastApplied: number; width: number; height: number; }): boolean`
-  - `apps/web/src/hooks/useInitialViewport.ts`:
-    - `useInitialViewport(params: UseInitialViewportParams): UseInitialViewportResult`
-- **Decisions and why:**
-  - Canvas measurement reads width and height using two separate primitive selectors (`useStore(s => s.width)` and `useStore(s => s.height)`) without creating fresh selector objects or importing extra shallow helpers (Clarification 1).
-  - Used latest-value ref pattern (`latestRef`) for `project` and `positions` inside `useInitialViewport` so camera effect depends solely on `[loadCounter, width, height, setViewport]`, avoiding camera jumps on node edits, drags, undo, or issue clicks (Clarification 4).
-  - Batched `loadCounter` increments in the exact same event handlers as `setEditorState` and `setSavedPresent` on Open, New, and Reset sample (Clarification 4).
-  - Hid canvas wrapper with `visibility: hidden` (NOT `display: none`) until first viewport is applied at duration 0, with a 1000ms safety net timeout to ensure the canvas reveals even if resize measurement is delayed (Clarification 3).
-  - Extracted single source of truth zoom constants `MIN_ZOOM = 0.1` and `MAX_ZOOM = 2` into `initialViewport.ts` shared across ReactFlow props and viewport math (Clarification 5).
-  - Removed `fitView` boolean prop while preserving `fitViewOptions={{ padding: 0.08, minZoom: MIN_ZOOM }}`; verified in installed `@xyflow/react` source that the Controls fit button calls `fitView(fitViewOptions)` and does not rely on the `fitView` boolean prop (Clarification 6).
-- **Assumptions / UNVERIFIED:**
-  - Visual readability of 0.85 zoom on physical user screens is UNVERIFIED until screenshot confirmation.
-  - Absence of visual flash during first paint with `visibility: hidden` is UNVERIFIED until manual browser verification.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (11/11 tasks successful across 4 packages; 284 total tests passing: 81 dsl, 59 checker, 144 web).
-    - Tasks: 11 successful, 11 total. Time: 8.377s.
-    - Slowest tests: Property T2 in dsl (2795ms), Property C1 in checker (2856ms), Property U2 in checker (2049ms), Property listConnections in web (1540ms), Property 1 in web initialViewport (61ms), F1 in web (72ms), E1 in web (68ms).
-  - `pnpm --filter @repo/web build` -> pass (built production bundle in 223ms, 0 errors).
-- **Known issues / debt:**
-  - The constants (READABLE_ZOOM = 0.85, FIT_READABLE_THRESHOLD = 0.6, VIEW_PADDING = 48) are estimates tuned by eye.
-  - The focus node is the first start node only (no multi-start handling beyond first in project.nodes order).
-  - No camera persistence across reloads (resets to initial camera on fresh load).
-  - The first view does not account for the issues panel being resized.
-- **Next steps:**
-  - User to execute manual test script and commit changes manually.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-018 | 2026-10-05 | Readable initial viewport camera and Go to start control
 - W-017 | 2026-10-04 | Orphan grid layout below main flow and extended F1 persistence property coverage
 - W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
 - W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation

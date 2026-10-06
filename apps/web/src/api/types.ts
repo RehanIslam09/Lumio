@@ -25,6 +25,23 @@ export interface VersionDto {
   createdAt: string;
 }
 
+export interface VersionSummaryDto {
+  versionNumber: number;
+  schemaVersion: number;
+  createdAt: string;
+  createdByMe: boolean;
+}
+
+export interface VersionListResponse {
+  versions: VersionSummaryDto[];
+}
+
+export interface VersionGetResponse {
+  version: VersionDto;
+  document: unknown;
+}
+
+
 /**
  * Server POST /api/projects and PUT /api/projects/:id return { project, version }
  * WITHOUT document.

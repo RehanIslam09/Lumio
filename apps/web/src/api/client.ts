@@ -5,6 +5,8 @@ import {
   isProjectListResponse,
   isProjectSaveResponse,
   isServerErrorResponse,
+  isVersionGetResponse,
+  isVersionListResponse,
 } from "./guards.js";
 import type {
   ApiResult,
@@ -13,6 +15,8 @@ import type {
   ProjectListResponse,
   ProjectSaveResponse,
   ServerErrorDetail,
+  VersionGetResponse,
+  VersionListResponse,
 } from "./types.js";
 
 export interface ApiClientOptions {
@@ -285,6 +289,32 @@ export function createApiClient(options: ApiClientOptions) {
       return request({
         path: `api/projects/${encodeURIComponent(id)}`,
         method: "DELETE",
+      });
+    },
+
+    async listVersions(projectId: string): Promise<ApiResult<VersionListResponse>> {
+      return request({
+        path: `api/projects/${encodeURIComponent(projectId)}/versions`,
+        method: "GET",
+        guard: isVersionListResponse,
+      });
+    },
+
+    async getVersion(
+      projectId: string,
+      versionNumber: number,
+    ): Promise<ApiResult<VersionGetResponse>> {
+      if (!Number.isInteger(versionNumber) || versionNumber < 1) {
+        return {
+          ok: false,
+          kind: "malformed",
+          message: "Invalid version number",
+        };
+      }
+      return request({
+        path: `api/projects/${encodeURIComponent(projectId)}/versions/${versionNumber}`,
+        method: "GET",
+        guard: isVersionGetResponse,
       });
     },
   };

@@ -6,6 +6,9 @@ interface FileActionsProps {
   onSave: () => void;
   onSaveCloud: () => void;
   onOpenCloud: () => void;
+  onOpenHistory?: () => void;
+  isHistoryEnabled?: boolean;
+  historyTitle?: string;
   disabled?: boolean;
 }
 
@@ -15,6 +18,9 @@ export const FileActions: React.FC<FileActionsProps> = ({
   onSave,
   onSaveCloud,
   onOpenCloud,
+  onOpenHistory,
+  isHistoryEnabled = false,
+  historyTitle,
   disabled = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,6 +98,18 @@ export const FileActions: React.FC<FileActionsProps> = ({
       >
         Open from cloud…
       </button>
+
+      {onOpenHistory && (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onOpenHistory}
+          disabled={!isHistoryEnabled}
+          title={historyTitle || "View version history"}
+        >
+          History
+        </button>
+      )}
     </div>
   );
 };

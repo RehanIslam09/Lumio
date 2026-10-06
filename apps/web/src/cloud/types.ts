@@ -4,6 +4,7 @@ import type {
   ServerErrorDetail,
   UserDto,
   VersionDto,
+  VersionSummaryDto,
 } from "../api/types.js";
 
 export interface ProjectBinding {
@@ -30,6 +31,24 @@ export type SaveOutcome =
 export type ListOutcome =
   | { kind: "listed"; projects: ProjectSummaryDto[] }
   | { kind: "unauthenticated" }
+  | { kind: "network" }
+  | { kind: "timeout" }
+  | { kind: "error"; message: string };
+
+export type ListVersionsOutcome =
+  | { kind: "listed"; versions: VersionSummaryDto[] }
+  | { kind: "not-found" }
+  | { kind: "unauthenticated" }
+  | { kind: "network" }
+  | { kind: "timeout" }
+  | { kind: "error"; message: string };
+
+export type FetchVersionOutcome =
+  | { kind: "loaded"; version: VersionDto; project: Project; warnings: string[] }
+  | { kind: "not-found" }
+  | { kind: "unauthenticated" }
+  | { kind: "unsupported-schema"; supported?: number }
+  | { kind: "invalid-document"; details: string[] }
   | { kind: "network" }
   | { kind: "timeout" }
   | { kind: "error"; message: string };

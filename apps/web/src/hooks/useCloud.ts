@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useMemo, useCallback, useState } from "react";
+import { useReducer, useEffect, useMemo, useCallback, useState, useRef } from "react";
 import type { Project } from "@repo/schema";
 import { createApiClient, type ApiClient } from "../api/client.js";
 import { getApiBaseUrl } from "../api/config.js";
@@ -6,6 +6,8 @@ import type { UserDto } from "../api/types.js";
 import {
   runAuthLogout,
   runAuthMe,
+  runCloudFetchVersion,
+  runCloudListVersions,
   runCloudOpen,
   runCloudSave,
   runCloudSaveOverwrite,
@@ -16,7 +18,11 @@ import {
   initialCloudState,
   type CleanMarker,
 } from "../cloud/state.js";
-import type { ProjectBinding } from "../cloud/types.js";
+import type {
+  FetchVersionOutcome,
+  ListVersionsOutcome,
+  ProjectBinding,
+} from "../cloud/types.js";
 
 /**
  * ARCHITECTURE NOTE:
@@ -40,6 +46,14 @@ export function useCloud({
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [cloudOpenDialogOpen, setCloudOpenDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [notFoundContext, setNotFoundContext] = useState<"save" | "history">("save");
+
+  // Ref tracking the latest state.generation across async await boundaries
+  const generationRef = useRef(state.generation);
+  useEffect(() => {
+    generationRef.current = state.generation;
+  }, [state.generation]);
 
   const client: ApiClient = useMemo(() => {
     return createApiClient({ baseUrl: getApiBaseUrl() });
@@ -90,6 +104,8 @@ export function useCloud({
         schemaVersion: 1,
       });
 
+      if (currentGen !== generationRef.current) return;
+
       if (outcome.kind === "created") {
         dispatch({
           type: "saveSucceeded",
@@ -122,6 +138,7 @@ export function useCloud({
           generation: currentGen,
         });
       } else if (outcome.kind === "not-found") {
+        setNotFoundContext("save");
         dispatch({ type: "saveNotFound", generation: currentGen });
       } else if (outcome.kind === "unauthenticated") {
         dispatch({ type: "setAuth", auth: { kind: "anonymous" } });
@@ -190,6 +207,8 @@ export function useCloud({
         schemaVersion: 1,
       });
 
+      if (currentGen !== generationRef.current) return;
+
       if (outcome.kind === "saved") {
         dispatch({
           type: "saveSucceeded",
@@ -237,14 +256,14 @@ export function useCloud({
     dispatch({ type: "startOperation", op: "open" });
 
     const outcome = await runCloudOpen({ client, projectId: state.binding.projectId });
+    if (currentGen !== generationRef.current) return;
+
     if (outcome.kind === "loaded") {
-      if (currentGen === state.generation) {
-        onReplaceProject(outcome.project, outcome.binding);
-        if (outcome.warnings.length > 0) {
-          onSetMessage(`Cloud project loaded with warnings:\n${outcome.warnings.join("\n")}`);
-        } else {
-          onSetMessage(`Loaded latest cloud version (v${outcome.binding.baseVersion}).`);
-        }
+      onReplaceProject(outcome.project, outcome.binding);
+      if (outcome.warnings.length > 0) {
+        onSetMessage(`Cloud project loaded with warnings:\n${outcome.warnings.join("\n")}`);
+      } else {
+        onSetMessage(`Loaded latest cloud version (v${outcome.binding.baseVersion}).`);
       }
     } else {
       dispatch({ type: "dismissOperation" });
@@ -261,14 +280,14 @@ export function useCloud({
       dispatch({ type: "startOperation", op: "open" });
 
       const outcome = await runCloudOpen({ client, projectId });
+      if (currentGen !== generationRef.current) return;
+
       if (outcome.kind === "loaded") {
-        if (currentGen === state.generation) {
-          onReplaceProject(outcome.project, outcome.binding);
-          if (outcome.warnings.length > 0) {
-            onSetMessage(`Cloud project loaded with warnings:\n${outcome.warnings.join("\n")}`);
-          } else {
-            onSetMessage(`Opened "${outcome.binding.name}" from cloud (v${outcome.binding.baseVersion}).`);
-          }
+        onReplaceProject(outcome.project, outcome.binding);
+        if (outcome.warnings.length > 0) {
+          onSetMessage(`Cloud project loaded with warnings:\n${outcome.warnings.join("\n")}`);
+        } else {
+          onSetMessage(`Opened "${outcome.binding.name}" from cloud (v${outcome.binding.baseVersion}).`);
         }
       } else if (outcome.kind === "unauthenticated") {
         dispatch({ type: "setAuth", auth: { kind: "anonymous" } });
@@ -288,15 +307,18 @@ export function useCloud({
 
   // 6. Sign in / Register / Sign out handlers
   const handleSignOut = useCallback(async () => {
+    const currentGen = state.generation;
     dispatch({ type: "startOperation", op: "auth" });
     try {
       await runAuthLogout({ client });
     } finally {
-      dispatch({ type: "setAuth", auth: { kind: "anonymous" } });
-      dispatch({ type: "dismissOperation" });
-      onSetMessage("Signed out.");
+      if (currentGen === generationRef.current) {
+        dispatch({ type: "setAuth", auth: { kind: "anonymous" } });
+        dispatch({ type: "dismissOperation" });
+        onSetMessage("Signed out.");
+      }
     }
-  }, [client, onSetMessage]);
+  }, [client, state.generation, onSetMessage]);
 
   const handleAuthSuccess = useCallback(
     (user: UserDto) => {
@@ -329,6 +351,83 @@ export function useCloud({
     [saveToCloud],
   );
 
+  // 7. Version history actions
+  const listVersions = useCallback(async (): Promise<ListVersionsOutcome | null> => {
+    if (!state.binding) return null;
+    const currentGen = state.generation;
+    dispatch({ type: "startOperation", op: "listVersions" });
+
+    const outcome = await runCloudListVersions({
+      client,
+      projectId: state.binding.projectId,
+    });
+
+    if (currentGen !== generationRef.current) return null;
+
+    if (outcome.kind === "unauthenticated") {
+      setHistoryDialogOpen(false);
+      dispatch({ type: "setAuth", auth: { kind: "anonymous" } });
+      dispatch({ type: "dismissOperation" });
+      setAuthNotice("Your session has expired. Sign in again to view version history.");
+      setAuthDialogOpen(true);
+      onSetMessage("Session expired. Please sign in.");
+      return outcome;
+    }
+
+    if (outcome.kind === "not-found") {
+      setHistoryDialogOpen(false);
+      setNotFoundContext("history");
+      dispatch({ type: "saveNotFound", generation: currentGen });
+      return outcome;
+    }
+
+    dispatch({ type: "dismissOperation" });
+    if (outcome.kind === "error") {
+      onSetMessage(outcome.message);
+    }
+    return outcome;
+  }, [client, state.binding, state.generation, onSetMessage]);
+
+  const fetchVersion = useCallback(
+    async (versionNumber: number): Promise<FetchVersionOutcome | null> => {
+      if (!state.binding) return null;
+      const currentGen = state.generation;
+      dispatch({ type: "startOperation", op: "fetchVersion" });
+
+      const outcome = await runCloudFetchVersion({
+        client,
+        projectId: state.binding.projectId,
+        versionNumber,
+      });
+
+      if (currentGen !== generationRef.current) return null;
+
+      if (outcome.kind === "unauthenticated") {
+        setHistoryDialogOpen(false);
+        dispatch({ type: "setAuth", auth: { kind: "anonymous" } });
+        dispatch({ type: "dismissOperation" });
+        setAuthNotice("Your session has expired. Sign in again to access versions.");
+        setAuthDialogOpen(true);
+        onSetMessage("Session expired. Please sign in.");
+        return outcome;
+      }
+
+      if (outcome.kind === "not-found") {
+        setHistoryDialogOpen(false);
+        setNotFoundContext("history");
+        dispatch({ type: "saveNotFound", generation: currentGen });
+        return outcome;
+      }
+
+      dispatch({ type: "dismissOperation" });
+      if (outcome.kind === "error") {
+        onSetMessage(outcome.message);
+      }
+      return outcome;
+    },
+    [client, state.binding, state.generation, onSetMessage],
+  );
+
   return {
     state,
     dispatch,
@@ -338,10 +437,15 @@ export function useCloud({
     authNotice,
     cloudOpenDialogOpen,
     setCloudOpenDialogOpen,
+    historyDialogOpen,
+    setHistoryDialogOpen,
+    notFoundContext,
     saveToCloud,
     resolveConflictKeepMine,
     resolveConflictLoadLatest,
     openFromCloud,
+    listVersions,
+    fetchVersion,
     handleSignOut,
     handleAuthSuccess,
     handleBoundProjectDeleted,

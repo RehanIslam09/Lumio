@@ -77,7 +77,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/useCloud.ts`, `useInitialViewport.ts`), and UI components (`src/components/`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,...}`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -420,7 +420,30 @@ stateDiagram-v2
 - **No browser storage:** Zero usage of `localStorage`, `sessionStorage`, `indexedDB`, or JavaScript-accessible cookies. Authentication is strictly maintained via the server's `httpOnly` session cookie (`lumio_session`).
 - **Cookie and Same-Site:** In development, Vite dev server must be accessed via `http://localhost:5173` (do NOT use `127.0.0.1`, which prevents cookie sharing with API server on `localhost:3001`). Production deployment requires frontend and API backend to share the same site or configure explicit cross-site cookie policies (`SameSite=None; Secure`).
 - **Session Expiry (401):** On 401 response, auth state transitions to `anonymous`, the binding is preserved, and `AuthDialog` opens with notice: "Your session has expired. Sign in again; your work is untouched." Automatic retries are never performed.
-- **Unused Endpoints:** Server `/api/projects/:id/versions` and `/versions/:n` endpoints are currently unused by the web client (version history UI is deferred to future work).
+#### Version History UI `DECIDED`
+- **Endpoints & Types:** Consumes server `GET /api/projects/:id/versions` (`listVersions`) and `GET /api/projects/:id/versions/:n` (`getVersion`). Responses are validated via runtime guards `isVersionListResponse` and `isVersionGetResponse` (envelope-only validation for document, followed by `validateProjectDocument`).
+- **Restore Semantics:**
+  - Restoring a version replaces the working copy in the editor (`setEditorState`) and clears undo/redo past/future.
+  - Leaves `savedMarker` untouched (or unbound) and keeps `binding.baseVersion` unchanged.
+  - Because `validateProjectDocument` creates a fresh object in memory, `isMarkerDirty` (`present !== marker.snapshot`) immediately evaluates to `true`, displaying the "Unsaved changes" toolbar badge.
+  - Restoring does NOT save to cloud automatically; saving afterwards will either create a new cloud version advancing from `binding.baseVersion` or trigger a concurrency conflict if another version was committed in the meantime.
+  - Bumps `generation` counter to drop in-flight asynchronous operations.
+- **Generation-Ref Guard Pattern:**
+  - In `useCloud.ts`, lexical closures in `useCallback` capture `state` at callback definition time; comparing `currentGen === state.generation` after an `await` compares a closed-over lexical value against itself and would always evaluate to true.
+  - Fixed by maintaining `const generationRef = useRef(state.generation)` synchronized via `useEffect` on every render where `state.generation` changes.
+  - All post-await side effects across `saveToCloud`, `resolveConflictKeepMine`, `resolveConflictLoadLatest`, `openFromCloud`, `handleSignOut`, `listVersions`, and `fetchVersion` verify `if (currentGen !== generationRef.current) return;` immediately after the `await` before touching React state or dispatching reducer actions.
+- **History Dialog & Actions:**
+  - `HistoryDialog` opens as a native modal `<dialog>` via `.showModal()`, supporting standard keyboard accessibility (Esc closes, Tab trapped).
+  - Lists up to 200 project versions in descending order, displaying version chip, formatted date via `formatProjectDate`, author marker ("You" / "Other"), schema compatibility check, and status chips ("Synced" on `baseVersion`, "Latest" on highest version number).
+  - **Restore action:** Prompts for confirmation via `window.confirm` if unsaved local changes exist, validates document schema, loads project into editor as a dirty working copy, and closes the history dialog.
+  - **Download action:** Downloads the selected version directly as a local JSON file via `downloadProjectAsFile` and leaves the history dialog open.
+  - **404 Handling:** Reuses `SaveNotFoundDialog` with `context="history"` to inform the user that the remote project was deleted without showing save-as-new action.
+  - **401 Handling:** Closes `HistoryDialog` immediately before switching auth state to anonymous and prompting `AuthDialog` with session expired notice.
+- **Known Limits:**
+  - No visual side-by-side diff viewer.
+  - No version labels or user commit messages.
+  - No deleting individual versions.
+  - Capped at newest 200 versions returned by server endpoint.
 
 ## 11. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).

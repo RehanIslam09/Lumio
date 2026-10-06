@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import type { ApiClient } from "../api/client.js";
 import type { ProjectSummaryDto } from "../api/types.js";
 import { runCloudDelete, runCloudList } from "../cloud/outcomes.js";
+import { formatProjectDate } from "../lib/formatDate.js";
 
 export interface CloudOpenDialogProps {
   isOpen: boolean;
@@ -113,18 +114,6 @@ export const CloudOpenDialog: React.FC<CloudOpenDialogProps> = ({
     }
   };
 
-  const formatDate = (isoString: string): string => {
-    try {
-      const date = new Date(isoString);
-      return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
-    } catch {
-      return isoString;
-    }
-  };
-
   return (
     <dialog
       ref={dialogRef}
@@ -161,7 +150,7 @@ export const CloudOpenDialog: React.FC<CloudOpenDialogProps> = ({
                   <span className="project-name">{p.name}</span>
                   <div className="project-meta">
                     <span className="project-version">v{p.latestVersion}</span>
-                    <span className="project-time">Updated {formatDate(p.updatedAt)}</span>
+                    <span className="project-time">Updated {formatProjectDate(p.updatedAt)}</span>
                   </div>
                 </div>
 

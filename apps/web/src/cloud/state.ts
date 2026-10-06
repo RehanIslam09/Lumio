@@ -14,7 +14,9 @@ export type OperationKind =
   | "open"
   | "delete"
   | "list"
-  | "auth";
+  | "auth"
+  | "listVersions"
+  | "fetchVersion";
 
 export type OperationState =
   | { kind: "idle" }
@@ -60,6 +62,14 @@ export function computeNextCleanMarker(sentSnapshot: Project): CleanMarker {
   return { kind: "clean", snapshot: sentSnapshot };
 }
 
+export function isHistoryEnabled(state: CloudState): boolean {
+  return (
+    state.auth.kind === "signedIn" &&
+    state.binding !== null &&
+    state.operation.kind === "idle"
+  );
+}
+
 export type CloudAction =
   | { type: "startOperation"; op: OperationKind }
   | { type: "saveSucceeded"; binding: ProjectBinding; generation: number }
@@ -71,8 +81,10 @@ export type CloudAction =
   | { type: "dismissOperation" }
   | { type: "setAuth"; auth: AuthState }
   | { type: "replaceProject"; source: "local" | "cloud"; binding: ProjectBinding | null }
+  | { type: "versionRestored" }
   | { type: "localFileSaved" }
   | { type: "projectUnbound" };
+
 
 export function cloudReducer(state: CloudState, action: CloudAction): CloudState {
   switch (action.type) {
@@ -172,6 +184,14 @@ export function cloudReducer(state: CloudState, action: CloudAction): CloudState
         ...state,
         generation: state.generation + 1,
         binding: action.source === "cloud" ? action.binding : null,
+        operation: { kind: "idle" },
+      };
+    }
+
+    case "versionRestored": {
+      return {
+        ...state,
+        generation: state.generation + 1,
         operation: { kind: "idle" },
       };
     }

@@ -22,6 +22,9 @@ interface ToolbarProps {
   onSave: () => void;
   onSaveCloud: () => void;
   onOpenCloud: () => void;
+  onOpenHistory?: () => void;
+  isHistoryEnabled?: boolean;
+  historyTitle?: string;
   onSignIn: () => void;
   onSignOut: () => void;
   onAddNode: (type: FlowNodeType) => void;
@@ -47,6 +50,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onSave,
   onSaveCloud,
   onOpenCloud,
+  onOpenHistory,
+  isHistoryEnabled,
+  historyTitle,
   onSignIn,
   onSignOut,
   onAddNode,
@@ -81,6 +87,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onSave={onSave}
             onSaveCloud={onSaveCloud}
             onOpenCloud={onOpenCloud}
+            onOpenHistory={onOpenHistory}
+            isHistoryEnabled={isHistoryEnabled}
+            historyTitle={historyTitle}
             disabled={isOperationPending}
           />
 
