@@ -69,3 +69,11 @@ pnpm dev:server # runs apps/server via tsx (requires local PostgreSQL with DATAB
 ```bash
 git switch -c recover/2026-10-05 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3
 ```
+
+
+stable-007:
+- Persistence fully implemented
+- Conflict resolution (keep mine) working
+- Dirty state tracking stable
+- Tests: 496 passing
+- Gate: 14/14, 0 cached
