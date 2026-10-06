@@ -77,3 +77,9 @@ stable-007:
 - Dirty state tracking stable
 - Tests: 496 passing
 - Gate: 14/14, 0 cached
+stable-008:
+- Version history UI implemented
+- Restore and download supported
+- Stale-generation guards fixed
+- Tests: 550 passing
+- Gate: 14/14, 0 cached
