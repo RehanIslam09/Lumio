@@ -1,4 +1,4 @@
-import { ProjectSchema } from "@repo/schema";
+import { ProjectSchema, type Project } from "@repo/schema";
 import {
   MAX_FILE_BYTES,
   CURRENT_SCHEMA_VERSION,
@@ -99,6 +99,118 @@ function detectUnknownProperties(rawProject: unknown): string[] {
   return warnings;
 }
 
+export type ValidateProjectDocumentResult =
+  | {
+      ok: true;
+      project: Project;
+      warnings: string[];
+    }
+  | {
+      ok: false;
+      error: {
+        code: "invalid-project" | "integrity";
+        message: string;
+        details: string[];
+      };
+    };
+
+/**
+ * Validates a raw project object against ProjectSchema, checks graph integrity,
+ * and collects warnings for stripped unknown properties.
+ * Pure move extracted from parseProjectFile; never throws.
+ */
+export function validateProjectDocument(rawProject: unknown): ValidateProjectDocumentResult {
+  // 1. Detect stripped unknown properties before schema parsing
+  const warnings = detectUnknownProperties(rawProject);
+
+  // 2. Schema validation with ProjectSchema
+  const parseResult = ProjectSchema.safeParse(rawProject);
+  if (!parseResult.success) {
+    const issues = parseResult.error.issues;
+    const details = issues.slice(0, 10).map((issue) => {
+      const pathStr = issue.path.join(".");
+      return pathStr ? `${pathStr}: ${issue.message}` : issue.message;
+    });
+    if (issues.length > 10) {
+      details.push(`...and ${issues.length - 10} more`);
+    }
+    return {
+      ok: false,
+      error: {
+        code: "invalid-project",
+        message: "Project schema validation failed",
+        details,
+      },
+    };
+  }
+
+  const project = parseResult.data;
+
+  // 3. Integrity validation (uniqueness & referential integrity)
+  const integrityDetails: string[] = [];
+
+  // (a) node ids are unique
+  const seenNodeIds = new Set<string>();
+  for (const node of project.nodes) {
+    if (seenNodeIds.has(node.id)) {
+      integrityDetails.push(`Duplicate node ID: "${node.id}"`);
+    } else {
+      seenNodeIds.add(node.id);
+    }
+  }
+
+  // (b) edge ids are unique
+  const seenEdgeIds = new Set<string>();
+  for (const edge of project.edges) {
+    if (seenEdgeIds.has(edge.id)) {
+      integrityDetails.push(`Duplicate edge ID: "${edge.id}"`);
+    } else {
+      seenEdgeIds.add(edge.id);
+    }
+  }
+
+  // (c) variable ids are unique (names can duplicate)
+  const seenVarIds = new Set<string>();
+  for (const variable of project.variables) {
+    if (seenVarIds.has(variable.id)) {
+      integrityDetails.push(`Duplicate variable ID: "${variable.id}"`);
+    } else {
+      seenVarIds.add(variable.id);
+    }
+  }
+
+  // (d) edge from and to references point to existing node ids
+  for (const edge of project.edges) {
+    if (!seenNodeIds.has(edge.from)) {
+      integrityDetails.push(`Edge "${edge.id}" references missing source node "${edge.from}"`);
+    }
+    if (!seenNodeIds.has(edge.to)) {
+      integrityDetails.push(`Edge "${edge.id}" references missing target node "${edge.to}"`);
+    }
+  }
+
+  if (integrityDetails.length > 0) {
+    const cappedDetails = integrityDetails.slice(0, 10);
+    if (integrityDetails.length > 10) {
+      cappedDetails.push(`...and ${integrityDetails.length - 10} more`);
+    }
+    return {
+      ok: false,
+      error: {
+        code: "integrity",
+        message: "Project graph integrity validation failed",
+        details: cappedDetails,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    project,
+    warnings,
+  };
+}
+
 /**
  * Parses, validates, and integrity-checks a Lumio project file string.
  * Never throws for any input string.
@@ -184,95 +296,8 @@ export function parseProjectFile(text: string): ParseFileResult {
       }
     }
 
-    // 6. Detect stripped unknown properties before schema parsing
-    const warnings = detectUnknownProperties(rawProject);
-
-    // 7. Schema validation with ProjectSchema
-    const parseResult = ProjectSchema.safeParse(rawProject);
-    if (!parseResult.success) {
-      const issues = parseResult.error.issues;
-      const details = issues.slice(0, 10).map((issue) => {
-        const pathStr = issue.path.join(".");
-        return pathStr ? `${pathStr}: ${issue.message}` : issue.message;
-      });
-      if (issues.length > 10) {
-        details.push(`...and ${issues.length - 10} more`);
-      }
-      return {
-        ok: false,
-        error: {
-          code: "invalid-project",
-          message: "Project schema validation failed",
-          details,
-        },
-      };
-    }
-
-    const project = parseResult.data;
-
-    // 8. Integrity validation (uniqueness & referential integrity)
-    const integrityDetails: string[] = [];
-
-    // (a) node ids are unique
-    const seenNodeIds = new Set<string>();
-    for (const node of project.nodes) {
-      if (seenNodeIds.has(node.id)) {
-        integrityDetails.push(`Duplicate node ID: "${node.id}"`);
-      } else {
-        seenNodeIds.add(node.id);
-      }
-    }
-
-    // (b) edge ids are unique
-    const seenEdgeIds = new Set<string>();
-    for (const edge of project.edges) {
-      if (seenEdgeIds.has(edge.id)) {
-        integrityDetails.push(`Duplicate edge ID: "${edge.id}"`);
-      } else {
-        seenEdgeIds.add(edge.id);
-      }
-    }
-
-    // (c) variable ids are unique (names can duplicate)
-    const seenVarIds = new Set<string>();
-    for (const variable of project.variables) {
-      if (seenVarIds.has(variable.id)) {
-        integrityDetails.push(`Duplicate variable ID: "${variable.id}"`);
-      } else {
-        seenVarIds.add(variable.id);
-      }
-    }
-
-    // (d) edge from and to references point to existing node ids
-    for (const edge of project.edges) {
-      if (!seenNodeIds.has(edge.from)) {
-        integrityDetails.push(`Edge "${edge.id}" references missing source node "${edge.from}"`);
-      }
-      if (!seenNodeIds.has(edge.to)) {
-        integrityDetails.push(`Edge "${edge.id}" references missing target node "${edge.to}"`);
-      }
-    }
-
-    if (integrityDetails.length > 0) {
-      const cappedDetails = integrityDetails.slice(0, 10);
-      if (integrityDetails.length > 10) {
-        cappedDetails.push(`...and ${integrityDetails.length - 10} more`);
-      }
-      return {
-        ok: false,
-        error: {
-          code: "integrity",
-          message: "Project graph integrity validation failed",
-          details: cappedDetails,
-        },
-      };
-    }
-
-    return {
-      ok: true,
-      project,
-      warnings,
-    };
+    // 6-8. Validate project document (schema + integrity + unknown properties)
+    return validateProjectDocument(rawProject);
   } catch (unexpectedError) {
     return {
       ok: false,

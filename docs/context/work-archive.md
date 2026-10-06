@@ -2,6 +2,26 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-005 promotion at commit 7d90978`
+- **Goal:** Promote commit `7d90978` as fifth stable baseline (`stable-005`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-005 baseline (commit 7d90978), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-016 documenting the promotion, rotated W-008 to archive
+  - `docs/context/work-archive.md`: archived full entry W-008 per R7.4 rolling window cap
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`).
+  - Rotated oldest full entry (W-008) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass (11/11 tasks successful across 4 packages, 258 tests passing: 81 dsl, 59 checker, 118 web).
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`.
+
 ### W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement file persistence with save, open, and editable project name`

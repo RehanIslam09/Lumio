@@ -76,7 +76,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure lib helpers (`src/lib/`), camera hook (`src/hooks/`), and UI components
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), hooks (`src/hooks/useCloud.ts`, `useInitialViewport.ts`), and UI components (`src/components/`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -363,6 +363,64 @@ File-based project save and open workflow implemented via pure persistence modul
   - Saved baseline updates on Save, Open, New project, and Sample reset.
   - Controls "Unsaved changes" toolbar badge, `beforeunload` browser prompt, and confirmation dialogs on destructive actions.
 
+### Cloud Persistence & Sync `DECIDED`
+
+Web frontend integration with the PostgreSQL Projects API (`apps/server`) and Session Auth endpoints.
+
+#### Module Map
+- `apps/web/src/api/config.ts`: Pure base URL resolution with strict validation (http/https, no credentials, no query/hash, no path prefix). Wired to `import.meta.env.VITE_API_BASE_URL` with default `http://localhost:3001`.
+- `apps/web/src/api/types.ts`: DTO interfaces for auth and project requests/responses, error envelopes, and `ApiResult<T>`.
+- `apps/web/src/api/guards.ts`: Hand-written TypeScript type guards verifying server responses at runtime without throwing. Fails closed on malformed data.
+- `apps/web/src/api/client.ts`: Pure API client factory `createApiClient` with typed methods for every endpoint, `credentials: "include"`, 204 No Content handling, timeout management via `AbortController`, `Retry-After` header extraction, and fixed error string mappings (never echoing server text blindly).
+- `apps/web/src/cloud/types.ts`: Outcome types (`SaveOutcome`, `ListOutcome`, `OpenOutcome`, `DeleteOutcome`, `AuthOutcome`) and `ProjectBinding`.
+- `apps/web/src/cloud/outcomes.ts`: Pure async controllers executing business logic without UI state. Reuses `validateProjectDocument` from persistence for loaded documents.
+- `apps/web/src/cloud/state.ts`: Pure reducer `cloudReducer`, `initialCloudState`, and `isMarkerDirty` / `computeNextCleanMarker` clean-marker logic.
+- `apps/web/src/hooks/useCloud.ts`: Orchestration hook wiring API client, reducer state, startup `/me` check, and modal dialog state.
+- `apps/web/src/components/`: Native modal `<dialog>` components (`AuthDialog`, `ConflictDialog`, `CloudOpenDialog`, `SaveNotFoundDialog`).
+
+#### Outcomes Taxonomy
+- **`SaveOutcome`**: `created` | `saved` | `conflict(currentVersion, snapshot)` | `not-found` | `unauthenticated` | `rate-limited(retryAfterSeconds)` | `invalid(details)` | `too-large` | `limit-reached` | `unsupported-schema(supported)` | `network` | `timeout` | `error(message)`
+- **`ListOutcome`**: `listed(projects)` | `unauthenticated` | `network` | `timeout` | `error(message)`
+- **`OpenOutcome`**: `loaded(project, binding, warnings)` | `not-found` | `unauthenticated` | `unsupported-schema(supported)` | `invalid-document(details)` | `network` | `timeout` | `error(message)`
+- **`DeleteOutcome`**: `deleted` | `not-found` | `unauthenticated` | `network` | `timeout` | `error(message)`
+- **`AuthOutcome`**: `signed-in(user)` | `anonymous` | `invalid-request(details)` | `invalid-credentials` | `email-taken` | `rate-limited(retryAfterSeconds)` | `network` | `timeout` | `error(message)`
+
+#### State Machine & Generation Guard
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Pending: startOperation(op)
+    Pending --> Idle: saveSucceeded / replaceProject / dismiss
+    Pending --> Conflict: conflictOccurred (HTTP 409)
+    Conflict --> Pending: conflictKeepMine (saveOverwrite)
+    Conflict --> Idle: conflictCancel
+    Pending --> NotFound: saveNotFound (HTTP 404)
+    NotFound --> Idle: dismiss / saveAsNew
+    Pending --> Failed: operationFailed (error / 429)
+    Failed --> Idle: dismissOperation
+```
+
+- **In-flight guard:** When `operation.kind !== "idle"`, subsequent trigger attempts are dropped as no-ops.
+- **Generation counter:** A monotonic integer incremented whenever the local project is replaced (New, Open local, Open cloud, Reset sample, unbind). Async outcomes whose captured generation does not match the active state generation are discarded without modifying binding or marker.
+- **Single load path:** All project replacement actions call one unified function `replaceActiveProject(nextProject, nextBinding)` in `App.tsx` which updates editor state, clean marker, increments `loadCounter`, clears selection, and bumps cloud generation.
+
+#### Dirty-Marker & Clean-Marker Rule
+- After a successful cloud save, the clean baseline marker is updated to the exact `snapshot` object sent at click time, NOT to the latest `editorState.present`. Edits made in the canvas while the HTTP request was in flight remain dirty.
+- When a bound project is deleted from cloud, the binding is cleared and the clean marker transitions to a typed `{ kind: "unbound" }` marker state. Because the project now exists only locally, `isMarkerDirty` evaluates to `true` and the toolbar displays "Unsaved changes".
+
+#### Optimistic Concurrency & Conflict Flow
+- When a `PUT` receives `409 version-conflict`, the UI opens `ConflictDialog` displaying the remote `currentVersion` and offers three resolutions:
+  1. **"Keep my version as a new version":** Calls `runCloudSaveOverwrite`, passing `baseVersion = conflict.currentVersion`.
+  2. **"Load the latest cloud version":** Confirms with the user, fetches the latest document via `runCloudOpen`, and replaces the active project via `replaceActiveProject`.
+  3. **"Download my copy":** Invokes `downloadProjectAsFile` to save current work as a local JSON file without modifying cloud binding or clean marker.
+  4. **"Cancel":** Closes dialog and returns operation to `idle`, leaving binding unchanged.
+
+#### Session & Storage Policy
+- **No browser storage:** Zero usage of `localStorage`, `sessionStorage`, `indexedDB`, or JavaScript-accessible cookies. Authentication is strictly maintained via the server's `httpOnly` session cookie (`lumio_session`).
+- **Cookie and Same-Site:** In development, Vite dev server must be accessed via `http://localhost:5173` (do NOT use `127.0.0.1`, which prevents cookie sharing with API server on `localhost:3001`). Production deployment requires frontend and API backend to share the same site or configure explicit cross-site cookie policies (`SameSite=None; Secure`).
+- **Session Expiry (401):** On 401 response, auth state transitions to `anonymous`, the binding is preserved, and `AuthDialog` opens with notice: "Your session has expired. Sign in again; your work is untouched." Automatic retries are never performed.
+- **Unused Endpoints:** Server `/api/projects/:id/versions` and `/versions/:n` endpoints are currently unused by the web client (version history UI is deferred to future work).
+
 ## 11. Export format `TODO`
 Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
@@ -504,4 +562,17 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - No separate rename endpoint: project name can only be changed via document body during a version save
   - No soft delete: project deletion cascades immediately and permanently to all versions
   - Write rate limiter is in-memory per process (not shared across horizontally scaled instances)
-  - No `ETag` or `If-Match` HTTP headers: concurrency control relies entirely on `baseVersion` in the JSON request body
+  - No `ETag` or `If-Match` HTTP headers: concurrency control relies entirely on `baseVersion` in the JSON request body
+- **Web Cloud Features technical debt (S3c / W-024):**
+  - No version-history UI: server `/versions` endpoints exist but web client does not display or revert versions yet
+  - No autosave or offline queue: all cloud saves require explicit user action
+  - No merge: conflicts resolve strictly at the whole-document level
+  - API shapes duplicated from the server: DTO types in `apps/web/src/api/types.ts` should eventually move into `@repo/schema`
+  - UI components have no automated DOM tests: Vitest test environment is Node; React components rely on manual browser verification
+  - No password change, password reset, or account deletion UI
+  - Client does no password-policy checks: the backend server is authoritative for password code-point constraints
+  - Project list not paginated: displays whatever the server returns (server caps at 200)
+  - Delete uses `window.confirm` rather than a custom accessible modal
+  - No loading skeletons: uses textual loading states
+  - Retry-After is shown to the user but never automatically retried
+  - `127.0.0.1` is unsupported in development (requires `http://localhost:5173` for cookie origin parity)

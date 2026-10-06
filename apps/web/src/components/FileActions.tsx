@@ -4,12 +4,18 @@ interface FileActionsProps {
   onNew: () => void;
   onOpen: (file: File) => void;
   onSave: () => void;
+  onSaveCloud: () => void;
+  onOpenCloud: () => void;
+  disabled?: boolean;
 }
 
 export const FileActions: React.FC<FileActionsProps> = ({
   onNew,
   onOpen,
   onSave,
+  onSaveCloud,
+  onOpenCloud,
+  disabled = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +38,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
         type="button"
         className="btn btn-secondary"
         onClick={onNew}
+        disabled={disabled}
         title="Create a new story project"
       >
         New
@@ -41,6 +48,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
         type="button"
         className="btn btn-secondary"
         onClick={handleOpenClick}
+        disabled={disabled}
         title="Open a story project from JSON file"
       >
         Open…
@@ -63,6 +71,26 @@ export const FileActions: React.FC<FileActionsProps> = ({
         title="Save current project to a JSON file"
       >
         Save
+      </button>
+
+      <button
+        type="button"
+        className="btn btn-secondary"
+        onClick={onSaveCloud}
+        disabled={disabled}
+        title="Save project to Lumio cloud"
+      >
+        Save to cloud
+      </button>
+
+      <button
+        type="button"
+        className="btn btn-secondary"
+        onClick={onOpenCloud}
+        disabled={disabled}
+        title="Open a project from Lumio cloud"
+      >
+        Open from cloud…
       </button>
     </div>
   );

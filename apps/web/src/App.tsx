@@ -38,9 +38,19 @@ import {
   parseProjectFile,
   checkFileSizeBytes,
   fileNameFor,
-  isDirty,
   makeEmptyProject,
 } from "./persistence/index.js";
+import {
+  createCleanMarker,
+  isMarkerDirty,
+  type CleanMarker,
+} from "./cloud/state.js";
+import type { ProjectBinding } from "./cloud/types.js";
+import { useCloud } from "./hooks/useCloud.js";
+import { AuthDialog } from "./components/AuthDialog.js";
+import { ConflictDialog } from "./components/ConflictDialog.js";
+import { CloudOpenDialog } from "./components/CloudOpenDialog.js";
+import { SaveNotFoundDialog } from "./components/SaveNotFoundDialog.js";
 
 import {
   StoryNode,
@@ -52,6 +62,24 @@ import { StoryEdge } from "./components/StoryEdge.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { MessageBar } from "./components/MessageBar.js";
 import { RightPanel, type PanelTab } from "./components/RightPanel.js";
+
+/**
+ * Pure helper to trigger browser download of a project file as JSON.
+ * Shared between normal Save file and Conflict dialog "Download my copy".
+ */
+function downloadProjectAsFile(projectToDownload: Project): void {
+  const text = serializeProject(projectToDownload, new Date().toISOString());
+  const fileName = fileNameFor(projectToDownload.name);
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 const nodeTypes = {
   storyNode: StoryNode,
@@ -286,7 +314,9 @@ function MainStudio() {
   const [editorState, setEditorState] = useState<EditorState>(() =>
     createEditor(getSampleProjectWithSyntaxError(false)),
   );
-  const [savedPresent, setSavedPresent] = useState<Project>(() => editorState.present);
+  const [savedMarker, setSavedMarker] = useState<CleanMarker>(() =>
+    createCleanMarker(editorState.present),
+  );
   const [loadCounter, setLoadCounter] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selection, setSelected] = useState<Selection>(null);
@@ -294,7 +324,36 @@ function MainStudio() {
   const [activeTab, setActiveTab] = useState<PanelTab>("issues");
 
   const project = editorState.present;
-  const dirty = isDirty(editorState, savedPresent);
+  const dirty = isMarkerDirty(project, savedMarker);
+
+  const cloud = useCloud({
+    onReplaceProject: (nextProject, nextBinding) => {
+      replaceActiveProject(nextProject, nextBinding);
+    },
+    onSavedCleanMarker: setSavedMarker,
+    onSetMessage: setErrorMessage,
+  });
+
+  /**
+   * ONE unified project replacement function in App.tsx.
+   * Called by local file Open, New, Reset sample, Cloud Open, and Conflict "Load latest".
+   * Increments loadCounter, updates clean marker, clears selection, and bumps cloud generation.
+   */
+  const replaceActiveProject = useCallback(
+    (nextProject: Project, nextBinding: ProjectBinding | null) => {
+      setEditorState(createEditor(nextProject));
+      setSavedMarker(createCleanMarker(nextProject));
+      setLoadCounter((c) => c + 1);
+      setSelected(null);
+      setSelectedIssue(null);
+      cloud.dispatch({
+        type: "replaceProject",
+        source: nextBinding ? "cloud" : "local",
+        binding: nextBinding,
+      });
+    },
+    [cloud],
+  );
 
   const dispatch = useCallback((action: EditorAction): boolean => {
     let success = false;
@@ -322,47 +381,36 @@ function MainStudio() {
   }, []);
 
   const handleReset = useCallback(() => {
-    if (isDirty(editorState, savedPresent)) {
+    if (isMarkerDirty(editorState.present, savedMarker)) {
       const ok = window.confirm("Reset project to sample? Unsaved changes will be lost.");
       if (!ok) return;
     }
     const sample = getSampleProjectWithSyntaxError(false);
-    setEditorState(createEditor(sample));
-    setSavedPresent(sample);
-    setLoadCounter((c) => c + 1);
-    setSelected(null);
-    setSelectedIssue(null);
+    replaceActiveProject(sample, null);
     setErrorMessage(null);
-  }, [editorState, savedPresent]);
+  }, [editorState.present, savedMarker, replaceActiveProject]);
 
   const handleNew = useCallback(() => {
-    if (isDirty(editorState, savedPresent)) {
+    if (isMarkerDirty(editorState.present, savedMarker)) {
       const ok = window.confirm("Create new project? Unsaved changes will be lost.");
       if (!ok) return;
     }
     const empty = makeEmptyProject(crypto.randomUUID(), "Untitled story");
-    setEditorState(createEditor(empty));
-    setSavedPresent(empty);
-    setLoadCounter((c) => c + 1);
-    setSelected(null);
-    setSelectedIssue(null);
+    replaceActiveProject(empty, null);
     setErrorMessage(null);
-  }, [editorState, savedPresent]);
+  }, [editorState.present, savedMarker, replaceActiveProject]);
 
   const handleSave = useCallback(() => {
-    const text = serializeProject(project, new Date().toISOString());
-    const fileName = fileNameFor(project.name);
-    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setSavedPresent(project);
-  }, [project]);
+    downloadProjectAsFile(project);
+    setSavedMarker(createCleanMarker(project));
+    cloud.dispatch({ type: "localFileSaved" });
+  }, [project, cloud]);
+
+  const handleDownloadCopy = useCallback(() => {
+    if (cloud.state.operation.kind === "conflict") {
+      downloadProjectAsFile(cloud.state.operation.snapshot);
+    }
+  }, [cloud.state.operation]);
 
   const handleOpen = useCallback(
     (file: File) => {
@@ -390,16 +438,12 @@ function MainStudio() {
           return;
         }
 
-        if (isDirty(editorState, savedPresent)) {
+        if (isMarkerDirty(editorState.present, savedMarker)) {
           const ok = window.confirm("Replace the current project? Unsaved changes will be lost.");
           if (!ok) return;
         }
 
-        setEditorState(createEditor(res.project));
-        setSavedPresent(res.project);
-        setLoadCounter((c) => c + 1);
-        setSelected(null);
-        setSelectedIssue(null);
+        replaceActiveProject(res.project, null);
 
         if (res.warnings.length > 0) {
           setErrorMessage(`Project opened with warnings:\n${res.warnings.join("\n")}`);
@@ -412,19 +456,19 @@ function MainStudio() {
       };
       reader.readAsText(file);
     },
-    [editorState, savedPresent],
+    [editorState.present, savedMarker, replaceActiveProject],
   );
 
   // Warning when leaving with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty(editorState, savedPresent)) {
+      if (isMarkerDirty(editorState.present, savedMarker)) {
         e.preventDefault();
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [editorState, savedPresent]);
+  }, [editorState.present, savedMarker]);
 
   // Consistency checker main-thread evaluation
   const issues = useMemo(() => check(project), [project]);
@@ -547,16 +591,23 @@ function MainStudio() {
     <div className="app-container">
       <Toolbar
         projectName={project.name}
+        binding={cloud.state.binding}
         isDirty={dirty}
         canUndo={canUndo(editorState)}
         canRedo={canRedo(editorState)}
         nodesCount={project.nodes.length}
         edgesCount={project.edges.length}
         varsCount={project.variables.length}
+        auth={cloud.state.auth}
+        isOperationPending={cloud.state.operation.kind === "pending"}
         onRenameProject={(name) => dispatch({ type: "renameProject", name })}
         onNew={handleNew}
         onOpen={handleOpen}
         onSave={handleSave}
+        onSaveCloud={() => void cloud.saveToCloud(project)}
+        onOpenCloud={() => cloud.setCloudOpenDialogOpen(true)}
+        onSignIn={() => cloud.setAuthDialogOpen(true)}
+        onSignOut={() => void cloud.handleSignOut()}
         onAddNode={handleAddNode}
         onUndo={handleUndo}
         onRedo={handleRedo}
@@ -566,6 +617,61 @@ function MainStudio() {
       <MessageBar
         message={errorMessage}
         onDismiss={() => setErrorMessage(null)}
+      />
+
+      <AuthDialog
+        isOpen={cloud.authDialogOpen}
+        onClose={() => cloud.setAuthDialogOpen(false)}
+        onSuccess={cloud.handleAuthSuccess}
+        client={cloud.client}
+        notice={cloud.authNotice}
+      />
+
+      <ConflictDialog
+        isOpen={cloud.state.operation.kind === "conflict"}
+        currentVersion={
+          cloud.state.operation.kind === "conflict"
+            ? cloud.state.operation.currentVersion
+            : 1
+        }
+        snapshot={
+          cloud.state.operation.kind === "conflict"
+            ? cloud.state.operation.snapshot
+            : project
+        }
+        onKeepMine={() => {
+          if (cloud.state.operation.kind === "conflict") {
+            void cloud.resolveConflictKeepMine(cloud.state.operation.snapshot);
+          }
+        }}
+        onLoadLatest={() => {
+          void cloud.resolveConflictLoadLatest();
+        }}
+        onDownloadCopy={handleDownloadCopy}
+        onCancel={() => cloud.dispatch({ type: "conflictCancel" })}
+      />
+
+      <CloudOpenDialog
+        isOpen={cloud.cloudOpenDialogOpen}
+        onClose={() => cloud.setCloudOpenDialogOpen(false)}
+        client={cloud.client}
+        boundProjectId={cloud.state.binding?.projectId ?? null}
+        onOpenProject={(projectId) => {
+          if (isMarkerDirty(editorState.present, savedMarker)) {
+            const ok = window.confirm(
+              "Replace the current project? Unsaved changes will be lost.",
+            );
+            if (!ok) return;
+          }
+          void cloud.openFromCloud(projectId);
+        }}
+        onProjectDeleted={cloud.handleBoundProjectDeleted}
+      />
+
+      <SaveNotFoundDialog
+        isOpen={cloud.state.operation.kind === "notFound"}
+        onSaveAsNew={() => cloud.handleSaveAsNew(project)}
+        onCancel={() => cloud.dispatch({ type: "dismissOperation" })}
       />
 
       <main className="app-main">

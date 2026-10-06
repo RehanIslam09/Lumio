@@ -11,6 +11,8 @@ export {
 export { serializeProject } from "./serialize.js";
 export {
   parseProjectFile,
+  validateProjectDocument,
+  type ValidateProjectDocumentResult,
   checkFileSizeBytes,
   MIGRATIONS,
   type MigrationFn,

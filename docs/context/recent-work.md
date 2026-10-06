@@ -24,6 +24,69 @@
 
 ## Entries
 
+### W-024 | 2026-10-05 | Cloud features in apps/web: session auth, cloud save/open, conflict resolution, and dirty state tracking
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add cloud persistence, session authentication, and conflict resolution`
+- **Goal:** Implement cloud features in apps/web: optional session auth dialog (sign-in/register), "Save to cloud" with optimistic concurrency conflict dialog, "Open from cloud" with list and project deletion, dirty state marker tracking, single project replacement path, and session expiry handling.
+- **Files changed:**
+  - `apps/web/src/api/config.ts`: API base URL resolution from `VITE_API_URL` or window.location origin, origin validator, timeout constant.
+  - `apps/web/src/api/config.test.ts`: 8 unit tests for URL resolution, trailing slashes, default fallbacks, and validation.
+  - `apps/web/src/api/types.ts`: DTOs, HTTP error taxonomy, and request/response interfaces.
+  - `apps/web/src/api/guards.ts`: runtime validation guards for API envelopes, projects, versions, users, and error responses.
+  - `apps/web/src/api/guards.test.ts`: 13 unit tests for guards (valid, wrong types, missing fields, arrays, extra keys, null/undefined, never-throw contract).
+  - `apps/web/src/api/client.ts`: typed fetch client (`createApiClient`) with 9 endpoints, AbortController timeouts, credentials: "include", Retry-After header parsing.
+  - `apps/web/src/api/client.test.ts`: 18 tests covering 200, 201, 204, 401, 404, 409, 413, 429 Retry-After, 500, network error, timeout abort, fast-check property test.
+  - `apps/web/src/cloud/types.ts`: typed outcome unions (`SaveOutcome`, `ListOutcome`, `OpenOutcome`, `DeleteOutcome`, `AuthOutcome`), `ProjectBinding`, and `CleanMarker`.
+  - `apps/web/src/cloud/outcomes.ts`: pure functional controllers for save, save-overwrite, list, open, delete, and auth without DOM/React dependencies.
+  - `apps/web/src/cloud/outcomes.test.ts`: 17 unit tests verifying outcome discrimination, 409 conflict extraction, 401 session expiry, retry-after preservation.
+  - `apps/web/src/cloud/state.ts`: pure reducer for cloud state, generation counter, active in-flight request guards, clean marker helpers (`isMarkerDirty`, `computeNextCleanMarker`, `createUnboundMarker`), and compile-time exhaustiveness via `assertNever(value: never): never` in default branch.
+  - `apps/web/src/cloud/state.test.ts`: 12 unit tests covering transitions, generation bump ignoring stale async outcomes, typed unbound marker on project deletion.
+  - `apps/web/src/hooks/useCloud.ts`: React orchestration hook wrapping client, startup `/me` check, toast dispatch, and modal triggers.
+  - `apps/web/src/persistence/parse.ts`: extracted `validateProjectDocument(raw: unknown)` pure move without modifying existing error order or tests.
+  - `apps/web/src/components/AuthDialog.tsx`: native `<dialog>` for email/password login and registration.
+  - `apps/web/src/components/ConflictDialog.tsx`: native `<dialog>` offering Overwrite, Load Cloud, Download My Copy, and Cancel.
+  - `apps/web/src/components/CloudOpenDialog.tsx`: native `<dialog>` listing remote projects with formatted date, Open, and Delete confirmation.
+  - `apps/web/src/components/SaveNotFoundDialog.tsx`: native `<dialog>` prompting to re-create project if deleted remotely.
+  - `apps/web/src/components/FileActions.tsx`: added Cloud Save, Cloud Open, and Cloud v{n} status chip.
+  - `apps/web/src/components/Toolbar.tsx`: wired Account button and cloud status chip.
+  - `apps/web/src/App.tsx`: single project replacement function `replaceActiveProject`, shared `downloadProjectAsFile`, bound clean marker comparison, cloud dialog mounts.
+  - `apps/web/src/index.css`: modal dialog styling, cloud badge, error banners, and account buttons.
+  - `apps/web/src/vite-env.d.ts`: typings for `VITE_API_URL`.
+  - `apps/web/.env.example`: template for frontend environment variables.
+  - `docs/ARCHITECTURE.md`: updated Repo map, Section 10 Persistence (Cloud Persistence & Sync `DECIDED`, state machine, outcomes, concurrency), and Section 14 technical debt.
+  - `docs/context/work-archive.md`: archived full entry W-016 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-024, rotated W-016 to older work.
+- **New/changed public APIs:**
+  - `apps/web/src/api/config.ts`: `resolveApiBaseUrl(envUrl?: string, locationOrigin?: string): string`, `getApiBaseUrl(): string`
+  - `apps/web/src/api/client.ts`: `createApiClient(baseUrl?: string): ApiClient`
+  - `apps/web/src/api/guards.ts`: `isProjectSummary`, `isProjectWithDocument`, `isProjectVersionSummary`, `isProjectMutationResponse`, `isUserDto`, `isErrorEnvelope`, `extractErrorMessage`
+  - `apps/web/src/persistence/parse.ts`: `validateProjectDocument(raw: unknown): ParseFileResult`
+  - `apps/web/src/cloud/types.ts`: `ProjectBinding`, `CleanMarker`, `SaveOutcome`, `ListOutcome`, `OpenOutcome`, `DeleteOutcome`, `AuthOutcome`
+  - `apps/web/src/cloud/state.ts`: `cloudReducer`, `isMarkerDirty`, `computeNextCleanMarker`, `createUnboundMarker`
+  - `apps/web/src/cloud/outcomes.ts`: `runCloudSave`, `runCloudSaveOverwrite`, `runCloudList`, `runCloudOpen`, `runCloudDelete`, `runCheckSession`, `runSignIn`, `runRegister`, `runSignOut`
+  - `apps/web/src/hooks/useCloud.ts`: `useCloud(options: UseCloudOptions): UseCloudReturn`
+- **Decisions and why:**
+  - Zero browser storage: No localStorage, sessionStorage, indexedDB, or JS-accessible cookies used for authentication or tokens. Session is handled completely via server `httpOnly` cookie with `credentials: "include"`.
+  - Pure move in `parse.ts`: Extracted schema + integrity validation into `validateProjectDocument(raw: unknown)` without modifying existing error messages, error order, or warnings; verified 18/18 persistence tests pass identically.
+  - Clean marker after save: Clean marker after successful save is the sent snapshot (`result.savedSnapshot`), NOT the response or current present. Edits made while HTTP request is in-flight leave the document correctly dirty.
+  - Remote deletion unbinding: When a bound project is deleted via "Open from cloud", binding becomes null and clean marker transitions to `{ kind: "unbound" }`, marking the current editor canvas as unsaved changes so work is never lost silently.
+  - Single load path: Consolidated local Open, Cloud Open, and "Load cloud version" into `replaceActiveProject(nextProject, nextBinding)`. Increments `loadCounter`, bumps cloud generation, sets `savedMarker`, and resets selections in one atomic sequence.
+  - Compile-time exhaustiveness: Used `assertNever(value: never): never` in `cloudReducer` default case to ensure strict compile-time exhaustiveness without lint errors, casts, or disables.
+  - Server contract: Guards for POST /api/projects and PUT /api/projects/:id do not require `document` field in response (server returns `{ project, version }` without document per W-023). Only GET /api/projects/:id requires `document`.
+  - Accessible native `<dialog>`: All modals (Auth, Conflict, Cloud Open, SaveNotFound) use HTML5 `<dialog>` with `.showModal()`, backdrop dismiss, Escape key handling, and auto-focus on first interactive input.
+- **Assumptions / UNVERIFIED:**
+  - All end-to-end interactive UI behaviors in the manual browser script (live session cookie exchanges, cross-tab project deletion, conflict dialog resolution flows, camera resets, and offline network behaviors) are UNVERIFIED until user tests in a live browser. Only unit/property tests, typechecking, and static build outputs are verified.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 4 packages; 496 total tests passing: 81 dsl, 59 checker, 212 web, 144 server in 13.786s).
+    - Tasks: 14 successful, 14 total. Time: 13.786s.
+    - Slowest tests: Property T2 in dsl (3207ms), Property U2 in checker (3544ms), Property C1 in checker (2481ms), `src/db/schema.int.test.ts` in server (2272ms), Property listConnections in web (1313ms).
+  - `pnpm --filter @repo/web build` -> pass (built in 191ms, 0 errors).
+- **Known issues / debt:**
+  - Project versions endpoints (`/api/projects/:id/versions`) are implemented on server but unused by web frontend v1; cloud binding tracks `baseVersion: number` solely for optimistic concurrency.
+  - Concurrent tab coordination relies on optimistic concurrency (409) rather than BroadcastChannel or WebSockets (deferred to S4 CRDT/sync).
+- **Next steps:**
+  - User to execute manual browser test script and commit changes manually.
+
 ### W-023 | 2026-10-05 | Project save/load API for apps/server: CRUD, optimistic concurrency, version history, text safety, and rate limiting
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement project save/load API with optimistic concurrency, versioning, and text safety`
@@ -385,27 +448,8 @@
 - **Next steps:**
   - User to run manual test script and commit changes manually.
 
-### W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-005 promotion at commit 7d90978`
-- **Goal:** Promote commit `7d90978` as fifth stable baseline (`stable-005`) via `/promote-stable` workflow.
-- **Files changed:**
-  - `docs/context/last-stable-state.md`: updated to record stable-005 baseline (commit 7d90978), gate result, capabilities, environment, and rollback instructions
-  - `docs/context/recent-work.md`: added entry W-016 documenting the promotion, rotated W-008 to archive
-  - `docs/context/work-archive.md`: archived full entry W-008 per R7.4 rolling window cap
-- **New/changed public APIs:** none
-- **Decisions and why:**
-  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
-  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`).
-  - Rotated oldest full entry (W-008) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm check -- --force` -> pass (11/11 tasks successful across 4 packages, 258 tests passing: 81 dsl, 59 checker, 118 web).
-- **Known issues / debt:** none
-- **Next steps:**
-  - User to tag commit with `git tag stable-005 7d909786de148d7253e91b356c534d54bd37c94a`.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005
 - W-015 | 2026-10-04 | File persistence: deterministic JSON project save and open with integrity validation
 - W-014 | 2026-10-04 | Connections UX for apps/web: pure connections module, enlarged handles, navigation, and Inspector wiring
 - W-013 | 2026-10-04 | Promote commit f34bb71 as stable-004
