@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import type { DraftProblem } from "../lib/draftCheck.js";
+import { bodyCounter } from "../lib/entities.js";
 
 interface DraftFieldProps {
   id: string;
@@ -10,6 +11,7 @@ interface DraftFieldProps {
   placeholder?: string;
   onCommit: (nextValue: string) => void;
   checkDraft?: (draft: string) => { status: "empty" | "ok" | "error"; problems: DraftProblem[] };
+  showCounter?: boolean;
 }
 
 export const DraftField: React.FC<DraftFieldProps> = ({
@@ -21,6 +23,7 @@ export const DraftField: React.FC<DraftFieldProps> = ({
   placeholder,
   onCommit,
   checkDraft,
+  showCounter = false,
 }) => {
   const [draft, setDraft] = useState(value);
   const [prevValue, setPrevValue] = useState(value);
@@ -32,6 +35,17 @@ export const DraftField: React.FC<DraftFieldProps> = ({
   }
 
   const liveProblems = checkDraft ? checkDraft(draft).problems : [];
+  const counter = showCounter ? bodyCounter(draft) : null;
+
+  const [announcedOverLimit, setAnnouncedOverLimit] = useState(false);
+  const isOverLimit = counter?.isOverLimit ?? false;
+  let liveAnnouncement = "";
+  if (isOverLimit !== announcedOverLimit) {
+    setAnnouncedOverLimit(isOverLimit);
+    liveAnnouncement = isOverLimit
+      ? `Character limit exceeded: ${counter?.count} of ${counter?.max} code points`
+      : "Character count within limit";
+  }
 
   const handleCommit = () => {
     if (draft !== value) {
@@ -58,15 +72,28 @@ export const DraftField: React.FC<DraftFieldProps> = ({
     }
   };
 
+  const hasError = liveProblems.length > 0 || (counter?.isOverLimit ?? false);
+
   return (
     <div className="field-group">
-      <label htmlFor={id} className="field-label">
-        {label}
-      </label>
+      <div className="field-header">
+        <label htmlFor={id} className="field-label">
+          {label}
+        </label>
+        {counter && (
+          <span
+            className={`counter-badge ${counter.isOverLimit ? "counter-over" : ""}`}
+            aria-hidden="true"
+          >
+            {counter.count.toLocaleString()} / {counter.max.toLocaleString()}
+          </span>
+        )}
+      </div>
+
       {multiline ? (
         <textarea
           id={id}
-          className={`field-textarea ${liveProblems.length > 0 ? "has-error" : ""}`}
+          className={`field-textarea ${hasError ? "has-error" : ""}`}
           rows={rows}
           value={draft}
           placeholder={placeholder}
@@ -78,13 +105,19 @@ export const DraftField: React.FC<DraftFieldProps> = ({
         <input
           id={id}
           type="text"
-          className={`field-input ${liveProblems.length > 0 ? "has-error" : ""}`}
+          className={`field-input ${hasError ? "has-error" : ""}`}
           value={draft}
           placeholder={placeholder}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={handleCommit}
           onKeyDown={handleKeyDown}
         />
+      )}
+
+      {liveAnnouncement !== "" && (
+        <div className="sr-only" role="status" aria-live="polite">
+          {liveAnnouncement}
+        </div>
       )}
 
       {liveProblems.length > 0 && (

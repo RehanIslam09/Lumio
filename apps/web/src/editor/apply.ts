@@ -3,6 +3,9 @@ import {
   FlowNodeSchema,
   FlowEdgeSchema,
   VariableSchema,
+  EntitySchema,
+  MAX_ENTITIES_PER_PROJECT,
+  getEntities,
   type Project,
 } from "@repo/schema";
 import type { EditorAction, EditorState, ApplyResult, EditorError } from "./types";
@@ -109,6 +112,39 @@ function computeNextProject(
       } else if (action.patch.position !== undefined) {
         updated.position = action.patch.position;
       }
+      if (action.patch.body === null) {
+        delete updated.body;
+      } else if (action.patch.body !== undefined) {
+        updated.body = action.patch.body;
+      }
+      if (action.patch.speakerId === null) {
+        delete updated.speakerId;
+      } else if (action.patch.speakerId !== undefined) {
+        updated.speakerId = action.patch.speakerId;
+      }
+
+      if (updated.speakerId !== undefined) {
+        const entities = getEntities(present);
+        const entity = entities.find((e) => e.id === updated.speakerId);
+        if (!entity) {
+          return {
+            ok: false,
+            error: {
+              code: "dangling-reference",
+              message: `Speaker '${updated.speakerId}' not found in entities (missing reference)`,
+            },
+          };
+        }
+        if (entity.kind !== "character") {
+          return {
+            ok: false,
+            error: {
+              code: "dangling-reference",
+              message: `Speaker '${updated.speakerId}' is a '${entity.kind}', not a character`,
+            },
+          };
+        }
+      }
 
       const nodeResult = FlowNodeSchema.safeParse(updated);
       if (!nodeResult.success) {
@@ -119,7 +155,7 @@ function computeNextProject(
       }
 
       const newNodes = [...present.nodes];
-      newNodes[idx] = nodeResult.data;
+      newNodes[idx] = structurallyEqual(nodeResult.data, existing) ? existing : nodeResult.data;
       return {
         ok: true,
         project: {
@@ -392,6 +428,136 @@ function computeNextProject(
         project: {
           ...present,
           variables: newVars,
+        },
+      };
+    }
+
+    case "addEntity": {
+      const currentEntities = getEntities(present);
+      if (currentEntities.length >= MAX_ENTITIES_PER_PROJECT) {
+        return {
+          ok: false,
+          error: {
+            code: "invalid",
+            message: `Project exceeds maximum entity limit of ${MAX_ENTITIES_PER_PROJECT}`,
+          },
+        };
+      }
+      if (currentEntities.some((e) => e.id === action.entity.id)) {
+        return {
+          ok: false,
+          error: {
+            code: "duplicate-id",
+            message: `Entity with id '${action.entity.id}' already exists`,
+          },
+        };
+      }
+      const entityResult = EntitySchema.safeParse(action.entity);
+      if (!entityResult.success) {
+        return {
+          ok: false,
+          error: { code: "invalid", message: entityResult.error.message },
+        };
+      }
+      return {
+        ok: true,
+        project: {
+          ...present,
+          entities: [...currentEntities, entityResult.data],
+        },
+      };
+    }
+
+    case "updateEntity": {
+      const currentEntities = getEntities(present);
+      const idx = currentEntities.findIndex((e) => e.id === action.id);
+      const existing = idx !== -1 ? currentEntities[idx] : undefined;
+      if (idx === -1 || !existing) {
+        return {
+          ok: false,
+          error: {
+            code: "not-found",
+            message: `Entity with id '${action.id}' not found`,
+          },
+        };
+      }
+
+      if (
+        action.patch.kind !== undefined &&
+        action.patch.kind !== existing.kind &&
+        existing.kind === "character"
+      ) {
+        const affectedNodes = present.nodes.filter((n) => n.speakerId === action.id);
+        if (affectedNodes.length > 0) {
+          return {
+            ok: false,
+            error: {
+              code: "dangling-reference",
+              message: `Cannot change kind of character '${existing.name}': used as speaker by ${affectedNodes.length} node(s)`,
+            },
+          };
+        }
+      }
+
+      const updated: Record<string, unknown> = { ...existing };
+      if (action.patch.name !== undefined) updated.name = action.patch.name;
+      if (action.patch.kind !== undefined) updated.kind = action.patch.kind;
+      if (action.patch.description === null) {
+        delete updated.description;
+      } else if (action.patch.description !== undefined) {
+        updated.description = action.patch.description;
+      }
+
+      const entityResult = EntitySchema.safeParse(updated);
+      if (!entityResult.success) {
+        return {
+          ok: false,
+          error: { code: "invalid", message: entityResult.error.message },
+        };
+      }
+
+      const newEntities = [...currentEntities];
+      newEntities[idx] = structurallyEqual(entityResult.data, existing) ? existing : entityResult.data;
+      return {
+        ok: true,
+        project: {
+          ...present,
+          entities: newEntities,
+        },
+      };
+    }
+
+    case "deleteEntity": {
+      const currentEntities = getEntities(present);
+      const exists = currentEntities.some((e) => e.id === action.id);
+      if (!exists) {
+        return {
+          ok: false,
+          error: {
+            code: "not-found",
+            message: `Entity with id '${action.id}' not found`,
+          },
+        };
+      }
+
+      const newEntities = currentEntities.filter((e) => e.id !== action.id);
+      let anyNodeChanged = false;
+      const newNodes = present.nodes.map((node) => {
+        if (node.speakerId === action.id) {
+          anyNodeChanged = true;
+          const updatedNode = { ...node };
+          delete updatedNode.speakerId;
+          return updatedNode;
+        }
+        return node;
+      });
+
+      return {
+        ok: true,
+        project: {
+          ...present,
+          nodes: anyNodeChanged ? newNodes : present.nodes,
+          entities: newEntities,
         },
       };
     }

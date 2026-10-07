@@ -529,4 +529,384 @@ describe("history behavior and cap", () => {
     const redoneB = redo(redoneA);
     expect(redoneB.present.name).toBe("B");
   });
+
+  describe("Content Model v2: node body, speakerId, and entity actions", () => {
+    it("updateNode: updates body and speakerId on start, scene, and end nodes", () => {
+      const proj: Project = {
+        ...makeInitialProject(),
+        entities: [
+          { id: "char_hero", kind: "character", name: "Hero" },
+        ],
+      };
+      const s0 = createEditor(proj);
+
+      // Start node
+      const rStart = apply(s0, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { body: "Once upon a time", speakerId: "char_hero" },
+      });
+      expect(rStart.ok).toBe(true);
+      if (!rStart.ok) return;
+      const startNode = rStart.state.present.nodes.find((n) => n.id === "node_start");
+      expect(startNode?.body).toBe("Once upon a time");
+      expect(startNode?.speakerId).toBe("char_hero");
+
+      // Scene node
+      const rScene = apply(rStart.state, {
+        type: "updateNode",
+        id: "node_scene_1",
+        patch: { body: "In the dungeon", speakerId: "char_hero" },
+      });
+      expect(rScene.ok).toBe(true);
+      if (!rScene.ok) return;
+      const sceneNode = rScene.state.present.nodes.find((n) => n.id === "node_scene_1");
+      expect(sceneNode?.body).toBe("In the dungeon");
+      expect(sceneNode?.speakerId).toBe("char_hero");
+
+      // End node
+      const rEnd = apply(rScene.state, {
+        type: "updateNode",
+        id: "node_end",
+        patch: { body: "The end", speakerId: "char_hero" },
+      });
+      expect(rEnd.ok).toBe(true);
+      if (!rEnd.ok) return;
+      const endNode = rEnd.state.present.nodes.find((n) => n.id === "node_end");
+      expect(endNode?.body).toBe("The end");
+      expect(endNode?.speakerId).toBe("char_hero");
+
+      // Clearing body and speakerId with null deletes keys completely
+      const rClear = apply(rEnd.state, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { body: null, speakerId: null },
+      });
+      expect(rClear.ok).toBe(true);
+      if (!rClear.ok) return;
+      const clearedNode = rClear.state.present.nodes.find((n) => n.id === "node_start");
+      expect("body" in (clearedNode ?? {})).toBe(false);
+      expect("speakerId" in (clearedNode ?? {})).toBe(false);
+      expect(JSON.stringify(rClear.state.present)).not.toContain('"speakerId":null');
+      expect(JSON.stringify(rClear.state.present)).not.toContain('"speakerId": null');
+    });
+
+    it("updateNode: rejects speakerId pointing to missing entity with dangling-reference", () => {
+      const s0 = createEditor(makeInitialProject());
+      const res = apply(s0, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { speakerId: "missing_entity" },
+      });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error.code).toBe("dangling-reference");
+      expect(res.error.message).toContain("missing");
+      expect(s0.present).toBe(s0.present);
+    });
+
+    it("updateNode: rejects speakerId pointing to non-character entity with dangling-reference", () => {
+      const proj: Project = {
+        ...makeInitialProject(),
+        entities: [
+          { id: "loc_castle", kind: "location", name: "Castle" },
+        ],
+      };
+      const s0 = createEditor(proj);
+      const res = apply(s0, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { speakerId: "loc_castle" },
+      });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error.code).toBe("dangling-reference");
+      expect(res.error.message).toContain("location");
+    });
+
+    it("updateNode: enforces body cap (20,000 accepted vs 20,001 invalid, counts code points)", () => {
+      const s0 = createEditor(makeInitialProject());
+      const body20000 = "a".repeat(20000);
+      const rOk = apply(s0, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { body: body20000 },
+      });
+      expect(rOk.ok).toBe(true);
+
+      const body20001 = "a".repeat(20001);
+      const rOver = apply(s0, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { body: body20001 },
+      });
+      expect(rOver.ok).toBe(false);
+      if (rOver.ok) return;
+      expect(rOver.error.code).toBe("invalid");
+
+      // Surrogate pairs count code points, not UTF-16 units
+      // "😀" is 1 code point, 2 UTF-16 code units. 20,000 emojis = 20,000 code points, 40,000 code units
+      const emojiBody20000 = "😀".repeat(20000);
+      expect(emojiBody20000.length).toBe(40000);
+      const rEmoji = apply(s0, {
+        type: "updateNode",
+        id: "node_start",
+        patch: { body: emojiBody20000 },
+      });
+      expect(rEmoji.ok).toBe(true);
+    });
+
+    it("addEntity: creates entities key if absent on project", () => {
+      const proj = makeInitialProject();
+      delete (proj as { entities?: unknown }).entities;
+      expect(proj.entities).toBeUndefined();
+
+      const s0 = createEditor(proj);
+      const res = apply(s0, {
+        type: "addEntity",
+        entity: { id: "ent_1", kind: "character", name: "Alice" },
+      });
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(Array.isArray(res.state.present.entities)).toBe(true);
+      expect(res.state.present.entities).toHaveLength(1);
+      expect(res.state.present.entities?.[0]?.name).toBe("Alice");
+    });
+
+    it("addEntity: rejects duplicate id, empty/whitespace name, and caps", () => {
+      const s0 = createEditor(makeInitialProject());
+      const r1 = apply(s0, {
+        type: "addEntity",
+        entity: { id: "ent_1", kind: "character", name: "Alice" },
+      });
+      expect(r1.ok).toBe(true);
+      if (!r1.ok) return;
+
+      // Duplicate id
+      const rDup = apply(r1.state, {
+        type: "addEntity",
+        entity: { id: "ent_1", kind: "location", name: "Town" },
+      });
+      expect(rDup.ok).toBe(false);
+      if (rDup.ok) return;
+      expect(rDup.error.code).toBe("duplicate-id");
+
+      // Whitespace-only name rejected as invalid
+      const rWs = apply(r1.state, {
+        type: "addEntity",
+        entity: { id: "ent_2", kind: "character", name: "   " },
+      });
+      expect(rWs.ok).toBe(false);
+      if (rWs.ok) return;
+      expect(rWs.error.code).toBe("invalid");
+
+      // Name cap (120 code points accepted, 121 invalid)
+      const rName120 = apply(r1.state, {
+        type: "addEntity",
+        entity: { id: "ent_name120", kind: "character", name: "a".repeat(120) },
+      });
+      expect(rName120.ok).toBe(true);
+      const rName121 = apply(r1.state, {
+        type: "addEntity",
+        entity: { id: "ent_name121", kind: "character", name: "a".repeat(121) },
+      });
+      expect(rName121.ok).toBe(false);
+      if (rName121.ok) return;
+      expect(rName121.error.code).toBe("invalid");
+
+      // Description cap (5000 code points accepted, 5001 invalid)
+      const rDesc5000 = apply(r1.state, {
+        type: "addEntity",
+        entity: { id: "ent_desc5000", kind: "character", name: "Hero", description: "d".repeat(5000) },
+      });
+      expect(rDesc5000.ok).toBe(true);
+      const rDesc5001 = apply(r1.state, {
+        type: "addEntity",
+        entity: { id: "ent_desc5001", kind: "character", name: "Hero", description: "d".repeat(5001) },
+      });
+      expect(rDesc5001.ok).toBe(false);
+      if (rDesc5001.ok) return;
+      expect(rDesc5001.error.code).toBe("invalid");
+    });
+
+    it("addEntity: caps project entities at 1,000 (1,000th accepted, 1,001st invalid)", () => {
+      const initialEntities = Array.from({ length: 999 }, (_, i) => ({
+        id: `ent_${i}`,
+        kind: "character" as const,
+        name: `Char ${i}`,
+      }));
+      const proj: Project = { ...makeInitialProject(), entities: initialEntities };
+      const s0 = createEditor(proj);
+
+      // 1,000th entity
+      const r1000 = apply(s0, {
+        type: "addEntity",
+        entity: { id: "ent_1000", kind: "character", name: "1000th Char" },
+      });
+      expect(r1000.ok).toBe(true);
+      if (!r1000.ok) return;
+      expect(r1000.state.present.entities).toHaveLength(1000);
+
+      // 1,001st entity
+      const r1001 = apply(r1000.state, {
+        type: "addEntity",
+        entity: { id: "ent_1001", kind: "character", name: "1001st Char" },
+      });
+      expect(r1001.ok).toBe(false);
+      if (r1001.ok) return;
+      expect(r1001.error.code).toBe("invalid");
+      expect(r1001.error.message).toContain("1000");
+    });
+
+    it("updateEntity: updates name, kind, description and clearing desc with null", () => {
+      const proj: Project = {
+        ...makeInitialProject(),
+        entities: [
+          { id: "ent_1", kind: "character", name: "Alice", description: "Hero of the realm" },
+        ],
+      };
+      const s0 = createEditor(proj);
+
+      const rUp = apply(s0, {
+        type: "updateEntity",
+        id: "ent_1",
+        patch: { name: "Alice the Brave", description: null },
+      });
+      expect(rUp.ok).toBe(true);
+      if (!rUp.ok) return;
+      const updated = rUp.state.present.entities?.find((e) => e.id === "ent_1");
+      expect(updated?.name).toBe("Alice the Brave");
+      expect("description" in (updated ?? {})).toBe(false);
+
+      // Names and descriptions are stored exactly as typed (no silent trim)
+      const rUntrimmed = apply(rUp.state, {
+        type: "updateEntity",
+        id: "ent_1",
+        patch: { name: "  Untrimmed Alice  " },
+      });
+      expect(rUntrimmed.ok).toBe(true);
+      if (!rUntrimmed.ok) return;
+      expect(rUntrimmed.state.present.entities?.[0]?.name).toBe("  Untrimmed Alice  ");
+    });
+
+    it("updateEntity: rejects kind change away from character when used as speaker (names node count)", () => {
+      const proj: Project = {
+        ...makeInitialProject(),
+        nodes: [
+          { id: "node_1", type: "start", title: "N1", speakerId: "char_1" },
+          { id: "node_2", type: "scene", title: "N2", speakerId: "char_1" },
+        ],
+        entities: [
+          { id: "char_1", kind: "character", name: "Hero" },
+        ],
+      };
+      const s0 = createEditor(proj);
+
+      const rChange = apply(s0, {
+        type: "updateEntity",
+        id: "char_1",
+        patch: { kind: "location" },
+      });
+      expect(rChange.ok).toBe(false);
+      if (rChange.ok) return;
+      expect(rChange.error.code).toBe("dangling-reference");
+      expect(rChange.error.message).toContain("2 node(s)");
+      expect(rChange.error.message).toContain("Hero");
+    });
+
+    it("deleteEntity: cascades to clear speakerIds on referencing nodes; leaves entities: [] if last entity; 1 undo restores all", () => {
+      const proj: Project = {
+        ...makeInitialProject(),
+        nodes: [
+          { id: "node_start", type: "start", title: "Start", speakerId: "char_hero" },
+          { id: "node_scene_1", type: "scene", title: "Scene", speakerId: "char_hero" },
+          { id: "node_end", type: "end", title: "End" },
+        ],
+        entities: [
+          { id: "char_hero", kind: "character", name: "Hero" },
+        ],
+      };
+      const s0 = createEditor(proj);
+
+      const rDel = apply(s0, { type: "deleteEntity", id: "char_hero" });
+      expect(rDel.ok).toBe(true);
+      if (!rDel.ok) return;
+
+      const delPresent = rDel.state.present;
+      // Entity removed and entities: [] key preserved
+      expect(delPresent.entities).toEqual([]);
+      expect(delPresent.entities).toBeDefined();
+
+      // Referencing nodes have speakerId removed
+      const nStart = delPresent.nodes.find((n) => n.id === "node_start");
+      const nScene = delPresent.nodes.find((n) => n.id === "node_scene_1");
+      const nEnd = delPresent.nodes.find((n) => n.id === "node_end");
+      expect(nStart?.speakerId).toBeUndefined();
+      expect("speakerId" in (nStart ?? {})).toBe(false);
+      expect(nScene?.speakerId).toBeUndefined();
+      expect("speakerId" in (nScene ?? {})).toBe(false);
+      expect(JSON.stringify(delPresent)).not.toContain('"speakerId":null');
+      expect(JSON.stringify(delPresent)).not.toContain('"speakerId": null');
+      // Untouched node preserves reference
+      expect(Object.is(nEnd, proj.nodes[2])).toBe(true);
+
+      // ONE undo restores the entity and all speaker references
+      expect(canUndo(rDel.state)).toBe(true);
+      const sUndone = undo(rDel.state);
+      expect(sUndone.present.entities).toEqual(proj.entities);
+      const undoneStart = sUndone.present.nodes.find((n) => n.id === "node_start");
+      const undoneScene = sUndone.present.nodes.find((n) => n.id === "node_scene_1");
+      expect(undoneStart?.speakerId).toBe("char_hero");
+      expect(undoneScene?.speakerId).toBe("char_hero");
+    });
+
+    it("structural sharing and no-op detection on new actions", () => {
+      const proj: Project = {
+        ...makeInitialProject(),
+        nodes: [
+          { id: "node_1", type: "start", title: "N1", body: "Hello" },
+          { id: "node_2", type: "scene", title: "N2" },
+        ],
+        entities: [
+          { id: "ent_1", kind: "character", name: "Alice", description: "Desc" },
+          { id: "ent_2", kind: "location", name: "Town" },
+        ],
+      };
+      const s0 = createEditor(proj);
+
+      // Same-value updateNode: returns identical state reference
+      const rNoopNode = apply(s0, {
+        type: "updateNode",
+        id: "node_1",
+        patch: { body: "Hello" },
+      });
+      expect(rNoopNode.ok).toBe(true);
+      if (!rNoopNode.ok) return;
+      expect(Object.is(rNoopNode.state, s0)).toBe(true);
+      expect(rNoopNode.state.past.length).toBe(0);
+
+      // Same-value updateEntity: returns identical state reference
+      const rNoopEntity = apply(s0, {
+        type: "updateEntity",
+        id: "ent_1",
+        patch: { name: "Alice", description: "Desc" },
+      });
+      expect(rNoopEntity.ok).toBe(true);
+      if (!rNoopEntity.ok) return;
+      expect(Object.is(rNoopEntity.state, s0)).toBe(true);
+      expect(rNoopEntity.state.past.length).toBe(0);
+
+      // Untouched entities and nodes maintain Object.is identity on mutation
+      const rMut = apply(s0, {
+        type: "updateEntity",
+        id: "ent_1",
+        patch: { name: "Alice 2" },
+      });
+      expect(rMut.ok).toBe(true);
+      if (!rMut.ok) return;
+      expect(Object.is(rMut.state.present.entities?.[1], proj.entities?.[1])).toBe(true);
+      expect(Object.is(rMut.state.present.nodes[0], proj.nodes[0])).toBe(true);
+      expect(Object.is(rMut.state.present.nodes[1], proj.nodes[1])).toBe(true);
+    });
+  });
 });

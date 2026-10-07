@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
-import { ProjectSchema, type Project, type FlowNode, type FlowEdge, type Variable } from "@repo/schema";
+import {
+  ProjectSchema,
+  getEntities,
+  type Project,
+  type FlowNode,
+  type FlowEdge,
+  type Variable,
+  type Entity,
+  type EntityKind,
+} from "@repo/schema";
+import { validateProjectDocument } from "../persistence/parse";
 import { sampleProject } from "../demo/sampleProject";
 import {
   createEditor,
@@ -52,6 +62,8 @@ type ActionIntent =
       positionMode: "keep" | "null" | "new";
       x: number;
       y: number;
+      bodyMode?: "keep" | "null" | "short" | "overCap";
+      speakerMode?: "keep" | "null" | "character" | "location" | "missing";
     }
   | {
       kind: "moveNode";
@@ -105,6 +117,26 @@ type ActionIntent =
       kind: "deleteVariable";
       pickMissing: boolean;
       index: number;
+    }
+  | {
+      kind: "addEntity";
+      pickDuplicate: boolean;
+      index: number;
+      entityKind: EntityKind;
+      nameMode: "valid" | "whitespace" | "long";
+    }
+  | {
+      kind: "updateEntity";
+      mode: "modify" | "noop" | "missing";
+      index: number;
+      changeKind: boolean;
+      newKind: EntityKind;
+      descMode: "keep" | "null" | "valid";
+    }
+  | {
+      kind: "deleteEntity";
+      pickMissing: boolean;
+      index: number;
     };
 
 function resolveIntent(intent: ActionIntent, current: Project): EditorAction {
@@ -153,11 +185,30 @@ function resolveIntent(intent: ActionIntent, current: Project): EditorAction {
         title?: string;
         type?: FlowNode["type"];
         position?: { x: number; y: number } | null;
+        body?: string | null;
+        speakerId?: string | null;
       } = {};
       if (intent.title !== undefined) patch.title = intent.title;
       if (intent.nodeType !== undefined) patch.type = intent.nodeType;
       if (intent.positionMode === "null") patch.position = null;
       else if (intent.positionMode === "new") patch.position = { x: intent.x, y: intent.y };
+
+      if (intent.bodyMode === "null") patch.body = null;
+      else if (intent.bodyMode === "short") patch.body = "Story text";
+      else if (intent.bodyMode === "overCap") patch.body = "a".repeat(20001);
+
+      if (intent.speakerMode === "null") patch.speakerId = null;
+      else if (intent.speakerMode === "character") {
+        const chars = getEntities(current).filter((e) => e.kind === "character");
+        const char = pickAt(chars, intent.index);
+        if (char) patch.speakerId = char.id;
+      } else if (intent.speakerMode === "location") {
+        const locs = getEntities(current).filter((e) => e.kind === "location");
+        const loc = pickAt(locs, intent.index);
+        if (loc) patch.speakerId = loc.id;
+      } else if (intent.speakerMode === "missing") {
+        patch.speakerId = `missing_speaker_${intent.index}`;
+      }
 
       return { type: "updateNode", id: target.id, patch };
     }
@@ -337,6 +388,78 @@ function resolveIntent(intent: ActionIntent, current: Project): EditorAction {
       }
       return { type: "deleteVariable", id: target.id };
     }
+
+    case "addEntity": {
+      const existing = getEntities(current);
+      let id: string;
+      const dup = pickAt(existing, intent.index);
+      if (intent.pickDuplicate && dup) {
+        id = dup.id;
+      } else {
+        id = nextId(existing.map((e) => e.id), "entity");
+      }
+      let name = `Entity ${intent.index}`;
+      if (intent.nameMode === "whitespace") name = "   ";
+      else if (intent.nameMode === "long") name = "a".repeat(125);
+      const entity: Entity = {
+        id,
+        kind: intent.entityKind,
+        name,
+      };
+      return { type: "addEntity", entity };
+    }
+
+    case "updateEntity": {
+      const existing = getEntities(current);
+      const target = pickAt(existing, intent.index);
+      if (intent.mode === "noop") {
+        if (target) {
+          return {
+            type: "updateEntity",
+            id: target.id,
+            patch: { name: target.name, kind: target.kind },
+          };
+        }
+        const fallback = pickAt(current.nodes, intent.index);
+        if (fallback) {
+          return {
+            type: "updateNode",
+            id: fallback.id,
+            patch: { title: fallback.title },
+          };
+        }
+      }
+      if (intent.mode === "missing" || !target) {
+        return {
+          type: "updateEntity",
+          id: `missing_entity_${intent.index}`,
+          patch: { name: "Missing" },
+        };
+      }
+      const patch: {
+        name?: string;
+        kind?: EntityKind;
+        description?: string | null;
+      } = {};
+      if (intent.changeKind) {
+        patch.kind = intent.newKind;
+      }
+      if (intent.descMode === "null") {
+        patch.description = null;
+      } else if (intent.descMode === "valid") {
+        patch.description = "Updated description";
+      }
+      return { type: "updateEntity", id: target.id, patch };
+    }
+
+    case "deleteEntity": {
+      const existing = getEntities(current);
+      const target = pickAt(existing, intent.index);
+      if (intent.pickMissing || !target) {
+        return { type: "deleteEntity", id: `missing_entity_${intent.index}` };
+      }
+      return { type: "deleteEntity", id: target.id };
+    }
   }
 }
 
@@ -368,6 +491,8 @@ const actionIntentArbitrary: fc.Arbitrary<ActionIntent> = fc.oneof(
     positionMode: fc.constantFrom("keep" as const, "null" as const, "new" as const),
     x: fc.integer({ min: -2000, max: 2000 }),
     y: fc.integer({ min: -2000, max: 2000 }),
+    bodyMode: fc.constantFrom("keep" as const, "keep" as const, "null" as const, "short" as const, "overCap" as const),
+    speakerMode: fc.constantFrom("keep" as const, "keep" as const, "null" as const, "character" as const, "location" as const, "missing" as const),
   }),
   fc.record({
     kind: fc.constant("moveNode" as const),
@@ -431,6 +556,26 @@ const actionIntentArbitrary: fc.Arbitrary<ActionIntent> = fc.oneof(
     kind: fc.constant("deleteVariable" as const),
     pickMissing: fc.boolean(),
     index: fc.nat(),
+  }),
+  fc.record({
+    kind: fc.constant("addEntity" as const),
+    pickDuplicate: fc.boolean(),
+    index: fc.nat(),
+    entityKind: fc.constantFrom("character" as const, "location" as const, "item" as const),
+    nameMode: fc.constantFrom("valid" as const, "valid" as const, "whitespace" as const, "long" as const),
+  }),
+  fc.record({
+    kind: fc.constant("updateEntity" as const),
+    mode: fc.constantFrom("modify" as const, "noop" as const, "missing" as const),
+    index: fc.nat(),
+    changeKind: fc.boolean(),
+    newKind: fc.constantFrom("character" as const, "location" as const, "item" as const),
+    descMode: fc.constantFrom("keep" as const, "null" as const, "valid" as const),
+  }),
+  fc.record({
+    kind: fc.constant("deleteEntity" as const),
+    pickMissing: fc.boolean(),
+    index: fc.nat(),
   })
 );
 
@@ -488,6 +633,20 @@ describe("Editor Property Tests", () => {
           // 3. Project schema validation of present passes
           const parseResult = ProjectSchema.safeParse(state.present);
           expect(parseResult.success).toBe(true);
+
+          // 4. validateProjectDocument(present) passes (schema + entity/speaker integrity)
+          const docValidation = validateProjectDocument(state.present);
+          expect(docValidation.ok).toBe(true);
+
+          // 5. No speakerId references missing or non-character entity
+          const entityMap = new Map(getEntities(state.present).map((e) => [e.id, e]));
+          for (const node of state.present.nodes) {
+            if (node.speakerId) {
+              const ent = entityMap.get(node.speakerId);
+              expect(ent).toBeDefined();
+              expect(ent?.kind).toBe("character");
+            }
+          }
         }
       }),
       { numRuns: 50 }
@@ -598,4 +757,36 @@ describe("Editor Property Tests", () => {
       { numRuns: 50 }
     );
   });
+
+  it("E5 (cascade delete & single undo): deleteEntity cascades and 1 undo restores deep equality", () => {
+    const projWithCast: Project = {
+      ...sampleProject,
+      entities: [
+        { id: "ent_c1", kind: "character", name: "Alice" },
+        { id: "ent_c2", kind: "character", name: "Bob" },
+      ],
+      nodes: sampleProject.nodes.map((n, i) =>
+        i % 2 === 0 ? { ...n, speakerId: "ent_c1" } : { ...n, speakerId: "ent_c2" }
+      ),
+    };
+
+    const state = createEditor(projWithCast);
+    const beforePresent = state.present;
+
+    const delRes = apply(state, { type: "deleteEntity", id: "ent_c1" });
+    expect(delRes.ok).toBe(true);
+    if (!delRes.ok) return;
+
+    // Entity removed and affected nodes have speakerId removed
+    expect(delRes.state.present.entities?.some((e) => e.id === "ent_c1")).toBe(false);
+    for (const node of delRes.state.present.nodes) {
+      expect(node.speakerId).not.toBe("ent_c1");
+    }
+
+    // Exactly ONE undo restores full state
+    expect(canUndo(delRes.state)).toBe(true);
+    const undone = undo(delRes.state);
+    expect(structurallyEqual(undone.present, beforePresent)).toBe(true);
+  });
 });
+

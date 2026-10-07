@@ -2,6 +2,77 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-020 | 2026-10-05 | Database layer for apps/server: Drizzle ORM + node-postgres, schema constraints, migrations, and test suite
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement database layer with Drizzle ORM, PostgreSQL schema constraints, migrations, and test suite`
+- **Goal:** Set up PostgreSQL database layer for apps/server with Drizzle ORM and node-postgres, users, projects, and project_versions tables with real constraints, committed forward-only migrations, and an integrity test suite against lumio_test.
+- **Files changed:**
+  - `apps/server/package.json`: added dependencies `drizzle-orm: 0.45.3`, `pg: 8.23.1`, devDependencies `drizzle-kit: 0.31.11`, `@types/pg: 8.23.1`; added scripts `db:generate` and `db:migrate`.
+  - `apps/server/vitest.config.ts`: configured `fileParallelism: false` to prevent cross-file database truncation conflicts.
+  - `apps/server/turbo.json`: created package-level configuration extending root `//` with `test` task `cache: false` to prevent stale database test cache hits.
+  - `apps/server/.env.example`: added `TEST_DATABASE_URL` pointing to localhost:5432/lumio_test with placeholder password.
+  - `apps/server/drizzle.config.ts`: configured drizzle-kit with postgresql dialect, schema path (`./src/db/schema.ts`), and out folder (`./drizzle`).
+  - `apps/server/drizzle/0000_salty_trauma.sql`: committed initial SQL migration file creating tables, constraints, foreign keys, and indexes.
+  - `apps/server/drizzle/meta/_journal.json`: committed migration journal metadata.
+  - `apps/server/drizzle/meta/0000_snapshot.json`: committed migration schema snapshot.
+  - `apps/server/src/db/schema.ts`: defined `users`, `projects`, and `project_versions` tables with exact column names, defaults, check constraints, foreign keys with CASCADE and SET NULL rules, and indexes.
+  - `apps/server/src/db/client.ts`: implemented `createDb` factory returning `{ db, pool, close }` with pool limits and error event listener.
+  - `apps/server/src/db/migrate.ts`: implemented `runMigrations` applying committed migrations idempotently via import.meta.url.
+  - `apps/server/src/db/migrate-cli.ts`: created CLI runner for `db:migrate` with validated config, secrecy, and pool cleanup.
+  - `apps/server/src/db/testSafety.ts`: implemented pure `checkTestDatabaseUrl` safety guard rejecting non-test DBs, non-localhost hosts, and dev DB collisions without leaking credentials.
+  - `apps/server/src/db/testSafety.test.ts`: test-first unit and property tests covering refusals, accepted URLs, and userinfo secrecy.
+  - `apps/server/src/db/testEnv.ts`: implemented `loadServerEnv` helper using native `process.loadEnvFile`.
+  - `apps/server/src/db/schema.int.test.ts`: 11-test integrity suite against `lumio_test` verifying introspection, migration idempotency, check constraints, foreign keys, cascades, 20-run concurrency race, timestamptz defaults, JSONB property round-trip, U+0000 22P05 rejection, SQL injection safety, and pinned hostile keys.
+  - `docs/ARCHITECTURE.md`: updated Stack (Drizzle + node-postgres DECIDED), Repo map, Section 4 Data model (tables, version rule, size limits, U+0000 note), Migrations, Database tests, and Section 12 debt list.
+  - `docs/context/work-archive.md`: archived full W-012 entry per R7.4 rolling window cap.
+  - `docs/context/recent-work.md`: logged entry W-020 at top of Entries, rotated W-012 to older work.
+- **New/changed public APIs:**
+  - `apps/server/src/db/schema.ts`:
+    - `export const MAX_DOCUMENT_BYTES = 5_000_000`
+    - `export const users: PgTableWithColumns<...>`
+    - `export const projects: PgTableWithColumns<...>`
+    - `export const projectVersions: PgTableWithColumns<...>`
+  - `apps/server/src/db/client.ts`:
+    - `type CreateDbOptions = { logError?: (err: unknown) => void; max?: number }`
+    - `type DbInstance = { db: NodePgDatabase; pool: Pool; close(): Promise<void> }`
+    - `createDb(databaseUrl: string, options?: CreateDbOptions): DbInstance`
+  - `apps/server/src/db/migrate.ts`:
+    - `runMigrations(db: NodePgDatabase): Promise<void>`
+  - `apps/server/src/db/testSafety.ts`:
+    - `type TestSafetyResult = { ok: true } | { ok: false; reason: string }`
+    - `checkTestDatabaseUrl(testUrl: unknown, devUrl?: unknown): TestSafetyResult`
+  - `apps/server/src/db/testEnv.ts`:
+    - `loadServerEnv(): void`
+- **Decisions and why:**
+  - Used exact dependency pins: `drizzle-orm: 0.45.3`, `drizzle-kit: 0.31.11`, `pg: 8.23.1`, `@types/pg: 8.23.1` (R2.4).
+  - Configured `apps/server/turbo.json` with `{"extends": ["//"], "tasks": {"test": {"cache": false}}}` to prevent Turbo from serving cached DB test runs when PostgreSQL is down (Clarification 4).
+  - Set `fileParallelism: false` in `apps/server/vitest.config.ts` to prevent parallel test files from truncating each other's test database state.
+  - Used PostgreSQL canonical `::jsonb::text` envelope size probe (`select octet_length(('{"p":"' || repeat('a', N) || '"}')::jsonb::text)`) where N=4,999,991 yields exactly 5,000,000 bytes (accepted) and N=4,999,992 yields 5,000,001 bytes (rejected with `project_versions_document_size_check`) (Clarification 5).
+  - Pinned PostgreSQL rejection of `\u0000` in jsonb with SQLSTATE `22P05` (`unsupported Unicode escape sequence`).
+  - Proved Drizzle wraps driver errors in `DrizzleQueryError` with the underlying `DatabaseError` on `error.cause`; unwrapped via single helper `unwrapDbError`.
+  - In property test, configured fast-check `noNullPrototype: true` (`fast-check.d.ts:1912`) and normalized with `JSON.parse(JSON.stringify(doc))` before insert, avoiding Drizzle entity inspector crash on null prototype objects.
+  - Pinned that own hostile keys (`__proto__`, `constructor`, `prototype`) round-trip intact through PostgreSQL jsonb.
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 322 total tests passing: 81 dsl, 59 checker, 144 web, 38 server).
+  - Turbo cache bypass test: `pnpm exec turbo run test --filter=@repo/server` run twice without `--force` -> both runs executed with `cache bypass` (`0 cached, 1 total`).
+  - 3-run clean slate test: `1..3 | ForEach-Object { pnpm --filter @repo/server exec vitest run }` -> 3/3 consecutive passes (38/38 tests each).
+  - Server test suite: `pnpm --filter @repo/server exec vitest run --reporter=verbose` -> all 38 tests passing (11 schema.int, 7 app, 10 config, 10 testSafety).
+- **Known issues / debt:**
+  - No `ProjectSchema` validation at database level (`document` is `jsonb`; app validates in next task).
+  - `updated_at` timestamp is updated by application logic, no database trigger.
+  - No soft delete (hard cascading deletes on foreign keys).
+  - No sharing or granular collaborator roles yet.
+  - `MAX_DOCUMENT_BYTES` (5 MB) duplicates the web client file limit (`MAX_FILE_BYTES`).
+  - Database counts the jsonb TEXT form (not raw upload bytes), so request-body size limit must be enforced before parsing.
+  - No connection retry or exponential backoff in client pool.
+  - Migrations are forward-only (no down migrations).
+  - No automated backup or restore procedures.
+  - U+0000 limitation: PostgreSQL rejects `\u0000` in jsonb strings (SQLSTATE `22P05`).
+  - DB integration tests require local PostgreSQL 18 service running on localhost:5432 and fail loudly without it.
+- **Next steps:**
+  - Implement Project CRUD services and HTTP endpoints in apps/server with ProjectSchema validation.
+
 ### W-019 | 2026-10-05 | Server skeleton: apps/server with Hono, validated config, CORS allowlist, and /health route
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(server): initialize apps/server skeleton with Hono, validated config, CORS allowlist, and /health endpoint`

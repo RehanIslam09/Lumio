@@ -1,11 +1,12 @@
 import React from "react";
-import type { Project, Issue, FlowNodeType, Variable, VariableType } from "@repo/schema";
+import type { Project, Issue, FlowNodeType, Variable, VariableType, Entity, EntityKind } from "@repo/schema";
 import type { Selection } from "../lib/flowModel.js";
 import { IssuesPanel } from "./IssuesPanel.js";
 import { InspectorPanel } from "./InspectorPanel.js";
 import { VariablesPanel } from "./VariablesPanel.js";
+import { EntitiesPanel } from "./EntitiesPanel.js";
 
-export type PanelTab = "issues" | "inspector" | "variables";
+export type PanelTab = "issues" | "inspector" | "variables" | "entities";
 
 interface RightPanelProps {
   activeTab: PanelTab;
@@ -20,7 +21,13 @@ interface RightPanelProps {
   variableIssues: Map<string, Issue[]>;
   onUpdateNode: (
     id: string,
-    patch: { title?: string; type?: FlowNodeType; position?: { x: number; y: number } | null },
+    patch: {
+      title?: string;
+      type?: FlowNodeType;
+      position?: { x: number; y: number } | null;
+      body?: string | null;
+      speakerId?: string | null;
+    },
   ) => void;
   onDeleteNode: (id: string) => void;
   onUpdateEdge: (
@@ -37,6 +44,12 @@ interface RightPanelProps {
     patch: { name?: string; type?: VariableType; initial?: Variable["initial"] | null },
   ) => void;
   onDeleteVariable: (id: string) => void;
+  onAddEntity: (entity: Entity) => void;
+  onUpdateEntity: (
+    id: string,
+    patch: { name?: string; kind?: EntityKind; description?: string | null },
+  ) => void;
+  onDeleteEntity: (id: string) => void;
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -60,6 +73,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onAddVariable,
   onUpdateVariable,
   onDeleteVariable,
+  onAddEntity,
+  onUpdateEntity,
+  onDeleteEntity,
 }) => {
   return (
     <aside className="right-sidebar" aria-label="Editor Sidebar">
@@ -72,8 +88,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           aria-controls="panel-issues"
           className={`tab-btn ${activeTab === "issues" ? "active" : ""}`}
           onClick={() => onTabChange("issues")}
+          title={`Issues (${issues.length})`}
+          aria-label={`Issues (${issues.length})`}
         >
-          Issues
+          <span className="tab-label">Issues</span>
           <span className="tab-badge">{issues.length}</span>
         </button>
         <button
@@ -84,8 +102,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           aria-controls="panel-inspector"
           className={`tab-btn ${activeTab === "inspector" ? "active" : ""}`}
           onClick={() => onTabChange("inspector")}
+          title="Inspector"
+          aria-label="Inspector"
         >
-          Inspector
+          <span className="tab-label">Inspector</span>
           {selection && <span className="tab-indicator" />}
         </button>
         <button
@@ -96,9 +116,25 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           aria-controls="panel-variables"
           className={`tab-btn ${activeTab === "variables" ? "active" : ""}`}
           onClick={() => onTabChange("variables")}
+          title={`Variables (${project.variables.length})`}
+          aria-label={`Variables (${project.variables.length})`}
         >
-          Variables
+          <span className="tab-label">Variables</span>
           <span className="tab-badge">{project.variables.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-entities"
+          aria-selected={activeTab === "entities"}
+          aria-controls="panel-entities"
+          className={`tab-btn ${activeTab === "entities" ? "active" : ""}`}
+          onClick={() => onTabChange("entities")}
+          title={`Entities (${(project.entities ?? []).length})`}
+          aria-label={`Entities (${(project.entities ?? []).length})`}
+        >
+          <span className="tab-label">Entities</span>
+          <span className="tab-badge">{(project.entities ?? []).length}</span>
         </button>
       </nav>
 
@@ -140,6 +176,18 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               onAddVariable={onAddVariable}
               onUpdateVariable={onUpdateVariable}
               onDeleteVariable={onDeleteVariable}
+            />
+          </div>
+        )}
+
+        {activeTab === "entities" && (
+          <div id="panel-entities" role="tabpanel" aria-labelledby="tab-entities" tabIndex={0}>
+            <EntitiesPanel
+              project={project}
+              onAddEntity={onAddEntity}
+              onUpdateEntity={onUpdateEntity}
+              onDeleteEntity={onDeleteEntity}
+              onSelectNode={onSelectNode}
             />
           </div>
         )}

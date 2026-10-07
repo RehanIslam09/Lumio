@@ -766,6 +766,15 @@ function MainStudio() {
             dispatch({ type: "updateVariable", id, patch });
           }}
           onDeleteVariable={(id) => dispatch({ type: "deleteVariable", id })}
+          onAddEntity={(entity) => {
+            dispatch({ type: "addEntity", entity });
+          }}
+          onUpdateEntity={(id, patch) => {
+            dispatch({ type: "updateEntity", id, patch });
+          }}
+          onDeleteEntity={(id) => {
+            dispatch({ type: "deleteEntity", id });
+          }}
         />
       </main>
     </div>

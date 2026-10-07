@@ -1,4 +1,11 @@
-import type { FlowNode, FlowEdge, Variable, FlowNodeType } from "@repo/schema";
+import type {
+  FlowNode,
+  FlowEdge,
+  Variable,
+  FlowNodeType,
+  Entity,
+  EntityKind,
+} from "@repo/schema";
 import { nextId } from "../editor/id.js";
 
 /**
@@ -64,5 +71,42 @@ export function makeVariable(
     name: `variable_${n}`,
     type: "number",
     initial: 0,
+  };
+}
+
+/**
+ * Generates a numbered default name for a new entity of given kind
+ * ("New character", "New character 2", ...) so consecutive additions do not trigger duplicate-name warnings.
+ */
+export function makeDefaultEntityName(
+  kind: EntityKind,
+  existing: readonly { name: string }[],
+): string {
+  const baseName = `New ${kind}`;
+  const existingNames = new Set(existing.map((e) => e.name.trim().toLowerCase()));
+
+  if (!existingNames.has(baseName.toLowerCase())) {
+    return baseName;
+  }
+
+  let n = 2;
+  while (existingNames.has(`${baseName.toLowerCase()} ${n}`)) {
+    n++;
+  }
+  return `${baseName} ${n}`;
+}
+
+/**
+ * Creates a new Entity with a unique ID and numbered default name.
+ */
+export function makeEntity(
+  kind: EntityKind,
+  existing: readonly Entity[],
+): Entity {
+  const existingIds = existing.map((e) => e.id);
+  return {
+    id: nextId(existingIds, "entity"),
+    kind,
+    name: makeDefaultEntityName(kind, existing),
   };
 }

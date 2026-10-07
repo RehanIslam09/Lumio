@@ -6,13 +6,23 @@ import { checkConditionDraft } from "../lib/draftCheck.js";
 import { ConnectionsSection } from "./ConnectionsSection.js";
 import { EdgeNavButtons } from "./EdgeNavButtons.js";
 import { EdgeEffectsSection } from "./EdgeEffectsSection.js";
+import { speakerOptions } from "../lib/entities.js";
 
 interface InspectorPanelProps {
   project: Project;
   selection: Selection;
   nodeIssues: Issue[];
   edgeIssues: Issue[];
-  onUpdateNode: (id: string, patch: { title?: string; type?: FlowNodeType; position?: { x: number; y: number } | null }) => void;
+  onUpdateNode: (
+    id: string,
+    patch: {
+      title?: string;
+      type?: FlowNodeType;
+      position?: { x: number; y: number } | null;
+      body?: string | null;
+      speakerId?: string | null;
+    },
+  ) => void;
   onDeleteNode: (id: string) => void;
   onUpdateEdge: (id: string, patch: { from?: string; to?: string; condition?: string | null; effects?: string[] | null }) => void;
   onDeleteEdge: (id: string) => void;
@@ -53,6 +63,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       );
     }
 
+    const speakerOpts = speakerOptions(project);
+
     return (
       <div className="inspector-panel" aria-label={`Node Inspector: ${node.title}`}>
         {nodeIssues.length > 0 && (
@@ -83,6 +95,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </div>
 
           <DraftField
+            key={`node-title-${node.id}`}
             id="inspect-node-title"
             label="Title"
             value={node.title}
@@ -106,6 +119,41 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <option value="end">end</option>
             </select>
           </div>
+
+          <div className="field-group">
+            <label htmlFor="inspect-node-speaker" className="field-label">Speaker</label>
+            <select
+              id="inspect-node-speaker"
+              className="field-select"
+              value={node.speakerId ?? ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                onUpdateNode(node.id, { speakerId: val === "" ? null : val });
+              }}
+            >
+              <option value="">(None)</option>
+              {speakerOpts.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <DraftField
+            key={`node-body-${node.id}`}
+            id="inspect-node-body"
+            label="Body"
+            value={node.body ?? ""}
+            multiline
+            rows={5}
+            placeholder="Scene body text or dialogue..."
+            showCounter={true}
+            onCommit={(nextBody) => {
+              const trimmed = nextBody.trim();
+              onUpdateNode(node.id, { body: trimmed === "" ? null : nextBody });
+            }}
+          />
 
           <div className="field-group">
             <label className="field-label">Position</label>
@@ -228,6 +276,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         </div>
 
         <DraftField
+          key={`edge-condition-${edge.id}`}
           id="inspect-edge-condition"
           label="Condition (DSL expression)"
           multiline

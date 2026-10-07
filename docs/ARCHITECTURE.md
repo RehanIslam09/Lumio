@@ -77,7 +77,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,...}`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Entity, Issue, Variable; pure migration chain (`migrate`), `countCodePoints`, `isReadableSchemaVersion`, derived shape keys
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -289,13 +289,21 @@ Interactive story canvas and narrative authoring environment built with React, V
 - **Draft & Commit Rules:**
   - Input fields and textareas maintain local draft state while user is editing.
   - Values commit to editor state only on `blur` or `Enter` (`Ctrl+Enter` in multiline textareas). `Escape` reverts to committed value. Unchanged drafts commit nothing.
+  - Rejected actions keep draft text intact in the field and display error messages in the editor message banner without stealing focus or clearing user input.
+  - Draft commits do not fire from unmount or cleanup handlers, preventing cross-target commit contamination when switching node or entity selection.
   - Under condition and effect fields, live diagnostics from pure `draftCheck` highlight syntax/type problem spans in real time without committing.
 - **Right Sidebar Tabs (420px):**
   - **Issues Tab:** Grouped consistency diagnostics (Errors, Warnings, Variables) with code snippets and click-to-focus camera panning.
   - **Inspector Tab:**
-    - Contextual inspector for selected Node: ID, title, type, explicit/auto position with clear button, Connections section (incoming/outgoing edge rows with direction arrow, destination title or `(missing node)`, condition summary, `fx N` chip, and click-to-focus; empty state messaging; and "Connect to…" dropdown + Connect button dispatching `addEdge` via `makeEdge`), and delete button.
+    - Contextual inspector for selected Node: ID, title, type, Speaker dropdown (characters only, disambiguating duplicates), Body `<textarea>` with live code-point counter and change-only `aria-live` limit alerts, explicit/auto position with clear button, Connections section (incoming/outgoing edge rows with direction arrow, destination title or `(missing node)`, condition summary, `fx N` chip, and click-to-focus; empty state messaging; and "Connect to…" dropdown + Connect button dispatching `addEdge` via `makeEdge`), and delete button.
     - Contextual inspector for selected Edge: "Go to source" and "Go to target" navigation buttons with click-to-focus (disabled on dangling references), ID, source, target, condition, editable effects list, delete button, inline edge issues.
   - **Variables Tab:** Variable manager with name, type selector, initial value controls (number, string, boolean checkbox, or clear/set initial toggle), inline variable issues, and deletion. Incompatible type switches surface editor error in dismissible message bar.
+  - **Entities Tab (4th Tab):** Cast & world entity manager for characters, locations, and items.
+    - Add button row creating entities with incremented names (`New character`, `New character 2`, etc.).
+    - Collapsed entity rows display kind chip, name, and speaker usage count badge without rendering inputs or textareas.
+    - At most one entity expanded at a time; expanding mounts editable fields (name, kind selector, description textarea with character counter, "Used by" node selector links, and delete button).
+    - Duplicate name note is shown when another entity of the same kind shares the case-insensitive name.
+    - Deletion of an entity used as speaker prompts for confirmation; on confirmation, cascades deletion to clear `speakerId` across all referencing nodes in a single atomic undoable step.
 
 ## 8. Editor state `DECIDED`
 Pure TypeScript editor state module with undo/redo history and referential integrity (`apps/web/src/editor/`).
@@ -312,7 +320,7 @@ interface EditorState {
 type EditorAction =
   | { type: "renameProject"; name: string }
   | { type: "addNode"; node: FlowNode }
-  | { type: "updateNode"; id: string; patch: { title?: string; type?: FlowNode["type"]; position?: { x: number; y: number } | null } }
+  | { type: "updateNode"; id: string; patch: { title?: string; type?: FlowNode["type"]; position?: { x: number; y: number } | null; body?: string | null; speakerId?: string | null } }
   | { type: "moveNode"; id: string; position: { x: number; y: number } }
   | { type: "deleteNode"; id: string }
   | { type: "addEdge"; edge: FlowEdge }
@@ -320,7 +328,10 @@ type EditorAction =
   | { type: "deleteEdge"; id: string }
   | { type: "addVariable"; variable: Variable }
   | { type: "updateVariable"; id: string; patch: { name?: string; type?: Variable["type"]; initial?: Variable["initial"] | null } }
-  | { type: "deleteVariable"; id: string };
+  | { type: "deleteVariable"; id: string }
+  | { type: "addEntity"; entity: Entity }
+  | { type: "updateEntity"; id: string; patch: { name?: string; kind?: EntityKind; description?: string | null } }
+  | { type: "deleteEntity"; id: string };
 
 type ApplyResult =
   | { ok: true; state: EditorState }
@@ -344,8 +355,13 @@ interface EditorError {
 - **Immutability & Structural Sharing:** Untouched entities and unmodified collection arrays preserve strict reference equality (`Object.is`).
 - **Validation:** Changed entities are validated via `safeParse` against Zod schemas from `@repo/schema`. The parsed output is stored in the new state. Validation failures return `{ ok: false, error: { code: 'invalid', message } }` without mutating state or pushing history.
 - **Referential Integrity:** `addEdge` and `updateEdge` check that `from` and `to` nodes exist in `present.nodes` (else `'dangling-reference'`). `deleteNode` automatically cascade-deletes all incident incoming and outgoing edges in a single atomic history step (one `undo` restores node and edges together). Self-loops and parallel edges are allowed.
+- **Entity & Speaker Integrity:**
+  - `addEntity` enforces maximum 1,000 entities, unique entity IDs, non-whitespace names (max 120 code points), and optional descriptions (max 5,000 code points).
+  - `updateEntity` rejects changing the `kind` of a character entity if any node currently uses it as `speakerId` (`Cannot change kind of entity "{name}": used as speaker by N node(s)`).
+  - `deleteEntity` cascades deletion by clearing `speakerId` from all referencing nodes in a single atomic history step (one `undo` restores entity and speaker assignments together).
+  - `updateNode` validates that `speakerId` references an existing character entity (rejects missing entities and non-character entities) and enforces body cap of 20,000 code points (counting code points, not UTF-16 code units).
 - **Variable Initial Value Integrity:** Changing a variable's `type` without providing a compatible `initial` or removing it via `initial: null` returns `'invalid'`. Unique variable names are not enforced by the editor.
-- **No-op Detection:** Changes deep-equal to the current state via internal `structurallyEqual` helper (key-order independent, undefined/missing key equivalence) return `{ ok: true, state }` with the exact same state reference and do not push history.
+- **No-op Detection:** Changes deep-equal to the current state via internal `structurallyEqual` helper (key-order independent, undefined/missing key equivalence) return `{ ok: true, state }` with the exact same state reference and do not push history. Untouched nodes and entities maintain strict object identity (`Object.is`).
 - **History Cap:** Capped at 100 entries in `past`. When exceeded, the oldest entry is dropped (FIFO). Any successful non-no-op action clears `future`.
 
 ## 9. Realtime collaboration `DRAFT`
@@ -600,19 +616,13 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - No soft delete: project deletion cascades immediately and permanently to all versions
   - Write rate limiter is in-memory per process (not shared across horizontally scaled instances)
   - No `ETag` or `If-Match` HTTP headers: concurrency control relies entirely on `baseVersion` in the JSON request body
-- **Web Cloud Features technical debt (S3c / W-024):**
-  - No version-history UI: server `/versions` endpoints exist but web client does not display or revert versions yet
-  - No autosave or offline queue: all cloud saves require explicit user action
-  - No merge: conflicts resolve strictly at the whole-document level
-  - API shapes duplicated from the server: DTO types in `apps/web/src/api/types.ts` should eventually move into `@repo/schema`
-  - UI components have no automated DOM tests: Vitest test environment is Node; React components rely on manual browser verification
-  - No password change, password reset, or account deletion UI
-  - Client does no password-policy checks: the backend server is authoritative for password code-point constraints
-  - Project list not paginated: displays whatever the server returns (server caps at 200)
-  - Delete uses `window.confirm` rather than a custom accessible modal
-  - No loading skeletons: uses textual loading states
-  - Retry-After is shown to the user but never automatically retried
-  - `127.0.0.1` is unsupported in development (requires `http://localhost:5173` for cookie origin parity)
+- **Web UI & Entities technical debt (W-028):**
+  - Textarea is plain text without rich text, markdown preview, syntax highlighting, or mention autocompletion
+  - No entity filtering or search bar in Entities tab
+  - Character renaming does not auto-update mentions in node body text (speaker is linked by entity ID only)
+  - No entity color coding, tags, custom attributes, or avatar images
+  - Deleting an entity uses native inline confirmation button rather than a modal dialog
+
 
 ## 15. Benchmarks & Scale Measurements `DECIDED`
 

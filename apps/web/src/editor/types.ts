@@ -1,4 +1,4 @@
-import type { Project, FlowNode, FlowEdge, Variable } from "@repo/schema";
+import type { Project, FlowNode, FlowEdge, Variable, Entity, EntityKind } from "@repo/schema";
 
 export interface EditorState {
   present: Project;
@@ -16,6 +16,8 @@ export type EditorAction =
         title?: string;
         type?: FlowNode["type"];
         position?: { x: number; y: number } | null;
+        body?: string | null;
+        speakerId?: string | null;
       };
     }
   | {
@@ -46,7 +48,18 @@ export type EditorAction =
         initial?: Variable["initial"] | null;
       };
     }
-  | { type: "deleteVariable"; id: string };
+  | { type: "deleteVariable"; id: string }
+  | { type: "addEntity"; entity: Entity }
+  | {
+      type: "updateEntity";
+      id: string;
+      patch: {
+        name?: string;
+        kind?: EntityKind;
+        description?: string | null;
+      };
+    }
+  | { type: "deleteEntity"; id: string };
 
 export type EditorErrorCode =
   | "not-found"
