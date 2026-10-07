@@ -115,3 +115,21 @@ stable-011:
 - W-029 checker tests: 82 passing
 - Commit: `721b94b`
 - Tag: `stable-011`
+
+stable-012:
+- Playtest evaluator implemented as a strict pure DSL evaluator with short-circuiting and atomic effects
+- Pure playtest session engine with history, back/restart, variable tracking, and status handling
+- Playtest dialog with blocked-choice reasons, effects, literal node-body rendering, Escape/focus handling, and missing-start handling
+- W-030 gate: 14/14 tasks successful, 0 cached, 698 tests passing
+- Browser validation: Playtest manual checks passed
+- Commit: `2233eef`
+- Tag: `stable-012`
+
+| Field | Value |
+|---|---|
+| Promoted on | 2026-10-07 |
+| Branch | `main` |
+| Commit | `2233eef` |
+| Tag | `stable-012` |
+| Gate result | W-030 gate passed: 14/14 tasks successful, 0 cached, 698 tests passing across 46 test files; browser Playtest checks passed. |
+| Approved by | Rehan Islam |
