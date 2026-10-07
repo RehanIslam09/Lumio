@@ -94,3 +94,14 @@ stable-009:
 - Tests: 599 passing
 - Gate: 14/14
 - Commit: `2a79caf`
+
+stable-010:
+- Entities panel with character, location, and item management
+- Node body editing with 20,000 code-point cap
+- Speaker assignment to character entities
+- Entity rename, description, kind-change validation, and duplicate-name warnings
+- Cascade speaker cleanup on entity deletion with single-step undo
+- Draft fields keyed by node/entity/edge id to prevent stale draft leakage
+- W-028 editor tests: 49 passing
+- Browser validation: B1-B12 passed
+- Commit: `2392dcf`
