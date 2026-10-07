@@ -105,3 +105,13 @@ stable-010:
 - W-028 editor tests: 49 passing
 - Browser validation: B1-B12 passed
 - Commit: `2392dcf`
+
+stable-011:
+- Entity-based checker rules implemented
+- Added invalid-speaker, speaker-without-text, character-never-speaks, and duplicate-entity-name rules
+- Issues can be anchored to entities via `entityId`
+- Entity issue navigation from Issues tab implemented
+- Checker/UI parity tests and property-test coverage added
+- W-029 checker tests: 82 passing
+- Commit: `721b94b`
+- Tag: `stable-011`
