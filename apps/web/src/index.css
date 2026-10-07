@@ -1289,6 +1289,16 @@ body {
   color: var(--text-muted);
 }
 
+.entity-issues-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 9999px;
+  color: #fde68a;
+  font-weight: 500;
+}
+
 .entity-expand-icon {
   font-size: 12px;
   color: var(--text-muted);
@@ -1301,6 +1311,24 @@ body {
   flex-direction: column;
   gap: 12px;
   background: rgba(0, 0, 0, 0.12);
+}
+
+.entity-issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 4px;
+}
+
+.entity-issue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #fde68a;
 }
 
 .duplicate-name-note {

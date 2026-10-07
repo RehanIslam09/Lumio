@@ -302,6 +302,10 @@ export const IssueRuleIdSchema = z.enum([
   "unused-variable",
   "variable-never-written",
   "variable-never-read",
+  "invalid-speaker",
+  "speaker-without-text",
+  "character-never-speaks",
+  "duplicate-entity-name",
 ]);
 export type IssueRuleId = z.infer<typeof IssueRuleIdSchema>;
 
@@ -323,11 +327,16 @@ export const IssueSchema = z
     severity: IssueSeveritySchema,
     nodeId: z.string().optional(),
     variableId: z.string().optional(),
+    entityId: z.string().optional(),
     message: z.string(),
     location: IssueLocationSchema.optional(),
   })
   .refine(
-    (issue) => (issue.nodeId !== undefined) !== (issue.variableId !== undefined),
+    (issue) =>
+      (issue.nodeId !== undefined ? 1 : 0) +
+        (issue.variableId !== undefined ? 1 : 0) +
+        (issue.entityId !== undefined ? 1 : 0) ===
+      1,
     { message: "Exactly one of nodeId or variableId must be present" },
   );
 export type Issue = z.infer<typeof IssueSchema>;

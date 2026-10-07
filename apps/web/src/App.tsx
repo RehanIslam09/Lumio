@@ -324,6 +324,7 @@ function MainStudio() {
   const [selection, setSelected] = useState<Selection>(null);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [activeTab, setActiveTab] = useState<PanelTab>("issues");
+  const [expandedEntityId, setExpandedEntityId] = useState<string | null>(null);
 
   const project = editorState.present;
   const dirty = isMarkerDirty(project, savedMarker);
@@ -346,6 +347,7 @@ function MainStudio() {
     setLoadCounter((c) => c + 1);
     setSelected(null);
     setSelectedIssue(null);
+    setExpandedEntityId(null);
   }, []);
 
   const replaceActiveProject = useCallback(
@@ -585,7 +587,10 @@ function MainStudio() {
 
   const handleSelectIssue = useCallback((issue: Issue) => {
     setSelectedIssue(issue);
-    if (issue.location) {
+    if (issue.entityId !== undefined) {
+      setActiveTab("entities");
+      setExpandedEntityId(issue.entityId);
+    } else if (issue.location) {
       setSelected({ kind: "edge", id: issue.location.edgeId });
     } else if (issue.nodeId) {
       setSelected({ kind: "node", id: issue.nodeId });
@@ -745,6 +750,9 @@ function MainStudio() {
           nodeIssues={selectedNodeIssues}
           edgeIssues={selectedEdgeIssues}
           variableIssues={grouped.byVariable}
+          entityIssues={grouped.byEntity}
+          expandedEntityId={expandedEntityId}
+          onToggleExpandEntity={setExpandedEntityId}
           onUpdateNode={(id, patch) => dispatch({ type: "updateNode", id, patch })}
           onDeleteNode={(id) => {
             dispatch({ type: "deleteNode", id });

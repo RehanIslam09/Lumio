@@ -1,11 +1,14 @@
-import React, { useState, useMemo } from "react";
-import type { Project, Entity, EntityKind } from "@repo/schema";
+import React, { useMemo } from "react";
+import type { Issue, Project, Entity, EntityKind } from "@repo/schema";
 import { sortedEntities, speakerUsage, duplicateNameIds } from "../lib/entities.js";
 import { makeEntity } from "../lib/defaults.js";
 import { DraftField } from "./DraftField.js";
 
 interface EntitiesPanelProps {
   project: Project;
+  expandedEntityId: string | null;
+  onToggleExpandEntity: (id: string | null) => void;
+  entityIssues: Map<string, Issue[]>;
   onAddEntity: (entity: Entity) => void;
   onUpdateEntity: (
     id: string,
@@ -17,13 +20,14 @@ interface EntitiesPanelProps {
 
 export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
   project,
+  expandedEntityId,
+  onToggleExpandEntity,
+  entityIssues,
   onAddEntity,
   onUpdateEntity,
   onDeleteEntity,
   onSelectNode,
 }) => {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
   const projectEntities = project.entities;
   const projectNodes = project.nodes;
 
@@ -38,7 +42,7 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
     const existing = project.entities ?? [];
     const newEntity = makeEntity(kind, existing);
     onAddEntity(newEntity);
-    setExpandedId(newEntity.id);
+    onToggleExpandEntity(newEntity.id);
   };
 
   const handleDelete = (entity: Entity) => {
@@ -94,9 +98,10 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
           <p className="empty-state">No entities in this project. Add characters, locations, or items to build your cast and world.</p>
         ) : (
           entities.map((entity) => {
-            const isExpanded = entity.id === expandedId;
+            const isExpanded = entity.id === expandedEntityId;
             const nodeIds = usage.get(entity.id) ?? [];
             const isDuplicate = duplicateIds.has(entity.id);
+            const issuesForEntity = entityIssues.get(entity.id) ?? [];
 
             return (
               <div
@@ -107,13 +112,13 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
                 {/* Collapsed header row: contains no textareas or inputs */}
                 <div
                   className="entity-card-header"
-                  onClick={() => setExpandedId(isExpanded ? null : entity.id)}
+                  onClick={() => onToggleExpandEntity(isExpanded ? null : entity.id)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setExpandedId(isExpanded ? null : entity.id);
+                      onToggleExpandEntity(isExpanded ? null : entity.id);
                     }
                   }}
                   aria-expanded={isExpanded}
@@ -129,6 +134,14 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
                         {nodeIds.length} {nodeIds.length === 1 ? "node" : "nodes"}
                       </span>
                     )}
+                    {issuesForEntity.length > 0 && (
+                      <span
+                        className="entity-issues-badge"
+                        title={`${issuesForEntity.length} issue(s)`}
+                      >
+                        {issuesForEntity.length} {issuesForEntity.length === 1 ? "issue" : "issues"}
+                      </span>
+                    )}
                   </div>
                   <span className="entity-expand-icon" aria-hidden="true">
                     {isExpanded ? "▾" : "▸"}
@@ -138,6 +151,20 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
                 {/* Only the expanded row renders inputs and textareas (Amendment 7) */}
                 {isExpanded && (
                   <div className="entity-card-body">
+                    {issuesForEntity.length > 0 && (
+                      <div className="entity-issues-list" aria-label="Entity issues">
+                        {issuesForEntity.map((issue, idx) => (
+                          <div
+                            key={`ent-issue-${issue.ruleId}-${issue.entityId}-${idx}`}
+                            className="entity-issue-item"
+                          >
+                            <span className="rule-tag tag-warning">{issue.ruleId}</span>
+                            <span className="issue-msg">{issue.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {isDuplicate && (
                       <div className="duplicate-name-note" role="note">
                         ⚠️ Another {entity.kind} shares this name

@@ -2,6 +2,98 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement accounts and sessions with Argon2id, httpOnly cookies, CSRF protection, and rate limiting`
+- **Goal:** Implement user registration, login, logout, "me", server-side session management in httpOnly cookie, Argon2id password hashing, CSRF origin check, rate limiting, and database migration 0001 for apps/server.
+- **Files changed:**
+  - `apps/server/package.json`: added exact pin `@node-rs/argon2: 2.2.1`.
+  - `apps/server/.env.example`: added commented `# SESSION_TTL_DAYS=30`.
+  - `apps/server/src/db/schema.ts`: defined `sessions` table with exact column names, check constraints (`sessions_token_hash_shape_check`, `sessions_expiry_check`), unique constraint (`sessions_token_hash_unique`), foreign key CASCADE, and indexes.
+  - `apps/server/drizzle/0001_public_firedrake.sql`: committed generated migration 0001 creating `sessions` table.
+  - `apps/server/drizzle/meta/_journal.json`: updated journal metadata.
+  - `apps/server/drizzle/meta/0001_snapshot.json`: committed migration 0001 snapshot.
+  - `apps/server/src/db/errors.ts`: created `getPgError` error unwrapper and `EmailTakenError`.
+  - `apps/server/src/db/errors.test.ts`: created unit tests for error unwrapping and `EmailTakenError`.
+  - `apps/server/src/auth/email.ts`: created pure `normalizeEmail` and `validateEmail` (3..254 chars, Zod email, ASCII-only).
+  - `apps/server/src/auth/email.test.ts`: unit tests covering length boundaries, ASCII enforcement, and secrecy.
+  - `apps/server/src/auth/password.ts`: created pure `validatePassword` counting 10..128 Unicode code points.
+  - `apps/server/src/auth/password.test.ts`: unit tests covering code point counts, emoji handling, and bounds.
+  - `apps/server/src/auth/token.ts`: created `generateSessionToken`, `hashSessionToken`, and `isWellFormedToken`.
+  - `apps/server/src/auth/token.test.ts`: unit tests for 43-char base64url generation, sha256 hashing, and validation.
+  - `apps/server/src/auth/rateLimiter.ts`: created sliding-window in-memory rate limiter with cap eviction.
+  - `apps/server/src/auth/rateLimiter.test.ts`: unit tests covering limits, sliding window expiration, key isolation, and cap eviction.
+  - `apps/server/src/auth/passwordHasher.ts`: created `PasswordHasher` interface and `createArgon2Hasher` with Argon2id parameters.
+  - `apps/server/src/auth/passwordHasher.test.ts`: unit tests verifying PHC format and timing.
+  - `apps/server/src/auth/repositories.ts`: defined `UserRepo` and `SessionRepo` interfaces.
+  - `apps/server/src/auth/fakes.ts`: created in-memory fake repositories.
+  - `apps/server/src/auth/fakes.test.ts`: unit tests for fake repositories and deterministic `trimToNewest`.
+  - `apps/server/src/auth/drizzleRepos.ts`: implemented Drizzle `UserRepo` and `SessionRepo` with CASCADE and error mapping.
+  - `apps/server/src/auth/service.ts`: implemented `createAuthService` with timing parity dummy hash, session fixation defense, and session trimming.
+  - `apps/server/src/auth/service.test.ts`: unit tests for all service rules and timing parity.
+  - `apps/server/src/auth/routes.ts`: implemented `createAuthRoutes` with CSRF check, 16 KB body limit, 415/413/400 mapping, cookie handling, and `requireAuth`.
+  - `apps/server/src/auth/routes.test.ts`: unit tests covering CSRF matrix, body validation, development/production cookie attributes, and round trip.
+  - `apps/server/src/config.ts`: added optional `SESSION_TTL_DAYS` (integer 1..90, default 30) -> `config.sessionTtlDays`.
+  - `apps/server/src/config.test.ts`: updated expected config objects and added unit tests for `SESSION_TTL_DAYS`.
+  - `apps/server/src/app.ts`: added credentials to CORS and mounted auth routes.
+  - `apps/server/src/app.test.ts`: updated test config fixture with `sessionTtlDays: 30`.
+  - `apps/server/src/compose.ts`: implemented single composition root wiring real db, repos, hasher, and routes.
+  - `apps/server/src/index.ts`: wired `createDb`, `composeApp`, and pool shutdown.
+  - `apps/server/src/auth/auth.int.test.ts`: 6 integration tests against `lumio_test` verifying introspection, real DB repos, full flow, 5-run concurrency race, DB agreement property, and `composeApp`.
+  - `docs/ARCHITECTURE.md`: updated Stack (auth DECIDED), Backend config table, Repo map, Relational schema, added Authentication section, and updated technical debt.
+  - `docs/context/work-archive.md`: archived full W-013 entry per R7.4 rolling 8-entry cap.
+  - `docs/context/recent-work.md`: recorded entry W-021, rotated W-013 to older work.
+- **New/changed public APIs:**
+  - `apps/server/src/auth/email.ts`:
+    - `normalizeEmail(raw: string): string`
+    - `validateEmail(raw: unknown): { ok: true; email: string } | { ok: false; reason: string }`
+  - `apps/server/src/auth/password.ts`:
+    - `validatePassword(raw: unknown): { ok: true; password: string } | { ok: false; reason: string }`
+  - `apps/server/src/auth/token.ts`:
+    - `generateSessionToken(randomBytes?: RandomBytesFn): string`
+    - `hashSessionToken(token: string): string`
+    - `isWellFormedToken(s: unknown): s is string`
+  - `apps/server/src/auth/rateLimiter.ts`:
+    - `createRateLimiter(options: RateLimiterOptions): RateLimiter`
+  - `apps/server/src/auth/passwordHasher.ts`:
+    - `createArgon2Hasher(): PasswordHasher`
+  - `apps/server/src/auth/repositories.ts`:
+    - `interface UserRepo`, `interface SessionRepo`
+  - `apps/server/src/auth/drizzleRepos.ts`:
+    - `createDrizzleUserRepo(db: NodePgDatabase): UserRepo`
+    - `createDrizzleSessionRepo(db: NodePgDatabase): SessionRepo`
+  - `apps/server/src/auth/service.ts`:
+    - `createAuthService(deps: AuthServiceDependencies): AuthService`
+  - `apps/server/src/auth/routes.ts`:
+    - `createAuthRoutes(deps: AuthRoutesDependencies): Hono`
+    - `requireAuth(service: AuthService, config: Config): MiddlewareHandler`
+    - `getSessionCookieName(nodeEnv: NodeEnv): string`
+  - `apps/server/src/compose.ts`:
+    - `composeApp(config: Config, deps: ComposeAppDependencies): Hono`
+  - `apps/server/src/db/errors.ts`:
+    - `getPgError(err: unknown): PgErrorDetails | null`
+    - `class EmailTakenError extends Error`
+- **Decisions and why:**
+  - Exact pin `@node-rs/argon2: 2.2.1` with native win32-x64 binary, measured ~9-14ms per hash on Windows Node 24 (R2.4).
+  - Used named constant `ARGON2ID_ALGORITHM = Algorithm.Argon2id ?? 2` with explicit algorithm specification (Clarification 2).
+  - Single composition root `composeApp` in `src/compose.ts` wiring production dependencies; kept `auth?` optional in `createApp` for backward test compatibility (Clarification 3).
+  - Used `bodyLimit` with `onError` returning JSON 413 `{ error: { code: "payload-too-large" } }` for both Content-Length and chunked stream bodies (Clarification 4).
+  - Started computing dummy hash at service construction and awaited it in login, guaranteeing timing parity for nonexistent users without delaying startup (Clarification 5).
+  - `trimToNewest` ordered by `created_at DESC, id DESC` keeping newest `keep` sessions deterministically (Clarification 6).
+  - Enforced `__Host-` prefix in production with `Secure`, `Path=/`, and no `Domain` attribute (Clarification 7).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 375 total tests passing: 81 dsl, 59 checker, 144 web, 91 server).
+  - Server 3-run loop: `1..3 | ForEach-Object { pnpm --filter @repo/server exec vitest run }` -> 3/3 consecutive passes (91/91 tests each).
+- **Known issues / debt:**
+  - Unbounded concurrent Argon2 hashing can exhaust memory under extreme load (19 MiB each); rate limits only reduce this risk.
+  - No email verification, password reset, or session list / revocation yet.
+  - In-memory rate limiter per process (not shared across instances).
+  - `X-Forwarded-For` not trusted; all clients behind a reverse proxy appear identical.
+  - SameSite=Lax requires same-site deployment.
+- **Next steps:**
+  - Implement Project CRUD services and HTTP endpoints in apps/server with ProjectSchema validation and requireAuth middleware.
+
 ### W-020 | 2026-10-05 | Database layer for apps/server: Drizzle ORM + node-postgres, schema constraints, migrations, and test suite
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement database layer with Drizzle ORM, PostgreSQL schema constraints, migrations, and test suite`

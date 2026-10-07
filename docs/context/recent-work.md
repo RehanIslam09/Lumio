@@ -24,6 +24,50 @@
 
 ## Entries
 
+### W-029 | 2026-10-07 | Entity-based checker rules and web inspector wiring
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement entity-based checker rules, lifted inspector state, and parity tests`
+- **Goal:** Implement Content Model v2 graph-level consistency rules in `@repo/checker` (`invalid-speaker`, `speaker-without-text`, `character-never-speaks`, `duplicate-entity-name`), lift expanded entity state to `apps/web` App to coordinate inspector selection on issue clicks, and establish parity tests.
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added 4 rule IDs to `IssueRuleIdSchema`, optional `entityId?: string` to `IssueSchema`, updated refinement to exactly 1 anchor among `nodeId`, `variableId`, `entityId`.
+  - `packages/checker/src/index.ts`: implemented 4 new rules in `check()`, handling duplicate entity IDs via first-occurrence-wins semantics, and deterministic issue ordering.
+  - `packages/checker/src/index.test.ts`: updated Property U2 to check all anchor kinds against project collections, added schema entityId refinement tests, deterministic ordering test, unit tests for each rule, duplicate entity ID tests, legacy v1 compatibility test, and Property E1 fuzzing test (82 tests total).
+  - `apps/web/src/lib/decorate.ts`: added `byEntity` Map to `GroupedIssues` and updated `groupIssues` to bucket issues by `entityId`.
+  - `apps/web/src/lib/decorate.test.ts`: updated tests for `byEntity` mapping in `groupIssues`.
+  - `apps/web/src/lib/checker.test.ts`: created web checker parity tests verifying fast-check correspondence between `duplicate-entity-name` & `duplicateNameIds`, and `character-never-speaks` & `speakerUsage`, plus duplicate entity ID semantics and golden v1 fixture compatibility.
+  - `apps/web/src/components/IssuesPanel.tsx`: updated issue selection predicate to match `issue.entityId === selectedEntityId`, added `entityId` to issue keys and target labels.
+  - `apps/web/src/components/RightPanel.tsx`: threaded `expandedEntityId`, `onToggleExpandEntity`, and `entityIssues` to `EntitiesPanel`.
+  - `apps/web/src/components/EntitiesPanel.tsx`: replaced local `expandedId` state with lifted `expandedEntityId` and `onToggleExpandEntity`, rendered `.entity-issues-badge` in collapsed header and `.entity-issues-list` in expanded card.
+  - `apps/web/src/App.tsx`: lifted `expandedEntityId` state; updated `handleSelectIssue` to activate `entities` tab and set `expandedEntityId` on entity issues without altering canvas selection or camera; reset `expandedEntityId` on project load.
+  - `apps/web/src/index.css`: styled `.entity-issues-badge`, `.entity-issues-list`, and `.entity-issue-item`.
+  - `docs/ARCHITECTURE.md`: updated file map (checker.test.ts), Section 6 issue rules table (12 rules total), and Issue model interface.
+  - `docs/context/work-archive.md`: archived full W-021 entry per 8-entry rolling cap.
+  - `docs/context/recent-work.md`: recorded entry W-029, rotated W-021 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `packages/schema/src/index.ts`:
+    - `IssueRuleIdSchema`: added `"invalid-speaker" | "speaker-without-text" | "character-never-speaks" | "duplicate-entity-name"`
+    - `IssueSchema`: added optional `entityId?: string`
+    - `type Issue`: `{ id: string; ruleId: IssueRuleId; severity: IssueSeverity; message: string; nodeId?: string; variableId?: string; entityId?: string }`
+  - `apps/web/src/lib/decorate.ts`:
+    - `interface GroupedIssues`: added `byEntity: Map<string, Issue[]>`
+- **Decisions and why:**
+  - Rule count: 8 existing rules expanded to 12 total (Amendment 1).
+  - First-occurrence-wins semantics for entities: duplicate entity IDs in input are ignored by all entity rules, duplicate-name, never-speaks, and speaker lookups (Amendment 3).
+  - Issue ordering convention: node-anchored issues in node array order, edge-anchored (via node), variable-anchored in variable array order, entity-anchored in first-occurrence entities array order (`character-never-speaks` then `duplicate-entity-name`) (Amendment 6).
+  - Lifted UI state: `expandedEntityId` in `App.tsx` allows clicking an entity issue to select the entities tab and expand the card without moving canvas camera/selection (Amendment 7).
+  - DraftField keys preserved unchanged; stale expanded entity ID renders nothing without errors and re-expands upon undo (Amendment 7).
+- **Assumptions / UNVERIFIED:**
+  - Manual browser script is UNVERIFIED (automated gate executed and passed).
+- **Verification:**
+  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 652 total tests passing: 81 dsl, 82 checker, 154 server, 335 web).
+  - Parity test distribution: 100 fast-check runs on `checker.test.ts`: `[PARITY DISTRIBUTION 100 runs] duplicates: 27, non-duplicates: 73; silent-characters: 15, speaking-characters: 85`.
+  - Generator verification: 0 issues fired on none and planted modes across seeds 1..100 at sizes 20, 50, 300.
+  - Performance: `measure.ts` confirmed median check time at 300 nodes (0.66ms vs 0.76ms baseline), 1000 nodes (0.91ms vs 0.69ms baseline, delta 1.31x < 2x), 3000 nodes (2.58ms vs 2.66ms baseline).
+  - Web production build: `pnpm --filter @repo/web build` -> pass (JS: 606.89 kB, CSS: 42.14 kB).
+- **Known issues / debt:** none
+- **Next steps:**
+  - Collaboration layer or project persistence backend integration.
+
 ### W-028 | 2026-10-07 | Entities + node body + speaker in the editor (apps/web)
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add entities panel, node body and speaker controls, and editor actions`
@@ -366,99 +410,8 @@
 - **Next steps:**
   - User to tag commit with `git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`.
 
-### W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement accounts and sessions with Argon2id, httpOnly cookies, CSRF protection, and rate limiting`
-- **Goal:** Implement user registration, login, logout, "me", server-side session management in httpOnly cookie, Argon2id password hashing, CSRF origin check, rate limiting, and database migration 0001 for apps/server.
-- **Files changed:**
-  - `apps/server/package.json`: added exact pin `@node-rs/argon2: 2.2.1`.
-  - `apps/server/.env.example`: added commented `# SESSION_TTL_DAYS=30`.
-  - `apps/server/src/db/schema.ts`: defined `sessions` table with exact column names, check constraints (`sessions_token_hash_shape_check`, `sessions_expiry_check`), unique constraint (`sessions_token_hash_unique`), foreign key CASCADE, and indexes.
-  - `apps/server/drizzle/0001_public_firedrake.sql`: committed generated migration 0001 creating `sessions` table.
-  - `apps/server/drizzle/meta/_journal.json`: updated journal metadata.
-  - `apps/server/drizzle/meta/0001_snapshot.json`: committed migration 0001 snapshot.
-  - `apps/server/src/db/errors.ts`: created `getPgError` error unwrapper and `EmailTakenError`.
-  - `apps/server/src/db/errors.test.ts`: created unit tests for error unwrapping and `EmailTakenError`.
-  - `apps/server/src/auth/email.ts`: created pure `normalizeEmail` and `validateEmail` (3..254 chars, Zod email, ASCII-only).
-  - `apps/server/src/auth/email.test.ts`: unit tests covering length boundaries, ASCII enforcement, and secrecy.
-  - `apps/server/src/auth/password.ts`: created pure `validatePassword` counting 10..128 Unicode code points.
-  - `apps/server/src/auth/password.test.ts`: unit tests covering code point counts, emoji handling, and bounds.
-  - `apps/server/src/auth/token.ts`: created `generateSessionToken`, `hashSessionToken`, and `isWellFormedToken`.
-  - `apps/server/src/auth/token.test.ts`: unit tests for 43-char base64url generation, sha256 hashing, and validation.
-  - `apps/server/src/auth/rateLimiter.ts`: created sliding-window in-memory rate limiter with cap eviction.
-  - `apps/server/src/auth/rateLimiter.test.ts`: unit tests covering limits, sliding window expiration, key isolation, and cap eviction.
-  - `apps/server/src/auth/passwordHasher.ts`: created `PasswordHasher` interface and `createArgon2Hasher` with Argon2id parameters.
-  - `apps/server/src/auth/passwordHasher.test.ts`: unit tests verifying PHC format and timing.
-  - `apps/server/src/auth/repositories.ts`: defined `UserRepo` and `SessionRepo` interfaces.
-  - `apps/server/src/auth/fakes.ts`: created in-memory fake repositories.
-  - `apps/server/src/auth/fakes.test.ts`: unit tests for fake repositories and deterministic `trimToNewest`.
-  - `apps/server/src/auth/drizzleRepos.ts`: implemented Drizzle `UserRepo` and `SessionRepo` with CASCADE and error mapping.
-  - `apps/server/src/auth/service.ts`: implemented `createAuthService` with timing parity dummy hash, session fixation defense, and session trimming.
-  - `apps/server/src/auth/service.test.ts`: unit tests for all service rules and timing parity.
-  - `apps/server/src/auth/routes.ts`: implemented `createAuthRoutes` with CSRF check, 16 KB body limit, 415/413/400 mapping, cookie handling, and `requireAuth`.
-  - `apps/server/src/auth/routes.test.ts`: unit tests covering CSRF matrix, body validation, development/production cookie attributes, and round trip.
-  - `apps/server/src/config.ts`: added optional `SESSION_TTL_DAYS` (integer 1..90, default 30) -> `config.sessionTtlDays`.
-  - `apps/server/src/config.test.ts`: updated expected config objects and added unit tests for `SESSION_TTL_DAYS`.
-  - `apps/server/src/app.ts`: added credentials to CORS and mounted auth routes.
-  - `apps/server/src/app.test.ts`: updated test config fixture with `sessionTtlDays: 30`.
-  - `apps/server/src/compose.ts`: implemented single composition root wiring real db, repos, hasher, and routes.
-  - `apps/server/src/index.ts`: wired `createDb`, `composeApp`, and pool shutdown.
-  - `apps/server/src/auth/auth.int.test.ts`: 6 integration tests against `lumio_test` verifying introspection, real DB repos, full flow, 5-run concurrency race, DB agreement property, and `composeApp`.
-  - `docs/ARCHITECTURE.md`: updated Stack (auth DECIDED), Backend config table, Repo map, Relational schema, added Authentication section, and updated technical debt.
-  - `docs/context/work-archive.md`: archived full W-013 entry per R7.4 rolling 8-entry cap.
-  - `docs/context/recent-work.md`: recorded entry W-021, rotated W-013 to older work.
-- **New/changed public APIs:**
-  - `apps/server/src/auth/email.ts`:
-    - `normalizeEmail(raw: string): string`
-    - `validateEmail(raw: unknown): { ok: true; email: string } | { ok: false; reason: string }`
-  - `apps/server/src/auth/password.ts`:
-    - `validatePassword(raw: unknown): { ok: true; password: string } | { ok: false; reason: string }`
-  - `apps/server/src/auth/token.ts`:
-    - `generateSessionToken(randomBytes?: RandomBytesFn): string`
-    - `hashSessionToken(token: string): string`
-    - `isWellFormedToken(s: unknown): s is string`
-  - `apps/server/src/auth/rateLimiter.ts`:
-    - `createRateLimiter(options: RateLimiterOptions): RateLimiter`
-  - `apps/server/src/auth/passwordHasher.ts`:
-    - `createArgon2Hasher(): PasswordHasher`
-  - `apps/server/src/auth/repositories.ts`:
-    - `interface UserRepo`, `interface SessionRepo`
-  - `apps/server/src/auth/drizzleRepos.ts`:
-    - `createDrizzleUserRepo(db: NodePgDatabase): UserRepo`
-    - `createDrizzleSessionRepo(db: NodePgDatabase): SessionRepo`
-  - `apps/server/src/auth/service.ts`:
-    - `createAuthService(deps: AuthServiceDependencies): AuthService`
-  - `apps/server/src/auth/routes.ts`:
-    - `createAuthRoutes(deps: AuthRoutesDependencies): Hono`
-    - `requireAuth(service: AuthService, config: Config): MiddlewareHandler`
-    - `getSessionCookieName(nodeEnv: NodeEnv): string`
-  - `apps/server/src/compose.ts`:
-    - `composeApp(config: Config, deps: ComposeAppDependencies): Hono`
-  - `apps/server/src/db/errors.ts`:
-    - `getPgError(err: unknown): PgErrorDetails | null`
-    - `class EmailTakenError extends Error`
-- **Decisions and why:**
-  - Exact pin `@node-rs/argon2: 2.2.1` with native win32-x64 binary, measured ~9-14ms per hash on Windows Node 24 (R2.4).
-  - Used named constant `ARGON2ID_ALGORITHM = Algorithm.Argon2id ?? 2` with explicit algorithm specification (Clarification 2).
-  - Single composition root `composeApp` in `src/compose.ts` wiring production dependencies; kept `auth?` optional in `createApp` for backward test compatibility (Clarification 3).
-  - Used `bodyLimit` with `onError` returning JSON 413 `{ error: { code: "payload-too-large" } }` for both Content-Length and chunked stream bodies (Clarification 4).
-  - Started computing dummy hash at service construction and awaited it in login, guaranteeing timing parity for nonexistent users without delaying startup (Clarification 5).
-  - `trimToNewest` ordered by `created_at DESC, id DESC` keeping newest `keep` sessions deterministically (Clarification 6).
-  - Enforced `__Host-` prefix in production with `Secure`, `Path=/`, and no `Domain` attribute (Clarification 7).
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 375 total tests passing: 81 dsl, 59 checker, 144 web, 91 server).
-  - Server 3-run loop: `1..3 | ForEach-Object { pnpm --filter @repo/server exec vitest run }` -> 3/3 consecutive passes (91/91 tests each).
-- **Known issues / debt:**
-  - Unbounded concurrent Argon2 hashing can exhaust memory under extreme load (19 MiB each); rate limits only reduce this risk.
-  - No email verification, password reset, or session list / revocation yet.
-  - In-memory rate limiter per process (not shared across instances).
-  - `X-Forwarded-For` not trusted; all clients behind a reverse proxy appear identical.
-  - SameSite=Lax requires same-site deployment.
-- **Next steps:**
-  - Implement Project CRUD services and HTTP endpoints in apps/server with ProjectSchema validation and requireAuth middleware.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
 - W-020 | 2026-10-05 | Database layer for apps/server: Drizzle ORM + node-postgres, schema constraints, migrations, and test suite
 - W-019 | 2026-10-05 | Server skeleton: apps/server with Hono, validated config, CORS allowlist, and /health route
 - W-018 | 2026-10-05 | Readable initial viewport camera and Go to start control

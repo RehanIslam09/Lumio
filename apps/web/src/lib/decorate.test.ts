@@ -69,6 +69,23 @@ describe("groupIssues", () => {
     expect(grouped.byEdge.size).toBe(0);
   });
 
+  it("entity-level issues go to byEntity", () => {
+    const issues: Issue[] = [
+      {
+        ruleId: "character-never-speaks",
+        severity: "warning",
+        entityId: "e1",
+        message: 'Character "Alice" is never used as a speaker.',
+      },
+    ];
+
+    const grouped = groupIssues(dummyProject, issues);
+    expect(grouped.byEntity.get("e1")).toEqual(issues);
+    expect(grouped.byNode.size).toBe(0);
+    expect(grouped.byEdge.size).toBe(0);
+    expect(grouped.byVariable.size).toBe(0);
+  });
+
   it("Property: every issue lands in exactly one map entry, and total count across three maps equals issues.length", () => {
     const issueArbitrary = fc.oneof(
       // Node issue

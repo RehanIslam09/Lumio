@@ -1,4 +1,4 @@
-import type { Issue, Project, Variable } from "@repo/schema";
+import type { Entity, Issue, Project, Variable } from "@repo/schema";
 import {
   buildTypeEnv,
   collectEffectUsage,
@@ -118,16 +118,28 @@ export function findNodesThatCannotReachEnd(project: Project): string[] {
  * Consistency checker entry point running static analysis rules over the project flow graph.
  *
  * Ordering:
- * - All existing node-based issues first (grouped by project.nodes order, then rule order).
+ * - All node-based issues first (grouped by project.nodes order, then rule order).
  * - Edge-based issues ordered by project.edges order.
  * - Within an edge: condition issues first, then effects by index.
  * - Within each field: ordered by start offset.
+ * - Variable-usage issues ordered by first-declared variable order.
+ * - Entity-based issues ordered by project.entities order (first occurrences only).
  */
 export function check(project: Project): Issue[] {
   const unreachableSet = new Set(findUnreachableNodes(project));
   const cannotReachEndSet = new Set(findNodesThatCannotReachEnd(project));
   const nodeMap = new Map(project.nodes.map((n) => [n.id, n]));
-  const env = buildTypeEnv(project.variables);
+  const env = buildTypeEnv(project.variables ?? []);
+
+  // First occurrence entity indexing (Amendment 3)
+  const firstOccurrenceEntities: Entity[] = [];
+  const entityMap = new Map<string, Entity>();
+  for (const entity of project.entities ?? []) {
+    if (!entityMap.has(entity.id)) {
+      entityMap.set(entity.id, entity);
+      firstOccurrenceEntities.push(entity);
+    }
+  }
 
   const issues: Issue[] = [];
 
@@ -149,6 +161,34 @@ export function check(project: Project): Issue[] {
         nodeId: node.id,
         message: `Node "${node.title}" cannot reach any end node.`,
       });
+    }
+
+    if (node.speakerId !== undefined) {
+      const speakerEntity = entityMap.get(node.speakerId);
+      if (!speakerEntity) {
+        issues.push({
+          ruleId: "invalid-speaker",
+          severity: "error",
+          nodeId: node.id,
+          message: `Node "${node.title}" references missing speaker "${node.speakerId}".`,
+        });
+      } else if (speakerEntity.kind !== "character") {
+        issues.push({
+          ruleId: "invalid-speaker",
+          severity: "error",
+          nodeId: node.id,
+          message: `Node "${node.title}" references speaker "${speakerEntity.name}" which is a ${speakerEntity.kind}, not a character.`,
+        });
+      }
+
+      if (node.body === undefined || node.body.trim() === "") {
+        issues.push({
+          ruleId: "speaker-without-text",
+          severity: "warning",
+          nodeId: node.id,
+          message: `Node "${node.title}" has a speaker assigned but no dialogue or body text.`,
+        });
+      }
     }
   }
 
@@ -314,6 +354,43 @@ export function check(project: Project): Issue[] {
           severity: "warning",
           variableId: v.id,
           message: `Variable "${v.name}" is written but never read.`,
+        });
+      }
+    }
+  }
+
+  // Entity-based issues
+  if (firstOccurrenceEntities.length > 0) {
+    const speakerCounts = new Map<string, number>();
+    for (const node of project.nodes) {
+      if (node.speakerId !== undefined) {
+        speakerCounts.set(node.speakerId, (speakerCounts.get(node.speakerId) ?? 0) + 1);
+      }
+    }
+
+    const nameCounts = new Map<string, number>();
+    for (const entity of firstOccurrenceEntities) {
+      const key = `${entity.kind}:${entity.name.trim().toLowerCase()}`;
+      nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+    }
+
+    for (const entity of firstOccurrenceEntities) {
+      if (entity.kind === "character" && (speakerCounts.get(entity.id) ?? 0) === 0) {
+        issues.push({
+          ruleId: "character-never-speaks",
+          severity: "warning",
+          entityId: entity.id,
+          message: `Character "${entity.name}" is never used as a speaker.`,
+        });
+      }
+
+      const key = `${entity.kind}:${entity.name.trim().toLowerCase()}`;
+      if ((nameCounts.get(key) ?? 0) > 1) {
+        issues.push({
+          ruleId: "duplicate-entity-name",
+          severity: "warning",
+          entityId: entity.id,
+          message: `Duplicate ${entity.kind} name "${entity.name.trim()}".`,
         });
       }
     }

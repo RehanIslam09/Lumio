@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as fc from "fast-check";
-import type { FlowEdge, FlowNode, FlowNodeType, Project, Variable } from "@repo/schema";
+import type { Entity, FlowEdge, FlowNode, FlowNodeType, Project, Variable } from "@repo/schema";
 import { FlowNodeSchema, IssueSchema, VariableSchema } from "@repo/schema";
 import { parseCondition, parseEffect } from "@repo/dsl";
 import {
@@ -1147,6 +1147,50 @@ describe("property tests", () => {
           expect(messages).toContain("Exactly one of nodeId or variableId must be present");
         }
       });
+
+      it("accepts issue with entityId only", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "character-never-speaks",
+          severity: "warning",
+          entityId: "e1",
+          message: 'Character "Alice" is never used as a speaker.',
+        });
+        expect(parsed.success).toBe(true);
+      });
+
+      it("rejects issue with both entityId and nodeId present", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "invalid-speaker",
+          severity: "error",
+          nodeId: "n1",
+          entityId: "e1",
+          message: "Conflict",
+        });
+        expect(parsed.success).toBe(false);
+      });
+
+      it("rejects issue with both entityId and variableId present", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "character-never-speaks",
+          severity: "warning",
+          variableId: "v1",
+          entityId: "e1",
+          message: "Conflict",
+        });
+        expect(parsed.success).toBe(false);
+      });
+
+      it("rejects issue with all three nodeId, variableId, and entityId present", () => {
+        const parsed = IssueSchema.safeParse({
+          ruleId: "invalid-speaker",
+          severity: "error",
+          nodeId: "n1",
+          variableId: "v1",
+          entityId: "e1",
+          message: "Conflict",
+        });
+        expect(parsed.success).toBe(false);
+      });
     });
 
     describe("VariableSchema initial value refinement", () => {
@@ -1836,23 +1880,34 @@ describe("property tests", () => {
 
     it("Property U2: check() never throws on arbitrary projects and enforces XOR of nodeId/variableId", () => {
       fc.assert(
-        fc.property(arbitraryProjectWithVariables, (project) => {
+        fc.property(arbitraryProjectWithVariables, (project: Project) => {
           const issues = check(project);
           const existingNodeIds = new Set(project.nodes.map((n) => n.id));
           const existingVarIds = new Set(project.variables.map((v) => v.id));
           const existingEdgeIds = new Set(project.edges.map((e) => e.id));
+          const firstOccurrenceEntityIds = new Set<string>();
+          for (const ent of project.entities ?? []) {
+            if (!firstOccurrenceEntityIds.has(ent.id)) {
+              firstOccurrenceEntityIds.add(ent.id);
+            }
+          }
 
           for (const issue of issues) {
             // Refinement XOR check
-            expect(
-              (issue.nodeId !== undefined) !== (issue.variableId !== undefined),
-            ).toBe(true);
+            const anchorCount =
+              (issue.nodeId !== undefined ? 1 : 0) +
+              (issue.variableId !== undefined ? 1 : 0) +
+              (issue.entityId !== undefined ? 1 : 0);
+            expect(anchorCount).toBe(1);
 
             if (issue.nodeId !== undefined) {
               expect(existingNodeIds.has(issue.nodeId)).toBe(true);
             }
             if (issue.variableId !== undefined) {
               expect(existingVarIds.has(issue.variableId)).toBe(true);
+            }
+            if (issue.entityId !== undefined) {
+              expect(firstOccurrenceEntityIds.has(issue.entityId)).toBe(true);
             }
             if (issue.location) {
               expect(existingEdgeIds.has(issue.location.edgeId)).toBe(true);
@@ -1865,5 +1920,609 @@ describe("property tests", () => {
       );
     });
   });
+
+  describe("entity-based checker rules", () => {
+    const baseNodes: FlowNode[] = [
+      { id: "start", type: "start", title: "Start Node" },
+      { id: "end", type: "end", title: "End Node" },
+    ];
+    const baseEdges: FlowEdge[] = [{ id: "e1", from: "start", to: "end" }];
+    const baseVariables: Variable[] = [];
+
+    describe("invalid-speaker rule", () => {
+      it("reports error when node references nonexistent speaker id", () => {
+        const project: Project = {
+          id: "p_inv_spk_1",
+          name: "Invalid Speaker Missing",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "ghost_speaker" },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Alice" }],
+        };
+
+        const issues = check(project);
+        const invIssues = issues.filter((i) => i.ruleId === "invalid-speaker");
+        expect(invIssues).toEqual([
+          {
+            ruleId: "invalid-speaker",
+            severity: "error",
+            nodeId: "start",
+            message: 'Node "Start Node" references missing speaker "ghost_speaker".',
+          },
+        ]);
+      });
+
+      it("reports error when node references an entity that is not a character", () => {
+        const project: Project = {
+          id: "p_inv_spk_2",
+          name: "Invalid Speaker Non-Character",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "loc1", body: "Hello" },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "loc1", kind: "location", name: "Tavern" }],
+        };
+
+        const issues = check(project);
+        const invIssues = issues.filter((i) => i.ruleId === "invalid-speaker");
+        expect(invIssues).toEqual([
+          {
+            ruleId: "invalid-speaker",
+            severity: "error",
+            nodeId: "start",
+            message: 'Node "Start Node" references speaker "Tavern" which is a location, not a character.',
+          },
+        ]);
+      });
+
+      it("produces no invalid-speaker issue when speaker is a valid character", () => {
+        const project: Project = {
+          id: "p_valid_spk",
+          name: "Valid Speaker",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "c1", body: "Hello world" },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Alice" }],
+        };
+
+        const issues = check(project);
+        const invIssues = issues.filter((i) => i.ruleId === "invalid-speaker");
+        expect(invIssues).toEqual([]);
+      });
+    });
+
+    describe("speaker-without-text rule", () => {
+      it("reports warning when node has speakerId but undefined body", () => {
+        const project: Project = {
+          id: "p_spk_no_body",
+          name: "Speaker No Body",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "c1" },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Alice" }],
+        };
+
+        const issues = check(project);
+        const textIssues = issues.filter((i) => i.ruleId === "speaker-without-text");
+        expect(textIssues).toEqual([
+          {
+            ruleId: "speaker-without-text",
+            severity: "warning",
+            nodeId: "start",
+            message: 'Node "Start Node" has a speaker assigned but no dialogue or body text.',
+          },
+        ]);
+      });
+
+      it("reports warning when node has speakerId and whitespace-only body", () => {
+        const project: Project = {
+          id: "p_spk_ws_body",
+          name: "Speaker Whitespace Body",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "c1", body: "   \t\n  " },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Alice" }],
+        };
+
+        const issues = check(project);
+        const textIssues = issues.filter((i) => i.ruleId === "speaker-without-text");
+        expect(textIssues).toEqual([
+          {
+            ruleId: "speaker-without-text",
+            severity: "warning",
+            nodeId: "start",
+            message: 'Node "Start Node" has a speaker assigned but no dialogue or body text.',
+          },
+        ]);
+      });
+
+      it("produces no warning when node has speakerId and non-empty body", () => {
+        const project: Project = {
+          id: "p_spk_ok_body",
+          name: "Speaker OK Body",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "c1", body: "Greetings traveler" },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Alice" }],
+        };
+
+        const issues = check(project);
+        const textIssues = issues.filter((i) => i.ruleId === "speaker-without-text");
+        expect(textIssues).toEqual([]);
+      });
+
+      it("produces no warning when node has no speakerId even if body is empty or missing", () => {
+        const project: Project = {
+          id: "p_no_spk_no_body",
+          name: "No Speaker No Body",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node" },
+            { id: "end", type: "end", title: "End Node", body: "" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+        };
+
+        const issues = check(project);
+        const textIssues = issues.filter((i) => i.ruleId === "speaker-without-text");
+        expect(textIssues).toEqual([]);
+      });
+    });
+
+    describe("character-never-speaks rule", () => {
+      it("reports warning when character entity is never used as a speaker", () => {
+        const project: Project = {
+          id: "p_char_never_spk",
+          name: "Character Never Speaks",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Bob" }],
+        };
+
+        const issues = check(project);
+        const charIssues = issues.filter((i) => i.ruleId === "character-never-speaks");
+        expect(charIssues).toEqual([
+          {
+            ruleId: "character-never-speaks",
+            severity: "warning",
+            entityId: "c1",
+            message: 'Character "Bob" is never used as a speaker.',
+          },
+        ]);
+      });
+
+      it("produces no warning when character entity is used on at least one node", () => {
+        const project: Project = {
+          id: "p_char_speaks",
+          name: "Character Speaks",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node", speakerId: "c1", body: "I speak" },
+            { id: "end", type: "end", title: "End Node" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Bob" }],
+        };
+
+        const issues = check(project);
+        const charIssues = issues.filter((i) => i.ruleId === "character-never-speaks");
+        expect(charIssues).toEqual([]);
+      });
+
+      it("counts speaking nodes even if they are unreachable from start", () => {
+        const project: Project = {
+          id: "p_char_spk_unreachable",
+          name: "Character Speaks Unreachable",
+          nodes: [
+            { id: "start", type: "start", title: "Start Node" },
+            { id: "end", type: "end", title: "End Node" },
+            { id: "orphan", type: "scene", title: "Orphan", speakerId: "c1", body: "Secret dialogue" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [{ id: "c1", kind: "character", name: "Bob" }],
+        };
+
+        const issues = check(project);
+        const charIssues = issues.filter((i) => i.ruleId === "character-never-speaks");
+        expect(charIssues).toEqual([]);
+      });
+
+      it("produces no warning for unused location or item entities", () => {
+        const project: Project = {
+          id: "p_non_char_unused",
+          name: "Non-character Unused",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [
+            { id: "loc1", kind: "location", name: "Castle" },
+            { id: "item1", kind: "item", name: "Sword" },
+          ],
+        };
+
+        const issues = check(project);
+        const charIssues = issues.filter((i) => i.ruleId === "character-never-speaks");
+        expect(charIssues).toEqual([]);
+      });
+    });
+
+    describe("duplicate-entity-name rule", () => {
+      it("reports warning anchored to each duplicate entity of the same kind", () => {
+        const project: Project = {
+          id: "p_dup_name",
+          name: "Duplicate Name",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [
+            { id: "c1", kind: "character", name: "Guard" },
+            { id: "c2", kind: "character", name: "Guard" },
+          ],
+        };
+
+        const issues = check(project);
+        const dupIssues = issues.filter((i) => i.ruleId === "duplicate-entity-name");
+        expect(dupIssues).toEqual([
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c1",
+            message: 'Duplicate character name "Guard".',
+          },
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c2",
+            message: 'Duplicate character name "Guard".',
+          },
+        ]);
+      });
+
+      it("normalizes names by trimming whitespace and ignoring case", () => {
+        const project: Project = {
+          id: "p_dup_norm",
+          name: "Duplicate Normalization",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [
+            { id: "c1", kind: "character", name: "  hero  " },
+            { id: "c2", kind: "character", name: "HERO" },
+          ],
+        };
+
+        const issues = check(project);
+        const dupIssues = issues.filter((i) => i.ruleId === "duplicate-entity-name");
+        expect(dupIssues).toEqual([
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c1",
+            message: 'Duplicate character name "hero".',
+          },
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c2",
+            message: 'Duplicate character name "HERO".',
+          },
+        ]);
+      });
+
+      it("handles surrogate pairs and unicode without crashing or false mismatches", () => {
+        const project: Project = {
+          id: "p_dup_unicode",
+          name: "Duplicate Unicode",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [
+            { id: "c1", kind: "character", name: "🎭 Bard" },
+            { id: "c2", kind: "character", name: "🎭 bard" },
+          ],
+        };
+
+        const issues = check(project);
+        const dupIssues = issues.filter((i) => i.ruleId === "duplicate-entity-name");
+        expect(dupIssues).toEqual([
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c1",
+            message: 'Duplicate character name "🎭 Bard".',
+          },
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c2",
+            message: 'Duplicate character name "🎭 bard".',
+          },
+        ]);
+      });
+
+      it("produces no warning when same name appears under different kinds", () => {
+        const project: Project = {
+          id: "p_diff_kinds",
+          name: "Different Kinds Same Name",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [
+            { id: "c1", kind: "character", name: "Castle" },
+            { id: "l1", kind: "location", name: "Castle" },
+          ],
+        };
+
+        const issues = check(project);
+        const dupIssues = issues.filter((i) => i.ruleId === "duplicate-entity-name");
+        expect(dupIssues).toEqual([]);
+      });
+    });
+
+    describe("Amendment 3: duplicate entity IDs (first occurrence semantics)", () => {
+      it("ignores entities whose id already appeared earlier in entities array", () => {
+        const project: Project = {
+          id: "p_dup_ids",
+          name: "Duplicate Entity IDs",
+          nodes: [
+            { id: "start", type: "start", title: "Start", speakerId: "e1", body: "Speaking" },
+            { id: "end", type: "end", title: "End" },
+          ],
+          edges: baseEdges,
+          variables: baseVariables,
+          entities: [
+            { id: "e1", kind: "character", name: "Hero" },
+            { id: "e1", kind: "location", name: "Tavern" }, // subsequent duplicate ID: ignored
+            { id: "e2", kind: "character", name: "Hero" },
+          ],
+        };
+
+        const issues = check(project);
+        // e1 was first character "Hero". It speaks on "start", so no invalid-speaker and no character-never-speaks for e1.
+        // e1 second occurrence is ignored (not evaluated as location, not anchored).
+        // e2 is character "Hero". It has duplicate name with e1 ("Hero"), but never speaks.
+        // Duplicate name issues should be anchored to e1 and e2 (not the second e1).
+        const dupIssues = issues.filter((i) => i.ruleId === "duplicate-entity-name");
+        expect(dupIssues).toEqual([
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "e1",
+            message: 'Duplicate character name "Hero".',
+          },
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "e2",
+            message: 'Duplicate character name "Hero".',
+          },
+        ]);
+
+        const neverSpeaksIssues = issues.filter((i) => i.ruleId === "character-never-speaks");
+        expect(neverSpeaksIssues).toEqual([
+          {
+            ruleId: "character-never-speaks",
+            severity: "warning",
+            entityId: "e2",
+            message: 'Character "Hero" is never used as a speaker.',
+          },
+        ]);
+
+        // Speaker lookup used the first occurrence (character), so invalid-speaker should be empty
+        const invSpeakerIssues = issues.filter((i) => i.ruleId === "invalid-speaker");
+        expect(invSpeakerIssues).toEqual([]);
+      });
+    });
+
+    describe("Amendment 6: deterministic issue ordering across all rules", () => {
+      it("orders issues deterministically: node issues (in node order) -> edge issues -> variable issues -> entity issues (in entity order)", () => {
+        const project: Project = {
+          id: "p_ordering",
+          name: "Deterministic Ordering",
+          nodes: [
+            { id: "start", type: "start", title: "Start" },
+            { id: "n1", type: "scene", title: "Node 1", speakerId: "ghost", body: "" },
+            { id: "n2", type: "scene", title: "Node 2", speakerId: "c1" }, // speaker without text
+            { id: "end", type: "end", title: "End" },
+          ],
+          edges: [
+            { id: "e1", from: "start", to: "n1" },
+            { id: "e2", from: "n1", to: "end" },
+            { id: "e3", from: "start", to: "end", condition: "bad condition %" },
+          ],
+          variables: [{ id: "v1", name: "unused_var", type: "number" }],
+          entities: [
+            { id: "c1", kind: "character", name: "Alice" },
+            { id: "c2", kind: "character", name: "Alice" }, // duplicate name & never speaks
+          ],
+        };
+
+        const issues = check(project);
+        expect(issues).toEqual([
+          // Node 1 issues
+          {
+            ruleId: "invalid-speaker",
+            severity: "error",
+            nodeId: "n1",
+            message: 'Node "Node 1" references missing speaker "ghost".',
+          },
+          {
+            ruleId: "speaker-without-text",
+            severity: "warning",
+            nodeId: "n1",
+            message: 'Node "Node 1" has a speaker assigned but no dialogue or body text.',
+          },
+          // Node 2 issues
+          {
+            ruleId: "unreachable-from-start",
+            severity: "warning",
+            nodeId: "n2",
+            message: 'Node "Node 2" cannot be reached from any start node.',
+          },
+          {
+            ruleId: "cannot-reach-end",
+            severity: "error",
+            nodeId: "n2",
+            message: 'Node "Node 2" cannot reach any end node.',
+          },
+          {
+            ruleId: "speaker-without-text",
+            severity: "warning",
+            nodeId: "n2",
+            message: 'Node "Node 2" has a speaker assigned but no dialogue or body text.',
+          },
+          // Edge issues
+          {
+            ruleId: "invalid-expression",
+            severity: "error",
+            nodeId: "start",
+            message: 'In "Start": condition syntax error: unexpected character \'%\'.',
+            location: {
+              edgeId: "e3",
+              field: "condition",
+              start: 14,
+              end: 15,
+            },
+          },
+          // Note: variable usage suppressed due to invalid-expression syntax error!
+          // Entity issues in entity order:
+          // c1: duplicate-entity-name (it speaks on n2, so no character-never-speaks)
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c1",
+            message: 'Duplicate character name "Alice".',
+          },
+          // c2: character-never-speaks, then duplicate-entity-name
+          {
+            ruleId: "character-never-speaks",
+            severity: "warning",
+            entityId: "c2",
+            message: 'Character "Alice" is never used as a speaker.',
+          },
+          {
+            ruleId: "duplicate-entity-name",
+            severity: "warning",
+            entityId: "c2",
+            message: 'Duplicate character name "Alice".',
+          },
+        ]);
+      });
+    });
+
+    describe("legacy compatibility", () => {
+      it("produces identical output on legacy project without entities or speakerId", () => {
+        const project: Project = {
+          id: "p_legacy",
+          name: "Legacy Project",
+          nodes: baseNodes,
+          edges: baseEdges,
+          variables: baseVariables,
+        };
+
+        const issues = check(project);
+        expect(issues).toEqual([]);
+      });
+    });
+
+    describe("Property E: robustness on arbitrary entities and speakers", () => {
+      const entityArb = fc.record({
+        id: fc.constantFrom("c1", "c2", "c3", "c4", "l1", "i1"),
+        kind: fc.constantFrom<Entity["kind"]>("character", "location", "item"),
+        name: fc.constantFrom("Hero", "hero", "  HERO  ", "🎭 Bard", "Dragon", "Inn", "Sword"),
+        description: fc.option(fc.string({ maxLength: 20 }), { nil: undefined }),
+      });
+
+      const arbitraryProjectWithEntities = fc
+        .integer({ min: 1, max: 6 })
+        .chain((nodeCount) => {
+          const ids = Array.from({ length: nodeCount }, (_, i) => `n_${i}`);
+          return fc
+            .record({
+              nodeTypes: fc.array(
+                fc.constantFrom<FlowNodeType>("start", "scene", "end"),
+                { minLength: nodeCount, maxLength: nodeCount },
+              ),
+              speakers: fc.array(
+                fc.option(fc.constantFrom("c1", "c2", "c3", "c4", "ghost", "l1"), { nil: undefined }),
+                { minLength: nodeCount, maxLength: nodeCount },
+              ),
+              bodies: fc.array(
+                fc.option(fc.constantFrom("", "   ", "Hello", "Line 1\nLine 2"), { nil: undefined }),
+                { minLength: nodeCount, maxLength: nodeCount },
+              ),
+              entities: fc.array(entityArb, { maxLength: 8 }),
+            })
+            .map(({ nodeTypes, speakers, bodies, entities }) => {
+              const nodes: FlowNode[] = ids.map((id, index) => ({
+                id,
+                type: nodeTypes[index] ?? "scene",
+                title: `Title ${id}`,
+                speakerId: speakers[index],
+                body: bodies[index],
+              }));
+              return {
+                id: "proj_rnd_entities",
+                name: "Random Entities Project",
+                nodes,
+                edges: [],
+                variables: [],
+                entities,
+              } satisfies Project;
+            });
+        });
+
+      it("Property E1: check() never throws on arbitrary entities/speakers and anchor invariants hold", () => {
+        fc.assert(
+          fc.property(arbitraryProjectWithEntities, (project) => {
+            const issues = check(project);
+            const existingNodeIds = new Set(project.nodes.map((n) => n.id));
+            const firstOccurrenceEntityIds = new Set<string>();
+            for (const ent of project.entities ?? []) {
+              if (!firstOccurrenceEntityIds.has(ent.id)) {
+                firstOccurrenceEntityIds.add(ent.id);
+              }
+            }
+
+            for (const issue of issues) {
+              const anchorCount =
+                (issue.nodeId !== undefined ? 1 : 0) +
+                (issue.variableId !== undefined ? 1 : 0) +
+                (issue.entityId !== undefined ? 1 : 0);
+              expect(anchorCount).toBe(1);
+
+              if (issue.nodeId !== undefined) {
+                expect(existingNodeIds.has(issue.nodeId)).toBe(true);
+              }
+              if (issue.entityId !== undefined) {
+                expect(firstOccurrenceEntityIds.has(issue.entityId)).toBe(true);
+              }
+            }
+          }),
+          { numRuns: 100 },
+        );
+      });
+    });
+  });
 });
+
 

@@ -77,7 +77,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Entity, Issue, Variable; pure migration chain (`migrate`), `countCodePoints`, `isReadableSchemaVersion`, derived shape keys
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -235,15 +235,20 @@ interface Issue {
     | "type-mismatch"
     | "unused-variable"
     | "variable-never-written"
-    | "variable-never-read";
+    | "variable-never-read"
+    | "invalid-speaker"
+    | "speaker-without-text"
+    | "character-never-speaks"
+    | "duplicate-entity-name";
   severity: "error" | "warning";
   nodeId?: string;
   variableId?: string;
+  entityId?: string;
   message: string;
   location?: IssueLocation;
 }
 ```
-Refinement: exactly one of `nodeId` or `variableId` must be present (`(nodeId !== undefined) !== (variableId !== undefined)`).
+Refinement: exactly one of `nodeId`, `variableId`, or `entityId` must be present (`(nodeId !== undefined ? 1 : 0) + (variableId !== undefined ? 1 : 0) + (entityId !== undefined ? 1 : 0) === 1`).
 
 ### Rules table
 | Rule | Algorithm | Phase |
@@ -256,6 +261,10 @@ Refinement: exactly one of `nodeId` or `variableId` must be present (`(nodeId !=
 | Unused variable (`unused-variable`) | Warning when declared variable is never read and never written | v1 (implemented) |
 | Variable never written (`variable-never-written`) | Warning when declared variable without `initial` is read but never written | v1 (implemented) |
 | Variable never read (`variable-never-read`) | Warning when declared variable is written but never read | v1 (implemented) |
+| Invalid speaker (`invalid-speaker`) | Error when node's `speakerId` refers to missing entity or non-character entity | v2 (implemented) |
+| Speaker without text (`speaker-without-text`) | Warning when node has `speakerId` assigned but missing or whitespace-only `body` | v2 (implemented) |
+| Character never speaks (`character-never-speaks`) | Warning when character entity is never used as speaker by any node in the project | v2 (implemented) |
+| Duplicate entity name (`duplicate-entity-name`) | Warning anchored to each duplicate entity when 2+ entities of same kind match after trim and lowercase | v2 (implemented) |
 | Dead effects (set, never read) | def-use analysis | v2 |
 | Conflicting or impossible conditions | path-sensitive state/interval analysis | v2 |
 | Lore contradictions | typed-relation rules | later |

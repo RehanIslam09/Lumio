@@ -31,7 +31,8 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
     return (
       issue.ruleId === selectedIssue.ruleId &&
       issue.nodeId === selectedIssue.nodeId &&
-      issue.variableId === selectedIssue.variableId
+      issue.variableId === selectedIssue.variableId &&
+      issue.entityId === selectedIssue.entityId
     );
   }
 
@@ -80,7 +81,7 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
               </h3>
               {errors.map((issue, idx) => (
                 <div
-                  key={`err-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.location?.edgeId ?? ""}-${idx}`}
+                  key={`err-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.entityId ?? ""}-${issue.location?.edgeId ?? ""}-${idx}`}
                   className={`issue-card severity-error ${isSelected(issue) ? "active" : ""}`}
                   onClick={() => onSelectIssue(issue)}
                   role="button"
@@ -90,6 +91,7 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
                   <div className="issue-card-top">
                     <span className="rule-tag tag-error">{issue.ruleId}</span>
                     {issue.nodeId && <span className="target-tag">node: {issue.nodeId}</span>}
+                    {issue.entityId && <span className="target-tag">entity: {issue.entityId}</span>}
                     {issue.location && <span className="target-tag">edge: {issue.location.edgeId}</span>}
                   </div>
                   <p className="issue-message">{issue.message}</p>
@@ -105,7 +107,7 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
               </h3>
               {warnings.map((issue, idx) => (
                 <div
-                  key={`warn-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.variableId ?? ""}-${idx}`}
+                  key={`warn-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.variableId ?? ""}-${issue.entityId ?? ""}-${idx}`}
                   className={`issue-card severity-warning ${isSelected(issue) ? "active" : ""}`}
                   onClick={() => onSelectIssue(issue)}
                   role="button"
@@ -116,6 +118,7 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
                     <span className="rule-tag tag-warning">{issue.ruleId}</span>
                     {issue.nodeId && <span className="target-tag">node: {issue.nodeId}</span>}
                     {issue.variableId && <span className="target-tag">var: {issue.variableId}</span>}
+                    {issue.entityId && <span className="target-tag">entity: {issue.entityId}</span>}
                   </div>
                   <p className="issue-message">{issue.message}</p>
                   {renderSnippet(issue)}

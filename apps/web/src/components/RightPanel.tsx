@@ -19,6 +19,9 @@ interface RightPanelProps {
   nodeIssues: Issue[];
   edgeIssues: Issue[];
   variableIssues: Map<string, Issue[]>;
+  entityIssues: Map<string, Issue[]>;
+  expandedEntityId: string | null;
+  onToggleExpandEntity: (id: string | null) => void;
   onUpdateNode: (
     id: string,
     patch: {
@@ -63,6 +66,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   nodeIssues,
   edgeIssues,
   variableIssues,
+  entityIssues,
+  expandedEntityId,
+  onToggleExpandEntity,
   onUpdateNode,
   onDeleteNode,
   onUpdateEdge,
@@ -184,6 +190,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           <div id="panel-entities" role="tabpanel" aria-labelledby="tab-entities" tabIndex={0}>
             <EntitiesPanel
               project={project}
+              expandedEntityId={expandedEntityId}
+              onToggleExpandEntity={onToggleExpandEntity}
+              entityIssues={entityIssues}
               onAddEntity={onAddEntity}
               onUpdateEntity={onUpdateEntity}
               onDeleteEntity={onDeleteEntity}
