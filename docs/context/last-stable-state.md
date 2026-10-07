@@ -7,9 +7,9 @@
 |---|---|
 | Promoted on | 2026-10-07 |
 | Branch | `main` |
-| Commit | `2a79caf` |
-| Tag | `stable-009` |
-| Gate result | W-027 gate passed: 14/14 tasks successful, 599 tests passing; W-027 build passed; manual schema v2 migration, cloud persistence, history restore, and history download checks passed. |
+| Commit | `a0e9d98` |
+| Tag | `stable-013` |
+| Gate result | W-031 gate passed: 14/14 tasks successful, 718 tests passing across 48 test files; web build passed (CSS 52.03 kB, JS 634.17 kB); manual browser Simulation checks passed. |
 | Approved by | Rehan Islam |
 
 ## What exists and works
@@ -67,7 +67,7 @@ pnpm dev:server # runs apps/server via tsx (requires local PostgreSQL with DATAB
 
 ## Rollback
 ```bash
-git switch -c recover/2026-10-05 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3
+git switch -c recover/2026-10-07 a0e9d983b4b48edf3e9b01760c98be2ec4bfb17c
 ```
 
 
@@ -125,11 +125,21 @@ stable-012:
 - Commit: `2233eef`
 - Tag: `stable-012`
 
+stable-013:
+- Pure Monte Carlo story simulation engine implemented with inline mulberry32 PRNG and AST parse caching (`apps/web/src/playtest/simulate.ts`)
+- Topological BFS reachability and dynamic coverage cross-checking with 6 finding kinds (`apps/web/src/playtest/crossCheck.ts`)
+- Accessible SimulationDialog with runs/steps/seed inputs, endings breakdown table, and "Show on canvas" viewport navigation
+- Additive scale benchmark measurements for simulation on 300, 1,000, and 3,000 nodes
+- W-031 gate: 14/14 tasks successful, 718 tests passing across 48 test files
+- Browser validation: Simulation manual checks passed
+- Commit: `a0e9d98`
+- Tag: `stable-013`
+
 | Field | Value |
 |---|---|
 | Promoted on | 2026-10-07 |
 | Branch | `main` |
-| Commit | `2233eef` |
-| Tag | `stable-012` |
-| Gate result | W-030 gate passed: 14/14 tasks successful, 0 cached, 698 tests passing across 46 test files; browser Playtest checks passed. |
+| Commit | `a0e9d98` |
+| Tag | `stable-013` |
+| Gate result | W-031 gate passed: 14/14 tasks successful, 718 tests passing across 48 test files; web build passed (CSS 52.03 kB, JS 634.17 kB); browser Simulation checks passed. |
 | Approved by | Rehan Islam |

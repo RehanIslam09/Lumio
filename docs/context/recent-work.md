@@ -26,7 +26,7 @@
 
 ### W-031 | 2026-10-07 | Story simulation and path coverage report with topological cross-checking
 - **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat: implement simulation engine, topological cross-check, and SimulationDialog in apps/web`
+- **Git:** committed (`a0e9d983b4b48edf3e9b01760c98be2ec4bfb17c`). Promoted to `stable-013`.
 - **Goal:** Implement pure deterministic Monte Carlo simulation engine with inline mulberry32 PRNG and shared AST caching in `apps/web/src/playtest`, topological BFS cross-checking analysis against dynamic coverage, scale benchmark measurements on 300 and 1,000 nodes, and native `<dialog>` SimulationDialog modal with canvas selection.
 - **Files changed:**
   - `apps/web/src/playtest/types.ts`: added optional `cache?: SessionParseCache` to `StartSessionOptions` (boundary exception).
@@ -75,7 +75,7 @@
   - Trajectory replay traces not persisted.
   - Synchronous main-thread execution bounded by input limits.
 - **Next steps:**
-  - User to review changes and commit manually.
+  - Tag `stable-013`: `git tag stable-013 a0e9d98` (user runs manually per R6.1).
 
 ### W-030 | 2026-10-07 | Playtest mode: pure evaluator, session engine, and modal dialog
 - **Status:** DONE
