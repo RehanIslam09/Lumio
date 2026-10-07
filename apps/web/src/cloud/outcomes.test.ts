@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Project } from "@repo/schema";
+import { CURRENT_SCHEMA_VERSION, type Project } from "@repo/schema";
 import type { ApiClient } from "../api/client.js";
 import {
   runCloudSave,
@@ -76,7 +76,7 @@ describe("Cloud Outcomes controllers", () => {
         client,
         binding: null,
         snapshot: sampleProject,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
       });
 
       expect(outcome.kind).toBe("created");
@@ -84,7 +84,7 @@ describe("Cloud Outcomes controllers", () => {
         expect(outcome.snapshot).toBe(sampleProject); // Identity check
         expect(outcome.project.id).toBe("cloud-proj-1");
       }
-      expect(passedBody).toEqual({ schemaVersion: 1, document: sampleProject });
+      expect(passedBody).toEqual({ schemaVersion: CURRENT_SCHEMA_VERSION, document: sampleProject });
     });
 
     it("saves existing project when binding is present", async () => {
@@ -109,7 +109,7 @@ describe("Cloud Outcomes controllers", () => {
         client,
         binding: { projectId: "cloud-proj-1", baseVersion: 1, name: "Sample Project" },
         snapshot: sampleProject,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
       });
 
       expect(outcome.kind).toBe("saved");
@@ -118,7 +118,7 @@ describe("Cloud Outcomes controllers", () => {
         expect(outcome.version.versionNumber).toBe(2);
       }
       expect(passedId).toBe("cloud-proj-1");
-      expect(passedBody).toEqual({ baseVersion: 1, schemaVersion: 1, document: sampleProject });
+      expect(passedBody).toEqual({ baseVersion: 1, schemaVersion: CURRENT_SCHEMA_VERSION, document: sampleProject });
     });
 
     it("returns conflict outcome with currentVersion on 409", async () => {
@@ -319,6 +319,36 @@ describe("Cloud Outcomes controllers", () => {
       const outcome = await runCloudOpen({ client, projectId: "cloud-proj-1" });
 
       expect(outcome.kind).toBe("unsupported-schema");
+    });
+
+    it("migrates v1 document to v2 with entities: [] when opening project", async () => {
+      const v1RawDoc = {
+        id: "v1-id",
+        name: "V1 Project",
+        nodes: [
+          { id: "node-1", type: "start", title: "Start" },
+          { id: "node-2", type: "end", title: "End" },
+        ],
+        edges: [{ id: "edge-1", from: "node-1", to: "node-2" }],
+        variables: [],
+      };
+      const client = makeClient({
+        getProject: async () => ({
+          ok: true,
+          status: 200,
+          data: {
+            project: sampleSummary,
+            version: { ...sampleVersion, schemaVersion: 1 },
+            document: v1RawDoc as unknown as Project,
+          },
+        }),
+      });
+
+      const outcome = await runCloudOpen({ client, projectId: "cloud-proj-1" });
+      expect(outcome.kind).toBe("loaded");
+      if (outcome.kind === "loaded") {
+        expect(outcome.project.entities).toEqual([]);
+      }
     });
   });
 
@@ -571,13 +601,13 @@ describe("Cloud Outcomes controllers", () => {
       }
     });
 
-    it("returns unsupported-schema when schemaVersion is greater than 1", async () => {
+    it("returns unsupported-schema when schemaVersion is greater than CURRENT_SCHEMA_VERSION", async () => {
       const client = makeClient({
         getVersion: async () => ({
           ok: true,
           status: 200,
           data: {
-            version: { ...sampleVersion, schemaVersion: 2 },
+            version: { ...sampleVersion, schemaVersion: 3 },
             document: sampleProject,
           },
         }),
@@ -586,7 +616,36 @@ describe("Cloud Outcomes controllers", () => {
       const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 1 });
       expect(outcome.kind).toBe("unsupported-schema");
       if (outcome.kind === "unsupported-schema") {
-        expect(outcome.supported).toBe(1);
+        expect(outcome.supported).toBe(CURRENT_SCHEMA_VERSION);
+      }
+    });
+
+    it("migrates v1 document to v2 with entities: [] when fetching version", async () => {
+      const v1RawDoc = {
+        id: "v1-id",
+        name: "V1 Project",
+        nodes: [
+          { id: "node-1", type: "start", title: "Start" },
+          { id: "node-2", type: "end", title: "End" },
+        ],
+        edges: [{ id: "edge-1", from: "node-1", to: "node-2" }],
+        variables: [],
+      };
+      const client = makeClient({
+        getVersion: async () => ({
+          ok: true,
+          status: 200,
+          data: {
+            version: { ...sampleVersion, schemaVersion: 1 },
+            document: v1RawDoc as unknown as Project,
+          },
+        }),
+      });
+
+      const outcome = await runCloudFetchVersion({ client, projectId: "cloud-proj-1", versionNumber: 1 });
+      expect(outcome.kind).toBe("loaded");
+      if (outcome.kind === "loaded") {
+        expect(outcome.project.entities).toEqual([]);
       }
     });
 

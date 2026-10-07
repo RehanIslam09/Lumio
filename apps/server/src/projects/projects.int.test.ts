@@ -10,7 +10,7 @@ import { loadServerEnv } from "../db/testEnv.js";
 import { checkTestDatabaseUrl } from "../db/testSafety.js";
 import { createDrizzleProjectRepo } from "./drizzleProjectRepo.js";
 import { isWellFormedUnicode } from "./validate.js";
-import type { Project } from "@repo/schema";
+import { CURRENT_SCHEMA_VERSION, type Project } from "@repo/schema";
 
 describe("Projects Integration Test Suite (lumio_test)", () => {
   let dbInstance: DbInstance;
@@ -118,7 +118,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("My Project"),
       }),
     });
@@ -156,7 +156,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
       },
       body: JSON.stringify({
         baseVersion: 1,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Renamed Project"),
       }),
     });
@@ -178,7 +178,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
       },
       body: JSON.stringify({
         baseVersion: 1,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Stale Save"),
       }),
     });
@@ -301,7 +301,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            schemaVersion: 1,
+            schemaVersion: CURRENT_SCHEMA_VERSION,
             document: project,
           }),
         });
@@ -339,7 +339,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject("Seq") }),
+      body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Seq") }),
     });
     const { project: p1 } = (await createRes.json()) as { project: { id: string } };
 
@@ -353,7 +353,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         },
         body: JSON.stringify({
           baseVersion: v,
-          schemaVersion: 1,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           document: makeMinimalProject(`Seq ${v + 1}`),
         }),
       });
@@ -372,7 +372,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
       },
       body: JSON.stringify({
         baseVersion: 5,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Stale"),
       }),
     });
@@ -389,7 +389,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
           Origin: "http://localhost:5173",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject(`Race ${r}`) }),
+        body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject(`Race ${r}`) }),
       });
       const { project: raceProj } = (await cRes.json()) as { project: { id: string } };
 
@@ -400,7 +400,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
           Origin: "http://localhost:5173",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ baseVersion: 1, schemaVersion: 1, document: makeMinimalProject("Race Win 1") }),
+        body: JSON.stringify({ baseVersion: 1, schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Race Win 1") }),
       });
       const put2 = app.request(`/api/projects/${raceProj.id}`, {
         method: "PUT",
@@ -409,7 +409,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
           Origin: "http://localhost:5173",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ baseVersion: 1, schemaVersion: 1, document: makeMinimalProject("Race Win 2") }),
+        body: JSON.stringify({ baseVersion: 1, schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Race Win 2") }),
       });
 
       const [res1, res2] = await Promise.all([put1, put2]);
@@ -429,7 +429,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject("5-way Race") }),
+      body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("5-way Race") }),
     });
     const { project: p5 } = (await c5Res.json()) as { project: { id: string } };
 
@@ -443,7 +443,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         },
         body: JSON.stringify({
           baseVersion: 1,
-          schemaVersion: 1,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           document: makeMinimalProject(`Candidate ${i}`),
         }),
       }),
@@ -469,7 +469,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           document: makeMinimalProject(`Cap Project ${i}`),
         }),
       }),
@@ -488,7 +488,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("User B Project"),
       }),
     });
@@ -508,7 +508,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
           Origin: "http://localhost:5173",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject(`DelRace ${i}`) }),
+        body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject(`DelRace ${i}`) }),
       });
       const { project: p } = (await createRes.json()) as { project: { id: string } };
 
@@ -521,7 +521,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         },
         body: JSON.stringify({
           baseVersion: 1,
-          schemaVersion: 1,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           document: makeMinimalProject("Updated Name"),
         }),
       });
@@ -561,7 +561,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject("A's Project") }),
+      body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("A's Project") }),
     });
     const { project: projA } = (await createRes.json()) as { project: { id: string } };
 
@@ -580,7 +580,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ baseVersion: 1, schemaVersion: 1, document: makeMinimalProject("Hack") }),
+      body: JSON.stringify({ baseVersion: 1, schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Hack") }),
     });
     expect(putB.status).toBe(404);
 
@@ -639,7 +639,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
     try {
       await repo.createWithFirstVersion({
         ownerId: user.id,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: {
           id: "p1",
           name: "Valid Name",
@@ -664,7 +664,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
     try {
       await repo.createWithFirstVersion({
         ownerId: user.id,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: {
           id: "p2",
           name: "Valid Name",
@@ -697,7 +697,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: {
           id: "p",
           name: "Surrogate Project",
@@ -718,7 +718,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: {
           id: "p",
           name: "Null Project",
@@ -758,7 +758,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
     await expect(
       repo.createWithFirstVersion({
         ownerId: user.id,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: overProj,
         maxProjectsPerUser: 10,
         now: new Date(),
@@ -775,7 +775,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
     };
     const underRes = await repo.createWithFirstVersion({
       ownerId: user.id,
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       document: underProj,
       maxProjectsPerUser: 10,
       now: new Date(),
@@ -797,7 +797,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Initial Name 🌟"),
       }),
     });
@@ -818,7 +818,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
       },
       body: JSON.stringify({
         baseVersion: 1,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Renamed 🚀"),
       }),
     });
@@ -842,7 +842,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            schemaVersion: 1,
+            schemaVersion: CURRENT_SCHEMA_VERSION,
             document: makeMinimalProject(randomName),
           }),
         });
@@ -865,7 +865,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject("Cascade Proj") }),
+      body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Cascade Proj") }),
     });
     const { project: p } = (await createRes.json()) as { project: { id: string } };
 
@@ -877,7 +877,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ baseVersion: 1, schemaVersion: 1, document: makeMinimalProject("V2") }),
+      body: JSON.stringify({ baseVersion: 1, schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("V2") }),
     });
 
     const vRowsBefore = await dbInstance.db.select().from(projectVersions).where(eq(projectVersions.projectId, p.id));
@@ -901,7 +901,7 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
         Origin: "http://localhost:5173",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ schemaVersion: 1, document: makeMinimalProject("Proj 2") }),
+      body: JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Proj 2") }),
     });
     const { project: p2 } = (await c2Res.json()) as { project: { id: string } };
 
@@ -916,5 +916,179 @@ describe("Projects Integration Test Suite (lumio_test)", () => {
 
     const v2RowsAfterDel = await dbInstance.db.select().from(projectVersions).where(eq(projectVersions.projectId, p2.id));
     expect(v2RowsAfterDel.length).toBe(0);
+  });
+
+  // 11. Content Model v2 & Schema Versioning
+  it("11. Content Model v2: writes at v2 preserve entities/speaker/body; writes at v1 rejected with 422; stored v1 read is immutable", async () => {
+    const app = makeApp();
+    const { user, cookie } = await registerUser(app, "v2content@example.com");
+
+    const v2Doc: Project = {
+      id: "v2-proj-id",
+      name: "V2 Story",
+      entities: [
+        { id: "char-1", name: "Alice", kind: "character", description: "Hero" },
+        { id: "loc-1", name: "Castle", kind: "location" },
+      ],
+      nodes: [
+        { id: "node-1", type: "start", title: "Start", speakerId: "char-1", body: "Once upon a time..." },
+        { id: "node-2", type: "end", title: "End" },
+      ],
+      edges: [{ id: "edge-1", from: "node-1", to: "node-2" }],
+      variables: [],
+    };
+
+    // 1. POST at v2 succeeds with 201, returns schemaVersion: 2, preserves entities/speaker/body
+    const createRes = await app.request("/api/projects", {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        Origin: "http://localhost:5173",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        document: v2Doc,
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const createBody = (await createRes.json()) as {
+      project: { id: string };
+      version: { versionNumber: number; schemaVersion: number };
+    };
+    expect(createBody.version.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    const createdId = createBody.project.id;
+
+    // Verify GET returns preserved v2 fields
+    const getRes = await app.request(`/api/projects/${createdId}`, {
+      method: "GET",
+      headers: { Cookie: cookie },
+    });
+    expect(getRes.status).toBe(200);
+    const getBody = (await getRes.json()) as {
+      document: Project;
+      version: { schemaVersion: number };
+    };
+    expect(getBody.version.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(getBody.document.entities).toEqual(v2Doc.entities);
+    expect(getBody.document.nodes[0]?.speakerId).toBe("char-1");
+    expect(getBody.document.nodes[0]?.body).toBe("Once upon a time...");
+
+    // 2. POST with schemaVersion: 1 rejected with 422 unsupported-schema-version
+    const postV1Res = await app.request("/api/projects", {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        Origin: "http://localhost:5173",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        document: makeMinimalProject("Legacy Write"),
+      }),
+    });
+    expect(postV1Res.status).toBe(422);
+    const postV1Body = (await postV1Res.json()) as {
+      error: { code: string; supported: number };
+    };
+    expect(postV1Body.error.code).toBe("unsupported-schema-version");
+    expect(postV1Body.error.supported).toBe(CURRENT_SCHEMA_VERSION);
+
+    // 3. PUT with schemaVersion: 1 rejected with 422
+    const putV1Res = await app.request(`/api/projects/${createdId}`, {
+      method: "PUT",
+      headers: {
+        Cookie: cookie,
+        Origin: "http://localhost:5173",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        baseVersion: 1,
+        schemaVersion: 1,
+        document: makeMinimalProject("Legacy Save"),
+      }),
+    });
+    expect(putV1Res.status).toBe(422);
+
+    // 4. PUT with v2 document succeeds with 200, returns schemaVersion: 2
+    const updatedV2Doc: Project = {
+      ...v2Doc,
+      name: "V2 Story Updated",
+    };
+    const putV2Res = await app.request(`/api/projects/${createdId}`, {
+      method: "PUT",
+      headers: {
+        Cookie: cookie,
+        Origin: "http://localhost:5173",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        baseVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        document: updatedV2Doc,
+      }),
+    });
+    expect(putV2Res.status).toBe(200);
+    const putV2Body = (await putV2Res.json()) as {
+      version: { versionNumber: number; schemaVersion: number };
+    };
+    expect(putV2Body.version.versionNumber).toBe(2);
+    expect(putV2Body.version.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+
+    // 5. speakerId pointing to nonexistent entity or kind !== 'character' -> 400 invalid-request
+    const badSpeakerDoc: Project = {
+      ...v2Doc,
+      nodes: [
+        { id: "node-1", type: "start", title: "Start", speakerId: "loc-1" },
+        { id: "node-2", type: "end", title: "End" },
+      ],
+    };
+    const badSpeakerRes = await app.request("/api/projects", {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        Origin: "http://localhost:5173",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        document: badSpeakerDoc,
+      }),
+    });
+    expect(badSpeakerRes.status).toBe(400);
+
+    // 6. Stored v1 document read by GET /api/projects/:id returns schemaVersion: 1 (stored row immutable)
+    const v1ProjId = "00000000-0000-0000-0000-000000000001";
+    await dbInstance.db.insert(projects).values({
+      id: v1ProjId,
+      ownerId: user.id,
+      name: "Legacy V1 Project",
+    });
+    await dbInstance.db.insert(projectVersions).values({
+      projectId: v1ProjId,
+      versionNumber: 1,
+      schemaVersion: 1,
+      document: makeMinimalProject("Legacy V1 Project"),
+    });
+
+    const getStoredV1 = await app.request(`/api/projects/${v1ProjId}`, {
+      method: "GET",
+      headers: { Cookie: cookie },
+    });
+    expect(getStoredV1.status).toBe(200);
+    const storedV1Body = (await getStoredV1.json()) as {
+      version: { schemaVersion: number; versionNumber: number };
+    };
+    expect(storedV1Body.version.schemaVersion).toBe(1);
+
+    const getStoredV1Version = await app.request(`/api/projects/${v1ProjId}/versions/1`, {
+      method: "GET",
+      headers: { Cookie: cookie },
+    });
+    expect(getStoredV1Version.status).toBe(200);
+    const storedV1VersionBody = (await getStoredV1Version.json()) as {
+      version: { schemaVersion: number };
+    };
+    expect(storedV1VersionBody.version.schemaVersion).toBe(1);
   });
 });

@@ -24,6 +24,68 @@
 
 ## Entries
 
+### W-027 | 2026-10-06 | Content Model v2 (Data Layer): entities, node body/speaker, and migration chain
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat: implement Content Model v2, pure migration chain, and schema bump 1->2`
+- **Goal:** Upgrade project data model to schemaVersion 2 adding optional cast entities (max 1000), node body (<= 20,000 code points), and node speakerId referencing character entities; implement pure chained migration in @repo/schema; preserve immutable stored rows while rejecting legacy write versions.
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added `CURRENT_SCHEMA_VERSION = 2`, `MIN_SUPPORTED_SCHEMA_VERSION = 1`, limits (`MAX_ENTITIES_PER_PROJECT = 1000`, `MAX_ENTITY_NAME_CODE_POINTS = 120`, `MAX_ENTITY_DESC_CODE_POINTS = 5000`, `MAX_NODE_BODY_CODE_POINTS = 20000`); implemented loop-based `countCodePoints`, `isReadableSchemaVersion`, `getEntities`, `EntityKindSchema`, `EntitySchema`; updated `FlowNodeSchema` (body, speakerId) and `ProjectSchema` (entities); derived `KNOWN_*_KEYS` sets; implemented `checkEntityAndSpeakerDetails` integrity rules; created pure `migrate(raw, fromVersion)` chain.
+  - `apps/web/src/persistence/fixtures/v1-sample.lumio.json`: golden v1 fixture for 15-node sample story frozen with `schemaVersion: 1` and fixed `exportedAt`.
+  - `apps/web/src/persistence/fixtures/v1-branching.lumio.json`: golden v1 fixture for 6-node branching story with variables and conditions frozen with `schemaVersion: 1`.
+  - `apps/web/src/lib/schema.test.ts`: created comprehensive test suite (32 unit and property tests) covering constants, `countCodePoints` at and above caps, `isReadableSchemaVersion` 11-case table test, `getEntities`, `EntitySchema`, `FlowNodeSchema`, `ProjectSchema`, derived shape keys equivalence, v2 clean parsing without unknown warnings, genuine unknown warnings, entity integrity, and fast-check generator migration round-trip.
+  - `apps/web/src/persistence/types.ts`: re-exported `CURRENT_SCHEMA_VERSION, MIN_SUPPORTED_SCHEMA_VERSION` from `@repo/schema`.
+  - `apps/web/src/persistence/serialize.ts`: writes `CURRENT_SCHEMA_VERSION`; preserves exact presence/absence of `entities` key.
+  - `apps/web/src/persistence/parse.ts`: uses derived `KNOWN_*_KEYS`, delegates migration to `migrate` from `@repo/schema`, and appends entity and speaker integrity checks.
+  - `apps/web/src/persistence/index.ts`: re-exported `migrate`, `isReadableSchemaVersion`, and `CURRENT_SCHEMA_VERSION`.
+  - `apps/web/src/persistence/persistence.test.ts`: added serializer identity round-trip tests for projects with and without entities; added golden fixture frozen assertions.
+  - `apps/server/src/projects/validate.ts`: updated `SUPPORTED_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION` (2), rejects write requests with `schemaVersion !== 2` with 422 `unsupported-schema-version` (`supported: 2`), appends entity/speaker integrity details.
+  - `apps/server/src/projects/validate.test.ts`: updated write tests to use `CURRENT_SCHEMA_VERSION`; tested Rule 2 rejection for versions 1 and 3; added Rule 7 tests for duplicate entity IDs, invalid speaker IDs, whitespace names, and caps.
+  - `apps/server/src/projects/service.ts`: uses `CURRENT_SCHEMA_VERSION` as fallback supported schema version.
+  - `apps/server/src/projects/service.test.ts`: updated create/save payloads to pass `CURRENT_SCHEMA_VERSION`.
+  - `apps/server/src/projects/routes.test.ts`: updated write payloads to pass `CURRENT_SCHEMA_VERSION`.
+  - `apps/server/src/projects/projects.int.test.ts`: updated write payloads to `CURRENT_SCHEMA_VERSION`; added Test 11 for v2 content persistence, write rejection at v1 (422), and immutable reading of legacy v1 rows.
+  - `apps/web/src/cloud/outcomes.ts`: updated `runCloudFetchVersion` and `runCloudOpen` to check `isReadableSchemaVersion` and migrate documents from versions `< CURRENT_SCHEMA_VERSION` before validation.
+  - `apps/web/src/cloud/outcomes.test.ts`: updated save tests and unsupported schema assertions; added v1 migration tests on open and fetchVersion.
+  - `apps/web/src/components/HistoryDialog.tsx`: replaced hardcoded `schemaVersion === 1` checks with `isReadableSchemaVersion`.
+  - `apps/web/src/hooks/useCloud.ts`: updated save calls to use `CURRENT_SCHEMA_VERSION`; updated 422 error copy per Amendment 8.
+  - `apps/web/src/benchmark/generator.ts`: updated generator to construct character entities for cast pool, assign `speakerId` on nodes, and populate deterministic short `body`.
+  - `apps/web/src/benchmark/generator.test.ts`: added test verifying generated character entities, speakerIds, and bodies; added scale measurement test.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 4 Data model with Schema Versioning & Content Model v2 section.
+  - `docs/context/work-archive.md`: archived full entry W-019 per 8-entry rolling cap.
+  - `docs/context/recent-work.md`: recorded entry W-027, rotated W-019 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `CURRENT_SCHEMA_VERSION = 2`, `MIN_SUPPORTED_SCHEMA_VERSION = 1`
+    - `MAX_ENTITIES_PER_PROJECT = 1000`, `MAX_ENTITY_NAME_CODE_POINTS = 120`, `MAX_ENTITY_DESC_CODE_POINTS = 5000`, `MAX_NODE_BODY_CODE_POINTS = 20000`
+    - `countCodePoints(str: string): number`
+    - `isReadableSchemaVersion(version: unknown): boolean`
+    - `getEntities(project: Project): readonly Entity[]`
+    - `EntityKindSchema`, `EntitySchema`, `type EntityKind`, `type Entity`
+    - `KNOWN_PROJECT_KEYS`, `KNOWN_NODE_KEYS`, `KNOWN_EDGE_KEYS`, `KNOWN_VARIABLE_KEYS`, `KNOWN_ENTITY_KEYS`
+    - `migrate(raw: unknown, fromVersion: number): MigrationResult`
+    - `checkEntityAndSpeakerDetails(project: Project): IntegrityDetail[]`
+    - `checkEntityAndSpeakerIntegrity(project: Project): string[]`
+- **Decisions and why:**
+  - Single pure migration chain in `@repo/schema` returning `{ ok: true, value } | { ok: false, reason }` without throwing, reused across web parse and cloud outcomes (Amendment 1).
+  - Serializer identity: `serializeProject` preserves the exact presence/absence of `entities` key without injecting defaults; reading helper `getEntities(project)` normalizes absence to empty array (Amendment 2).
+  - Derived known keys: derived from Zod schema shape keys (`Object.keys(Schema.shape)`) to eliminate drift (Amendment 4).
+  - Loop-based Unicode counter: `countCodePoints` iterates via `charCodeAt` checking surrogate pairs without array allocations, ensuring O(1) memory on large bodies up to 20,000 code points (Amendment 7).
+  - Server write rule: server only accepts writes at `CURRENT_SCHEMA_VERSION` (2); writes at 1 return 422 with `supported: 2`; stored database rows remain immutable (Amendment 1, 3).
+- **Assumptions / UNVERIFIED:**
+  - Manual testing of 422 outdated app alert via UI is UNVERIFIED until interactive browser test.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful, 599 total tests passing: 81 dsl, 59 checker, 305 web, 154 server).
+  - Scale measurement:
+    - 1000 nodes v1: 230,501 bytes (230.5 B/node)
+    - 1000 nodes v2: 315,134 bytes (315.1 B/node)
+    - Overhead per node in v2: ~84.6 B/node
+    - Estimated max nodes under 5 MB limit: ~15,866 nodes
+  - Web production bundle:
+    - Measured (W-027): JS 594.26 kB (gzip 177.33 kB), CSS 38.78 kB (gzip 6.93 kB) via `pnpm --filter @repo/web build`
+- **Known issues / debt:** none
+- **Next steps:**
+  - UI integration for character/entity inspector and node body editor.
+
 ### W-026 | 2026-10-06 | Version history UI: dialog, list/restore/download, and generation-ref guards
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add version history dialog, restore, download, and generation-ref guards`
@@ -412,52 +474,8 @@
 - **Next steps:**
   - Implement Project CRUD services and HTTP endpoints in apps/server with ProjectSchema validation.
 
-### W-019 | 2026-10-05 | Server skeleton: apps/server with Hono, validated config, CORS allowlist, and /health route
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): initialize apps/server skeleton with Hono, validated config, CORS allowlist, and /health endpoint`
-- **Goal:** Set up apps/server backend skeleton using Hono and @hono/node-server with test-first validated config module, CORS allowlist without wildcard, JSON 404/500 error handling, /health route, and clean process lifecycle.
-- **Files changed:**
-  - `apps/server/package.json`: initialized `@repo/server` with hono 4.13.13, @hono/node-server 2.1.3, zod 4.6.5, tsx 4.23.15, @types/node 26.6.4, typescript 6.0.3, eslint 10.12.0, typescript-eslint 8.71.0, vitest 5.0.3, fast-check 4.10.2.
-  - `apps/server/tsconfig.json`: created extending `../../tsconfig.base.json` with `node` types.
-  - `apps/server/vitest.config.ts`: configured test runner with `testTimeout: 30_000`.
-  - `apps/server/.env.example`: added tracked template with placeholder database password comment.
-  - `apps/server/src/config.ts`: implemented pure `parseConfig` with integer port bounds (1..65535, default 3001), allowed nodeEnv values (development/test/production), required postgres connection string with password secrecy preservation, and strict CORS origin validation.
-  - `apps/server/src/config.test.ts`: test-first unit and fast-check property tests covering valid configs, defaults, invalid port/nodeEnv/DATABASE_URL, password secrecy, CORS origin restrictions, and non-throwing invariant on arbitrary records.
-  - `apps/server/src/app.ts`: implemented pure `createApp` with Hono, CORS allowlist function (no "*"), GET /health route, 404 JSON error handler ({ error: { code: "not-found", message: "Not found" } }), and 500 JSON error handler ({ error: { code: "internal", message: "Internal server error" } }) with injected error logger.
-  - `apps/server/src/app.test.ts`: unit tests for GET /health (200 { status: "ok" }), 404 unknown route ({ error: { code: "not-found", message: "Not found" } }), 500 thrown error without stack trace ({ error: { code: "internal", message: "Internal server error" } }), allowed CORS origins, CORS preflight (204), and unallowed/wildcard origin rejection.
-  - `apps/server/src/index.ts`: created server entrypoint parsing `process.env`, exiting 1 on validation failure, serving on configured port, and handling SIGINT/SIGTERM with clean server close.
-  - `package.json`: added `"dev:server": "pnpm --filter @repo/server dev"` script.
-  - `pnpm-workspace.yaml`: recorded approved esbuild build script.
-  - `pnpm-lock.yaml`: updated with server dependencies.
-  - `docs/ARCHITECTURE.md`: updated Section 2 Stack (Hono, Drizzle, native Windows PostgreSQL DECIDED), added Development database section, updated Section 3 Repo map, and updated Section 12 debt list.
-  - `docs/context/work-archive.md`: archived full W-011 entry per R7.4 rolling 8-entry cap.
-  - `docs/context/recent-work.md`: recorded entry W-019, rotated W-011 to older work, maintaining 8 full entries.
-- **New/changed public APIs:**
-  - `apps/server/src/config.ts`:
-    - `type NodeEnv = "development" | "test" | "production"`
-    - `type Config = { port: number; nodeEnv: NodeEnv; databaseUrl: string; corsOrigins: string[]; }`
-    - `type ConfigResult = { ok: true; config: Config } | { ok: false; errors: string[] }`
-    - `parseConfig(env: Record<string, string | undefined> | undefined | null): ConfigResult`
-  - `apps/server/src/app.ts`:
-    - `type AppDependencies = { logError: (err: unknown) => void }`
-    - `createApp(config: Config, deps: AppDependencies): Hono`
-- **Decisions and why:**
-  - Used exact dependency pins across all new dependencies in `apps/server/package.json` matching monorepo pins: `zod: 4.6.5`, `fast-check: 4.10.2`, `vitest: 5.0.3`, `typescript: 6.0.3`, `eslint: 10.12.0`, `typescript-eslint: 8.71.0` (R2.4).
-  - Validated DATABASE_URL using protocol prefix check (`postgres://` or `postgresql://`) and `new URL()` validation without interpolating input or password in error messages to guarantee secrecy (addition A.1).
-  - Validated CORS origins against strict URL origin semantics (`origin === new URL(origin).origin`), rejecting wildcards, paths, query params, hashes, and non-http(s) schemes.
-  - Configured `origin` in `hono/cors` as a callback returning the origin only if present in `config.corsOrigins`, else returning `null`, guaranteeing no wildcard origin is emitted.
-  - Handled SIGINT and SIGTERM cleanly in `index.ts` invoking `server.close()` from `@hono/node-server`.
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 301 total tests passing: 81 dsl, 59 checker, 144 web, 17 server).
-  - `pnpm --filter @repo/server exec tsx src/index.ts` without DATABASE_URL -> exits 1 with `DATABASE_URL is required`.
-  - Smoke test with inline env -> `curl.exe -i http://localhost:3099/health` (200 { status: "ok" }), `curl.exe -i http://localhost:3099/nope` (404 { error: { code: "not-found", message: "Not found" } }), `curl.exe -i -H "Origin: http://localhost:5173" http://localhost:3099/health` (Access-Control-Allow-Origin: http://localhost:5173), `curl.exe -i -H "Origin: http://evil.com" http://localhost:3099/health` (no CORS header).
-- **Known issues / debt:**
-  - Manual DB setup required (no automated bootstrap script yet).
-- **Next steps:**
-  - Integrate Drizzle ORM and PostgreSQL migrations in subsequent task.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-019 | 2026-10-05 | Server skeleton: apps/server with Hono, validated config, CORS allowlist, and /health route
 - W-018 | 2026-10-05 | Readable initial viewport camera and Go to start control
 - W-017 | 2026-10-04 | Orphan grid layout below main flow and extended F1 persistence property coverage
 - W-016 | 2026-10-04 | Promote commit 7d90978 as stable-005

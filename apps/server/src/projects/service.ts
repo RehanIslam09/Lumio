@@ -1,4 +1,4 @@
-import type { Project } from "@repo/schema";
+import { CURRENT_SCHEMA_VERSION, type Project } from "@repo/schema";
 import type { RateLimiter } from "../auth/rateLimiter.js";
 import type {
   ProjectRepo,
@@ -151,7 +151,7 @@ export function createProjectService(deps: ProjectServiceDependencies): ProjectS
           return {
             ok: false,
             code: "unsupported-schema-version",
-            supported: validation.supported ?? 1,
+            supported: validation.supported ?? CURRENT_SCHEMA_VERSION,
             details: validation.details,
             message: "Unsupported schema version",
           };
@@ -230,7 +230,7 @@ export function createProjectService(deps: ProjectServiceDependencies): ProjectS
           return {
             ok: false,
             code: "unsupported-schema-version",
-            supported: validation.supported ?? 1,
+            supported: validation.supported ?? CURRENT_SCHEMA_VERSION,
             details: validation.details,
             message: "Unsupported schema version",
           };

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CURRENT_SCHEMA_VERSION } from "@repo/schema";
 import { createRateLimiter } from "../auth/rateLimiter.js";
 import { FakeProjectRepo } from "./fakes.js";
 import { createProjectService } from "./service.js";
@@ -33,7 +34,7 @@ describe("ProjectService", () => {
     });
 
     const createRes = await service.create(VALID_UUID, {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       document: makeMinimalProject("First Project"),
     });
 
@@ -72,7 +73,7 @@ describe("ProjectService", () => {
 
     // 3. Owned by another user
     const created = await service.create(VALID_UUID, {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       document: makeMinimalProject(),
     });
     expect(created.ok).toBe(true);
@@ -92,20 +93,20 @@ describe("ProjectService", () => {
       limits: { maxProjectsPerUser: 2 },
     });
 
-    const res1 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("P1") });
+    const res1 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("P1") });
     expect(res1.ok).toBe(true);
 
-    const res2 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("P2") });
+    const res2 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("P2") });
     expect(res2.ok).toBe(true);
 
-    const res3 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("P3") });
+    const res3 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("P3") });
     expect(res3.ok).toBe(false);
     if (!res3.ok) {
       expect(res3.code).toBe("project-limit-reached");
     }
 
     // Second user is unaffected
-    const resOther = await service.create(OTHER_UUID, { schemaVersion: 1, document: makeMinimalProject("Other P1") });
+    const resOther = await service.create(OTHER_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("Other P1") });
     expect(resOther.ok).toBe(true);
   });
 
@@ -119,7 +120,7 @@ describe("ProjectService", () => {
     });
 
     const createRes = await service.create(VALID_UUID, {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       document: makeMinimalProject("Initial"),
     });
     expect(createRes.ok).toBe(true);
@@ -132,7 +133,7 @@ describe("ProjectService", () => {
       ownerId: VALID_UUID,
       raw: {
         baseVersion: 1,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Updated Name"),
       },
     });
@@ -147,7 +148,7 @@ describe("ProjectService", () => {
       ownerId: VALID_UUID,
       raw: {
         baseVersion: 1,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: makeMinimalProject("Stale update"),
       },
     });
@@ -177,15 +178,15 @@ describe("ProjectService", () => {
     });
 
     // 1st write
-    const w1 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("W1") });
+    const w1 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("W1") });
     expect(w1.ok).toBe(true);
 
     // 2nd write
-    const w2 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("W2") });
+    const w2 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("W2") });
     expect(w2.ok).toBe(true);
 
     // 3rd write -> rate limited!
-    const w3 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("W3") });
+    const w3 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("W3") });
     expect(w3.ok).toBe(false);
     if (!w3.ok) {
       expect(w3.code).toBe("rate-limited");
@@ -202,7 +203,7 @@ describe("ProjectService", () => {
     nowMs += 61_000;
 
     // Now write succeeds again
-    const w4 = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject("W4") });
+    const w4 = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject("W4") });
     expect(w4.ok).toBe(true);
   });
 
@@ -215,7 +216,7 @@ describe("ProjectService", () => {
       limits: { maxProjectsPerUser: 10 },
     });
 
-    const createRes = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject() });
+    const createRes = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject() });
     expect(createRes.ok).toBe(true);
     if (!createRes.ok) return;
     const projectId = createRes.data.project.id;
@@ -240,7 +241,7 @@ describe("ProjectService", () => {
       limits: { maxProjectsPerUser: 10 },
     });
 
-    const createRes = await service.create(VALID_UUID, { schemaVersion: 1, document: makeMinimalProject() });
+    const createRes = await service.create(VALID_UUID, { schemaVersion: CURRENT_SCHEMA_VERSION, document: makeMinimalProject() });
     expect(createRes.ok).toBe(true);
     if (!createRes.ok) return;
     const projectId = createRes.data.project.id;

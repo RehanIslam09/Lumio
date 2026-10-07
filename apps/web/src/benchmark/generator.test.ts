@@ -4,6 +4,7 @@ import { ProjectSchema } from "@repo/schema";
 import { check } from "@repo/checker";
 import { parseCondition, parseEffect } from "@repo/dsl";
 import { validateProjectDocument } from "../persistence/parse.js";
+import { serializeProject } from "../persistence/serialize.js";
 import {
   generateBenchmarkProject,
   generateBenchmarkWithDefects,
@@ -103,6 +104,76 @@ describe("Benchmark Story Generator", () => {
       if (docResult.ok) {
         expect(docResult.warnings).toEqual([]);
       }
+    });
+
+    it("generates character entities matching speakerId on all nodes with short bodies", () => {
+      const castSize = 15;
+      const project = generateBenchmarkProject({
+        seed: 456,
+        nodeCount: 60,
+        castSize,
+      });
+
+      expect(project.entities).toBeDefined();
+      expect(project.entities?.length).toBe(castSize);
+      const entityIds = new Set(project.entities?.map((e) => e.id));
+      for (const ent of project.entities ?? []) {
+        expect(ent.kind).toBe("character");
+        expect(ent.name.trim().length).toBeGreaterThan(0);
+      }
+
+      for (const node of project.nodes) {
+        expect(node.speakerId).toBeDefined();
+        if (node.speakerId) {
+          expect(entityIds.has(node.speakerId)).toBe(true);
+        }
+        expect(typeof node.body).toBe("string");
+        expect(node.body?.length).toBeGreaterThan(0);
+        expect(node.body?.length).toBeLessThan(20000);
+      }
+    });
+
+    it("measures serialized size per node for v1 and v2", () => {
+      const p1000 = generateBenchmarkProject({ seed: 42, nodeCount: 1000 });
+      const serializedV2 = JSON.stringify(p1000);
+      const bytesV2 = new TextEncoder().encode(serializedV2).length;
+
+      // v1 equivalent without entities, speakerId, or body
+      const p1000_v1 = {
+        id: p1000.id,
+        name: p1000.name,
+        nodes: p1000.nodes.map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          position: n.position,
+        })),
+        edges: p1000.edges,
+        variables: p1000.variables,
+      };
+      const serializedV1 = JSON.stringify(p1000_v1);
+      const bytesV1 = new TextEncoder().encode(serializedV1).length;
+
+      const serializedPrettyV1 = serializeProject(p1000_v1, "2026-10-06T00:00:00.000Z");
+      const bytesPrettyV1 = new TextEncoder().encode(serializedPrettyV1).length;
+
+      const serializedPrettyV2 = serializeProject(p1000, "2026-10-06T00:00:00.000Z");
+      const bytesPrettyV2 = new TextEncoder().encode(serializedPrettyV2).length;
+
+      const v1BytesPerNode = (bytesV1 / 1000).toFixed(1);
+      const v2BytesPerNode = (bytesV2 / 1000).toFixed(1);
+      const v1PrettyBytesPerNode = (bytesPrettyV1 / 1000).toFixed(1);
+      const v2PrettyBytesPerNode = (bytesPrettyV2 / 1000).toFixed(1);
+      const maxNodesUnder5MB = Math.floor(5_000_000 / (bytesV2 / 1000));
+
+      console.log(`[MEASUREMENT (c) COMPACT v1]: ${bytesV1} bytes (${v1BytesPerNode} B/node)`);
+      console.log(`[MEASUREMENT (c) COMPACT v2]: ${bytesV2} bytes (${v2BytesPerNode} B/node)`);
+      console.log(`[MEASUREMENT (a) PRETTY v1]: ${bytesPrettyV1} bytes (${v1PrettyBytesPerNode} B/node)`);
+      console.log(`[MEASUREMENT (b) PRETTY v2]: ${bytesPrettyV2} bytes (${v2PrettyBytesPerNode} B/node)`);
+      console.log(`[BENCHMARK SCALE] Estimated max v2 nodes under 5 MB limit: ${maxNodesUnder5MB} nodes`);
+
+      expect(bytesV2).toBeGreaterThan(bytesV1);
+      expect(maxNodesUnder5MB).toBeGreaterThan(10000);
     });
 
     it("generates conditions and effects that parse through the real DSL", () => {

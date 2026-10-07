@@ -3,6 +3,7 @@ import type { Project } from "@repo/schema";
 import { createApiClient, type ApiClient } from "../api/client.js";
 import { getApiBaseUrl } from "../api/config.js";
 import type { UserDto } from "../api/types.js";
+import { CURRENT_SCHEMA_VERSION } from "../persistence/index.js";
 import {
   runAuthLogout,
   runAuthMe,
@@ -101,7 +102,7 @@ export function useCloud({
         client,
         binding: state.binding,
         snapshot,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
       });
 
       if (currentGen !== generationRef.current) return;
@@ -166,7 +167,8 @@ export function useCloud({
         dispatch({ type: "operationFailed", message: msg, generation: currentGen });
         onSetMessage(msg);
       } else if (outcome.kind === "unsupported-schema") {
-        const msg = "The project uses an unsupported schema version.";
+        const msg =
+          "This version of the app is out of date. Your work is still in this tab: download a file copy if you need it, then reload the page.";
         dispatch({ type: "operationFailed", message: msg, generation: currentGen });
         onSetMessage(msg);
       } else if (outcome.kind === "invalid") {
@@ -204,7 +206,7 @@ export function useCloud({
         binding: state.binding,
         currentVersion: conflictVersion,
         snapshot,
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
       });
 
       if (currentGen !== generationRef.current) return;

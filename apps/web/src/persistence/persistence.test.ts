@@ -1,3 +1,5 @@
+import sampleFixture from "./fixtures/v1-sample.lumio.json";
+import branchingFixture from "./fixtures/v1-branching.lumio.json";
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import type { Project, FlowNode } from "@repo/schema";
@@ -30,6 +32,71 @@ describe("serializeProject", () => {
     expect(parsed.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(parsed.exportedAt).toBe(date);
     expect(parsed.project).toEqual(project);
+  });
+
+  it("preserves exact presence/absence of entities key in round-trip", () => {
+    const date = "2026-10-06T00:00:00.000Z";
+
+    // 1. Without entities key
+    const pNoEntities: Project = {
+      id: "p_none",
+      name: "No Entities",
+      nodes: [{ id: "n1", type: "start", title: "Start" }],
+      edges: [],
+      variables: [],
+    };
+    const sNone = serializeProject(pNoEntities, date);
+    const parsedNone = parseProjectFile(sNone);
+    expect(parsedNone.ok).toBe(true);
+    if (parsedNone.ok) {
+      expect(parsedNone.project).toEqual(pNoEntities);
+      expect("entities" in parsedNone.project).toBe(false);
+    }
+
+    // 2. With empty entities key
+    const pEmptyEntities: Project = {
+      id: "p_empty",
+      name: "Empty Entities",
+      nodes: [{ id: "n1", type: "start", title: "Start" }],
+      edges: [],
+      variables: [],
+      entities: [],
+    };
+    const sEmpty = serializeProject(pEmptyEntities, date);
+    const parsedEmpty = parseProjectFile(sEmpty);
+    expect(parsedEmpty.ok).toBe(true);
+    if (parsedEmpty.ok) {
+      expect(parsedEmpty.project).toEqual(pEmptyEntities);
+      expect(parsedEmpty.project.entities).toEqual([]);
+    }
+
+    // 3. With non-empty entities key and node body / speakerId
+    const pPopulated: Project = {
+      id: "p_full",
+      name: "Full Entities",
+      nodes: [
+        {
+          id: "n1",
+          type: "start",
+          title: "Start",
+          body: "Hello narrative world",
+          speakerId: "c1",
+        },
+      ],
+      edges: [],
+      variables: [],
+      entities: [
+        { id: "c1", kind: "character", name: "Alice", description: "Protagonist" },
+        { id: "l1", kind: "location", name: "Forest" },
+      ],
+    };
+    const sPop = serializeProject(pPopulated, date);
+    const parsedPop = parseProjectFile(sPop);
+    expect(parsedPop.ok).toBe(true);
+    if (parsedPop.ok) {
+      expect(parsedPop.project).toEqual(pPopulated);
+      expect(parsedPop.warnings).toEqual([]);
+    }
   });
 });
 
@@ -765,5 +832,33 @@ describe("Property Tests", () => {
       }),
       { numRuns: 50 },
     );
+  });
+
+  describe("Golden v1 fixtures", () => {
+    it("freezes schemaVersion as 1 for all v1 fixtures", () => {
+      expect(sampleFixture.schemaVersion).toBe(1);
+      expect(sampleFixture.format).toBe("lumio-project");
+      expect(branchingFixture.schemaVersion).toBe(1);
+      expect(branchingFixture.format).toBe("lumio-project");
+    });
+
+    it("parses v1 fixtures cleanly today and forever", () => {
+      const sampleRaw = JSON.stringify(sampleFixture);
+      const branchingRaw = JSON.stringify(branchingFixture);
+
+      const sampleRes = parseProjectFile(sampleRaw);
+      expect(sampleRes.ok).toBe(true);
+      if (sampleRes.ok) {
+        expect(sampleRes.project.nodes.length).toBe(15);
+      }
+
+      const branchingRes = parseProjectFile(branchingRaw);
+      expect(branchingRes.ok).toBe(true);
+      if (branchingRes.ok) {
+        expect(branchingRes.project.nodes.length).toBe(6);
+        expect(branchingRes.project.edges.length).toBe(5);
+        expect(branchingRes.project.variables.length).toBe(3);
+      }
+    });
   });
 });

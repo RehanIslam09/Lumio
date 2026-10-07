@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CURRENT_SCHEMA_VERSION } from "@repo/schema";
 import {
   isWellFormedUnicode,
   SUPPORTED_SCHEMA_VERSION,
@@ -78,13 +79,13 @@ describe("validateProjectInput", () => {
 
     it("requires integer >= 1 baseVersion when requireBaseVersion: true", () => {
       const doc = makeMinimalProject();
-      expect(validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
-      expect(validateProjectInput({ schemaVersion: 1, baseVersion: 0, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
-      expect(validateProjectInput({ schemaVersion: 1, baseVersion: -2, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
-      expect(validateProjectInput({ schemaVersion: 1, baseVersion: 1.5, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
-      expect(validateProjectInput({ schemaVersion: 1, baseVersion: "1", document: doc }, { requireBaseVersion: true }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, baseVersion: 0, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, baseVersion: -2, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, baseVersion: 1.5, document: doc }, { requireBaseVersion: true }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, baseVersion: "1", document: doc }, { requireBaseVersion: true }).ok).toBe(false);
 
-      const valid = validateProjectInput({ schemaVersion: 1, baseVersion: 3, document: doc }, { requireBaseVersion: true });
+      const valid = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, baseVersion: 3, document: doc }, { requireBaseVersion: true });
       expect(valid.ok).toBe(true);
       if (valid.ok) {
         expect(valid.value.baseVersion).toBe(3);
@@ -92,15 +93,15 @@ describe("validateProjectInput", () => {
     });
 
     it("rejects non-object document", () => {
-      expect(validateProjectInput({ schemaVersion: 1, document: "not an object" }, { requireBaseVersion: false }).ok).toBe(false);
-      expect(validateProjectInput({ schemaVersion: 1, document: null }, { requireBaseVersion: false }).ok).toBe(false);
-      expect(validateProjectInput({ schemaVersion: 1, document: [1, 2] }, { requireBaseVersion: false }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: "not an object" }, { requireBaseVersion: false }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: null }, { requireBaseVersion: false }).ok).toBe(false);
+      expect(validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: [1, 2] }, { requireBaseVersion: false }).ok).toBe(false);
     });
 
     it("ignores extra envelope fields", () => {
       const doc = makeMinimalProject();
       const res = validateProjectInput(
-        { schemaVersion: 1, document: doc, extraEnvelopeField: "ignore-me" },
+        { schemaVersion: CURRENT_SCHEMA_VERSION, document: doc, extraEnvelopeField: "ignore-me" },
         { requireBaseVersion: false }
       );
       expect(res.ok).toBe(true);
@@ -110,11 +111,17 @@ describe("validateProjectInput", () => {
   describe("Rule 2: schemaVersion compatibility", () => {
     it("rejects schemaVersion !== SUPPORTED_SCHEMA_VERSION with code unsupported-schema-version", () => {
       const doc = makeMinimalProject();
-      const res = validateProjectInput({ schemaVersion: 2, document: doc }, { requireBaseVersion: false });
-      expect(res.ok).toBe(false);
-      if (!res.ok) {
-        expect(res.code).toBe("unsupported-schema-version");
-        expect(res.supported).toBe(SUPPORTED_SCHEMA_VERSION);
+      const res1 = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      expect(res1.ok).toBe(false);
+      if (!res1.ok) {
+        expect(res1.code).toBe("unsupported-schema-version");
+        expect(res1.supported).toBe(SUPPORTED_SCHEMA_VERSION);
+      }
+      const res3 = validateProjectInput({ schemaVersion: 3, document: doc }, { requireBaseVersion: false });
+      expect(res3.ok).toBe(false);
+      if (!res3.ok) {
+        expect(res3.code).toBe("unsupported-schema-version");
+        expect(res3.supported).toBe(SUPPORTED_SCHEMA_VERSION);
       }
     });
   });
@@ -136,7 +143,7 @@ describe("validateProjectInput", () => {
         ],
       };
 
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(true);
       if (res.ok) {
         const stored = res.value.document as unknown as Record<string, unknown>;
@@ -156,7 +163,7 @@ describe("validateProjectInput", () => {
         name: "Test",
         nodes: "not an array",
       };
-      const res = validateProjectInput({ schemaVersion: 1, document: invalidDoc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: invalidDoc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -173,7 +180,7 @@ describe("validateProjectInput", () => {
           { id: "dup-node", type: "end", title: "End" },
         ],
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -188,7 +195,7 @@ describe("validateProjectInput", () => {
           { id: "dup-edge", from: "node-2", to: "node-1" },
         ],
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -203,7 +210,7 @@ describe("validateProjectInput", () => {
           { id: "dup-var", name: "v2", type: "number", initial: 1 },
         ],
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -217,7 +224,7 @@ describe("validateProjectInput", () => {
           { id: "edge-bad", from: "ghost-1", to: "ghost-2" },
         ],
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -233,7 +240,7 @@ describe("validateProjectInput", () => {
         title: `Scene ${i}`,
       }));
       const doc = makeMinimalProject({ nodes });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.details.length).toBeLessThanOrEqual(10);
@@ -249,7 +256,7 @@ describe("validateProjectInput", () => {
           { id: "node-2", type: "end", title: "End" },
         ],
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -266,7 +273,7 @@ describe("validateProjectInput", () => {
       const doc = makeMinimalProject({
         name: "MyProject\u0000Secret",
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -279,7 +286,7 @@ describe("validateProjectInput", () => {
       const doc = makeMinimalProject({
         name: "MyProject\uD800Secret",
       });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -312,7 +319,7 @@ describe("validateProjectInput", () => {
   describe("Rule 6: Name validation", () => {
     it("rejects whitespace-only name", () => {
       const doc = makeMinimalProject({ name: "   \t\n  " });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
@@ -327,7 +334,7 @@ describe("validateProjectInput", () => {
       expect(name200.length).toBe(201); // 201 UTF-16 code units
 
       const doc = makeMinimalProject({ name: name200 });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(true);
     });
 
@@ -337,13 +344,146 @@ describe("validateProjectInput", () => {
       expect(Array.from(name201).length).toBe(201);
 
       const doc = makeMinimalProject({ name: name201 });
-      const res = validateProjectInput({ schemaVersion: 1, document: doc }, { requireBaseVersion: false });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe("invalid-request");
         expect(res.details.some((d) => d.path === "document.name")).toBe(true);
         // Error must not echo name
         expect(res.details[0]?.message).not.toContain(name201);
+      }
+    });
+  });
+
+  describe("Rule 7: Entity and speaker integrity", () => {
+    it("rejects duplicate entity IDs", () => {
+      const doc = makeMinimalProject({
+        entities: [
+          { id: "e1", name: "Alice", kind: "character" },
+          { id: "e1", name: "Bob", kind: "character" },
+        ],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+        expect(res.details.some((d) => d.message.includes('Duplicate entity ID: "e1"'))).toBe(true);
+      }
+    });
+
+    it("rejects speakerId referencing nonexistent entity", () => {
+      const doc = makeMinimalProject({
+        nodes: [
+          { id: "node-1", type: "start", title: "Start", speakerId: "missing-entity" },
+          { id: "node-2", type: "end", title: "End" },
+        ],
+        entities: [
+          { id: "char-1", name: "Alice", kind: "character" },
+        ],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+        expect(res.details.some((d) => d.message.includes('references missing speaker "missing-entity"'))).toBe(true);
+      }
+    });
+
+    it("rejects speakerId referencing entity that is not a character", () => {
+      const doc = makeMinimalProject({
+        nodes: [
+          { id: "node-1", type: "start", title: "Start", speakerId: "loc-1" },
+          { id: "node-2", type: "end", title: "End" },
+        ],
+        entities: [
+          { id: "loc-1", name: "Tavern", kind: "location" },
+        ],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+        expect(res.details.some((d) => d.message.includes('which is a "location", not a character'))).toBe(true);
+      }
+    });
+
+    it("accepts valid speakerId referencing a character entity", () => {
+      const doc = makeMinimalProject({
+        nodes: [
+          { id: "node-1", type: "start", title: "Start", speakerId: "char-1", body: "Hello world" },
+          { id: "node-2", type: "end", title: "End" },
+        ],
+        entities: [
+          { id: "char-1", name: "Alice", kind: "character", description: "Protagonist" },
+        ],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(true);
+    });
+
+    it("rejects entity with whitespace-only name", () => {
+      const doc = makeMinimalProject({
+        entities: [
+          { id: "e1", name: "   \t\n ", kind: "character" },
+        ],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+      }
+    });
+
+    it("rejects entity count > 1000", () => {
+      const entities = Array.from({ length: 1001 }, (_, i) => ({
+        id: `char-${i}`,
+        name: `Char ${i}`,
+        kind: "character" as const,
+      }));
+      const doc = makeMinimalProject({ entities });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+      }
+    });
+
+    it("rejects entity name exceeding 120 code points", () => {
+      const longName = "a".repeat(120) + "🚀"; // 121 code points
+      const doc = makeMinimalProject({
+        entities: [{ id: "e1", name: longName, kind: "character" }],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+      }
+    });
+
+    it("rejects entity description exceeding 5000 code points", () => {
+      const longDesc = "a".repeat(5000) + "🚀"; // 5001 code points
+      const doc = makeMinimalProject({
+        entities: [{ id: "e1", name: "Hero", description: longDesc, kind: "character" }],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
+      }
+    });
+
+    it("rejects node body exceeding 20000 code points", () => {
+      const longBody = "a".repeat(20000) + "🚀"; // 20001 code points
+      const doc = makeMinimalProject({
+        nodes: [
+          { id: "node-1", type: "start", title: "Start", body: longBody },
+          { id: "node-2", type: "end", title: "End" },
+        ],
+      });
+      const res = validateProjectInput({ schemaVersion: CURRENT_SCHEMA_VERSION, document: doc }, { requireBaseVersion: false });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("invalid-request");
       }
     });
   });

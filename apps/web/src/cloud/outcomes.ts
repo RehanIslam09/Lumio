@@ -2,6 +2,8 @@ import type { Project } from "@repo/schema";
 import type { ApiClient } from "../api/client.js";
 import {
   CURRENT_SCHEMA_VERSION,
+  isReadableSchemaVersion,
+  migrate,
   validateProjectDocument,
 } from "../persistence/index.js";
 import type {
@@ -167,14 +169,26 @@ export async function runCloudFetchVersion(params: {
 
   const { version, document: rawDocument } = res.data;
 
-  if (version.schemaVersion > CURRENT_SCHEMA_VERSION) {
+  if (!isReadableSchemaVersion(version.schemaVersion)) {
     return {
       kind: "unsupported-schema",
       supported: CURRENT_SCHEMA_VERSION,
     };
   }
 
-  const validated = validateProjectDocument(rawDocument);
+  let docToValidate: unknown = rawDocument;
+  if (version.schemaVersion < CURRENT_SCHEMA_VERSION) {
+    const migration = migrate(rawDocument, version.schemaVersion);
+    if (!migration.ok) {
+      return {
+        kind: "invalid-document",
+        details: [migration.reason],
+      };
+    }
+    docToValidate = migration.value;
+  }
+
+  const validated = validateProjectDocument(docToValidate);
   if (!validated.ok) {
     return {
       kind: "invalid-document",
@@ -206,14 +220,26 @@ export async function runCloudOpen(params: {
 
   const { project: summary, version, document: rawDocument } = res.data;
 
-  if (version.schemaVersion > CURRENT_SCHEMA_VERSION) {
+  if (!isReadableSchemaVersion(version.schemaVersion)) {
     return {
       kind: "unsupported-schema",
       supported: CURRENT_SCHEMA_VERSION,
     };
   }
 
-  const validated = validateProjectDocument(rawDocument);
+  let docToValidate: unknown = rawDocument;
+  if (version.schemaVersion < CURRENT_SCHEMA_VERSION) {
+    const migration = migrate(rawDocument, version.schemaVersion);
+    if (!migration.ok) {
+      return {
+        kind: "invalid-document",
+        details: [migration.reason],
+      };
+    }
+    docToValidate = migration.value;
+  }
+
+  const validated = validateProjectDocument(docToValidate);
   if (!validated.ok) {
     return {
       kind: "invalid-document",

@@ -1,20 +1,20 @@
-import { ProjectSchema, type Project } from "@repo/schema";
+import {
+  ProjectSchema,
+  KNOWN_PROJECT_KEYS,
+  KNOWN_NODE_KEYS,
+  KNOWN_EDGE_KEYS,
+  KNOWN_VARIABLE_KEYS,
+  KNOWN_ENTITY_KEYS,
+  checkEntityAndSpeakerIntegrity,
+  migrate,
+  type Project,
+} from "@repo/schema";
 import {
   MAX_FILE_BYTES,
   CURRENT_SCHEMA_VERSION,
   PROJECT_FORMAT,
   type ParseFileResult,
 } from "./types.js";
-
-export type MigrationFn = (data: unknown) => unknown;
-
-/**
- * Migration table keyed by target version.
- * Version 1 is the baseline; future versions register transformation functions here.
- */
-export const MIGRATIONS: Record<number, MigrationFn> = {
-  1: (data: unknown) => data,
-};
 
 /**
  * Validates raw byte length against MAX_FILE_BYTES.
@@ -45,19 +45,17 @@ function detectUnknownProperties(rawProject: unknown): string[] {
   }
 
   const rawObj = rawProject as Record<string, unknown>;
-  const allowedProjectKeys = new Set(["id", "name", "nodes", "edges", "variables"]);
-  const unknownProjectKeys = Object.keys(rawObj).filter((k) => !allowedProjectKeys.has(k));
+  const unknownProjectKeys = Object.keys(rawObj).filter((k) => !KNOWN_PROJECT_KEYS.has(k));
   if (unknownProjectKeys.length > 0) {
     warnings.push(`Ignored unknown project properties: ${unknownProjectKeys.join(", ")}`);
   }
 
   if (Array.isArray(rawObj.nodes)) {
-    const allowedNodeKeys = new Set(["id", "type", "title", "position"]);
     const unknownNodeKeys = new Set<string>();
     for (const node of rawObj.nodes) {
       if (typeof node === "object" && node !== null) {
         for (const k of Object.keys(node)) {
-          if (!allowedNodeKeys.has(k)) unknownNodeKeys.add(k);
+          if (!KNOWN_NODE_KEYS.has(k)) unknownNodeKeys.add(k);
         }
       }
     }
@@ -67,12 +65,11 @@ function detectUnknownProperties(rawProject: unknown): string[] {
   }
 
   if (Array.isArray(rawObj.edges)) {
-    const allowedEdgeKeys = new Set(["id", "from", "to", "condition", "effects"]);
     const unknownEdgeKeys = new Set<string>();
     for (const edge of rawObj.edges) {
       if (typeof edge === "object" && edge !== null) {
         for (const k of Object.keys(edge)) {
-          if (!allowedEdgeKeys.has(k)) unknownEdgeKeys.add(k);
+          if (!KNOWN_EDGE_KEYS.has(k)) unknownEdgeKeys.add(k);
         }
       }
     }
@@ -82,17 +79,30 @@ function detectUnknownProperties(rawProject: unknown): string[] {
   }
 
   if (Array.isArray(rawObj.variables)) {
-    const allowedVarKeys = new Set(["id", "name", "type", "initial"]);
     const unknownVarKeys = new Set<string>();
     for (const v of rawObj.variables) {
       if (typeof v === "object" && v !== null) {
         for (const k of Object.keys(v)) {
-          if (!allowedVarKeys.has(k)) unknownVarKeys.add(k);
+          if (!KNOWN_VARIABLE_KEYS.has(k)) unknownVarKeys.add(k);
         }
       }
     }
     if (unknownVarKeys.size > 0) {
       warnings.push(`Ignored unknown variable properties: ${Array.from(unknownVarKeys).join(", ")}`);
+    }
+  }
+
+  if (Array.isArray(rawObj.entities)) {
+    const unknownEntityKeys = new Set<string>();
+    for (const entity of rawObj.entities) {
+      if (typeof entity === "object" && entity !== null) {
+        for (const k of Object.keys(entity)) {
+          if (!KNOWN_ENTITY_KEYS.has(k)) unknownEntityKeys.add(k);
+        }
+      }
+    }
+    if (unknownEntityKeys.size > 0) {
+      warnings.push(`Ignored unknown entity properties: ${Array.from(unknownEntityKeys).join(", ")}`);
     }
   }
 
@@ -187,6 +197,12 @@ export function validateProjectDocument(rawProject: unknown): ValidateProjectDoc
     if (!seenNodeIds.has(edge.to)) {
       integrityDetails.push(`Edge "${edge.id}" references missing target node "${edge.to}"`);
     }
+  }
+
+  // (e) entity and speaker integrity
+  const entityErrors = checkEntityAndSpeakerIntegrity(project);
+  for (const err of entityErrors) {
+    integrityDetails.push(err);
   }
 
   if (integrityDetails.length > 0) {
@@ -288,16 +304,20 @@ export function parseProjectFile(text: string): ParseFileResult {
     }
 
     // 5. Apply migrations if version < CURRENT_SCHEMA_VERSION
-    let rawProject: unknown = fileObj.project;
-    for (let v = version; v < CURRENT_SCHEMA_VERSION; v++) {
-      const migrator = MIGRATIONS[v + 1];
-      if (migrator) {
-        rawProject = migrator(rawProject);
-      }
+    const migrationResult = migrate(fileObj.project, version);
+    if (!migrationResult.ok) {
+      return {
+        ok: false,
+        error: {
+          code: "unsupported-version",
+          message: migrationResult.reason,
+          details: [],
+        },
+      };
     }
 
     // 6-8. Validate project document (schema + integrity + unknown properties)
-    return validateProjectDocument(rawProject);
+    return validateProjectDocument(migrationResult.value);
   } catch (unexpectedError) {
     return {
       ok: false,

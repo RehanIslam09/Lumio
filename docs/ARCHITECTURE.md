@@ -77,9 +77,9 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,...}`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,...}`)
 packages/
-  schema/       Zod types: FlowNode, FlowEdge, Project, Issue, Variable
+  schema/       Zod types: FlowNode, FlowEdge, Project, Entity, Issue, Variable; pure migration chain (`migrate`), `countCodePoints`, `isReadableSchemaVersion`, derived shape keys
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
   dsl/          Language parser & typechecker (pure): AST, lexer, parser, typechecker for conditions and effects + tests
 docs/
@@ -154,6 +154,19 @@ AGENTS.md
 - Fail-loudly rule: DB tests fail loudly (never skip) with clear instructions when `TEST_DATABASE_URL` is missing or the database is unreachable.
 - Test isolation: Clean slate on each run by recreating schemas (`public` and `drizzle`), running `runMigrations`, and truncating tables `CASCADE` between tests. `fileParallelism: false` configured in `vitest.config.ts`. `TEST_DATABASE_URL` is loaded via native `process.loadEnvFile`.
 
+### Schema Versioning & Content Model v2 `DECIDED`
+- **Schema versions:**
+  - `CURRENT_SCHEMA_VERSION = 2`, `MIN_SUPPORTED_SCHEMA_VERSION = 1` defined in `@repo/schema`.
+  - **Read rule:** Versions in `[MIN_SUPPORTED_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION]` are readable. Stored documents with version `< CURRENT_SCHEMA_VERSION` are migrated through the pure `migrate(raw, fromVersion)` chain in `@repo/schema`. Predicate: `isReadableSchemaVersion(v)` validates integer in `[1, CURRENT_SCHEMA_VERSION]`.
+  - **Write rule:** Server write endpoints (`POST /api/projects`, `PUT /api/projects/:id`) require `schemaVersion === CURRENT_SCHEMA_VERSION` (2). Write attempts at older versions return 422 `unsupported-schema-version` with `supported: 2`.
+  - **Stored row immutability:** PostgreSQL `project_versions` rows are immutable and store the version as written. Legacy v1 documents stored in the database are returned as stored (`schemaVersion: 1`), and the client migrates them on read.
+  - **Pure migration chain:** Single unified `migrate(raw, fromVersion)` in `@repo/schema` returning `{ ok: true, value } | { ok: false, reason }` without throwing. Migration steps sequentially upgrade document shapes up to `CURRENT_SCHEMA_VERSION`. `validateProjectDocument` stays a pure validator of the current schema shape.
+- **Content Model v2:**
+  - **Entities:** Optional `entities: Entity[]` on `Project` (`max 1000` per project). `Entity`: non-empty `id`, `name` (1..120 code points, non-whitespace), `kind` (`"character" | "location" | "item"`), and optional `description` (<= 5000 code points). `getEntities(project)` helper returns `readonly Entity[]`.
+  - **Node body:** Optional `body` on `FlowNode` (<= 20,000 code points).
+  - **Speaker:** Optional `speakerId` on `FlowNode` referencing an entity in `project.entities` whose kind is `"character"`.
+  - **Code point counting:** Shared loop-based `countCodePoints(str)` counts Unicode code points handling surrogate pairs without string allocation or spreading.
+  - **Derived known keys:** `KNOWN_PROJECT_KEYS`, `KNOWN_NODE_KEYS`, `KNOWN_EDGE_KEYS`, `KNOWN_VARIABLE_KEYS`, and `KNOWN_ENTITY_KEYS` are derived directly from the Zod schemas (`Object.keys(Schema.shape)`), eliminating drift between web warning collectors and schema definitions.
 
 ## 5. DSL `DECIDED`
 Small expression language for edge conditions and effects. Pure hand-written lexer, recursive descent parser, and typechecker in `@repo/dsl`. Parsed and interpreted, never executed as code (R8.3).
@@ -603,7 +616,7 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
 
 ## 15. Benchmarks & Scale Measurements `DECIDED`
 
-Date: 2026-10-06  
+Date: 2026-10-06
 Caveat: Measured on single Windows dev box; UNVERIFIED as general performance. Main thread Node execution; canvas rendering and Web Worker performance UNVERIFIED.
 
 ### Scale Measurements (5 runs each, min / median)
@@ -616,4 +629,4 @@ Caveat: Measured on single Windows dev box; UNVERIFIED as general performance. M
 
 - **Capacity Headroom:** At 3,000 nodes, document size is ~1.20 MB (25% of the 5 MB `MAX_FILE_BYTES` / `MAX_DOCUMENT_BYTES` limit), leaving 3.68 MB headroom. Linear extrapolation estimates ~12,100 nodes before hitting the 5 MB ceiling.
 - **Whole-graph Operations:** All pure editor algorithms (`computeLayout`, `listConnections`, `check`, `parseProjectFile`) execute in under 7 ms even at 3,000 nodes.
-
+

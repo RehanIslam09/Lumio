@@ -1,0 +1,104 @@
+{
+  "format": "lumio-project",
+  "schemaVersion": 1,
+  "exportedAt": "2026-10-06T00:00:00.000Z",
+  "project": {
+    "id": "proj_v1_branching",
+    "name": "V1 Branching Narrative",
+    "nodes": [
+      {
+        "id": "node_start",
+        "type": "start",
+        "title": "Start of Journey",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": "node_crossroads",
+        "type": "scene",
+        "title": "The Crossroads"
+      },
+      {
+        "id": "node_shrine",
+        "type": "scene",
+        "title": "Ancient Shrine"
+      },
+      {
+        "id": "node_dungeon",
+        "type": "scene",
+        "title": "Sunken Dungeon"
+      },
+      {
+        "id": "node_end_peace",
+        "type": "end",
+        "title": "Peaceful Resolution"
+      },
+      {
+        "id": "node_end_chaos",
+        "type": "end",
+        "title": "Chaotic Aftermath"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": "node_start",
+        "to": "node_crossroads",
+        "effects": [
+          "gold = 100",
+          "visited_crossroads = true"
+        ]
+      },
+      {
+        "id": "e2",
+        "from": "node_crossroads",
+        "to": "node_shrine",
+        "condition": "gold >= 50"
+      },
+      {
+        "id": "e3",
+        "from": "node_crossroads",
+        "to": "node_dungeon",
+        "condition": "gold < 50"
+      },
+      {
+        "id": "e4",
+        "from": "node_shrine",
+        "to": "node_end_peace",
+        "effects": [
+          "karma = karma + 10"
+        ]
+      },
+      {
+        "id": "e5",
+        "from": "node_dungeon",
+        "to": "node_end_chaos",
+        "effects": [
+          "karma = karma - 20"
+        ]
+      }
+    ],
+    "variables": [
+      {
+        "id": "var_gold",
+        "name": "gold",
+        "type": "number",
+        "initial": 0
+      },
+      {
+        "id": "var_visited",
+        "name": "visited_crossroads",
+        "type": "boolean",
+        "initial": false
+      },
+      {
+        "id": "var_karma",
+        "name": "karma",
+        "type": "number",
+        "initial": 50
+      }
+    ]
+  }
+}

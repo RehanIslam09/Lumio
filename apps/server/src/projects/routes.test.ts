@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CURRENT_SCHEMA_VERSION } from "@repo/schema";
 import { createApp } from "../app.js";
 import { createAuthService } from "../auth/service.js";
 import { createFakeUserRepo, createFakeSessionRepo } from "../auth/fakes.js";
@@ -192,7 +193,7 @@ describe("Projects Routes", () => {
 
     // 1. Payload exceeding 6 MB with Content-Length
     const largeBody = JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       document: makeMinimalProject("a".repeat(PROJECT_BODY_LIMIT_BYTES + 100)),
     });
 
@@ -300,7 +301,7 @@ describe("Projects Routes", () => {
     project100Kb.nodes = nodes;
 
     const projBody = JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       document: project100Kb,
     });
     expect(projBody.length).toBeGreaterThan(100_000);
@@ -335,7 +336,7 @@ describe("Projects Routes", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         document: invalidDoc,
       }),
     });

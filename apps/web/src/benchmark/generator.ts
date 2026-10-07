@@ -1,4 +1,5 @@
 import type {
+  Entity,
   FlowEdge,
   FlowNode,
   Project,
@@ -77,33 +78,47 @@ export function generateBenchmarkProject(
   const isPlanted = options.defects === "planted";
 
   // Build cast pool of size targetCastSize
+  // Build cast pool of size targetCastSize and character entities
   const castPool: string[] = [];
+  const entities: Entity[] = [];
+  const charIdBySpeaker = new Map<string, string>();
   for (let i = 0; i < targetCastSize; i++) {
     const defaultName = DEFAULT_SPEAKER_POOL[i];
-    if (defaultName !== undefined) {
-      castPool.push(defaultName);
-    } else {
-      castPool.push(`Speaker_${i + 1}`);
-    }
+    const name = defaultName !== undefined ? defaultName : `Speaker_${i + 1}`;
+    castPool.push(name);
+    const id = `char_${i + 1}`;
+    entities.push({
+      id,
+      name,
+      kind: "character",
+      description: `Cast member ${name}`,
+    });
+    charIdBySpeaker.set(name, id);
   }
 
   // Round-robin assign speakers to guarantee every castPool member is used exactly across the project
   let speakerAssignmentIdx = 0;
-  function getNextSpeaker(): string {
+  function getNextSpeaker(): { name: string; id: string } {
+    let name: string;
     if (speakerAssignmentIdx < targetCastSize) {
-      const assigned = castPool[speakerAssignmentIdx++];
-      if (assigned !== undefined) return assigned;
+      name = castPool[speakerAssignmentIdx++] ?? castPool[0] ?? "Narrator";
+    } else {
+      name = prng.pick(castPool, castPool[0] ?? "Narrator");
     }
-    return prng.pick(castPool, "Narrator");
+    const id = charIdBySpeaker.get(name) ?? entities[0]?.id ?? "char_1";
+    return { name, id };
   }
 
   const nodes: FlowNode[] = [];
 
   // Start node
+  const startSpeaker = getNextSpeaker();
   const startNode: FlowNode = {
     id: "node_start",
     type: "start",
-    title: `${getNextSpeaker()}: Prologue Beginning`,
+    title: `${startSpeaker.name}: Prologue Beginning`,
+    speakerId: startSpeaker.id,
+    body: `Prologue opening dialogue spoken by ${startSpeaker.name}.`,
     position: { x: 0, y: 0 },
   };
   nodes.push(startNode);
@@ -124,10 +139,13 @@ export function generateBenchmarkProject(
     const targetLayer = sceneLayers[layerIdx] ?? sceneLayers[0] ?? [];
     const indexInLayer = targetLayer.length;
 
+    const speaker = getNextSpeaker();
     const sceneNode: FlowNode = {
       id: `node_scene_${i}`,
       type: "scene",
-      title: `${getNextSpeaker()}: Scene ${i + 1}`,
+      title: `${speaker.name}: Scene ${i + 1}`,
+      speakerId: speaker.id,
+      body: `Scene ${i + 1} narrative and dialogue spoken by ${speaker.name}.`,
       position: {
         x: (layerIdx + 1) * HORIZONTAL_GAP,
         y: indexInLayer * VERTICAL_GAP,
@@ -143,10 +161,13 @@ export function generateBenchmarkProject(
   const endNodes: FlowNode[] = [];
   const endLayerX = (sceneLayerCount + 1) * HORIZONTAL_GAP;
   for (let i = 0; i < endingCount; i++) {
+    const speaker = getNextSpeaker();
     const endNode: FlowNode = {
       id: `node_end_${i}`,
       type: "end",
-      title: `${getNextSpeaker()}: Ending ${i + 1}`,
+      title: `${speaker.name}: Ending ${i + 1}`,
+      speakerId: speaker.id,
+      body: `Ending ${i + 1} conclusion spoken by ${speaker.name}.`,
       position: {
         x: endLayerX,
         y: i * VERTICAL_GAP,
@@ -408,6 +429,7 @@ export function generateBenchmarkProject(
   const project: Project = {
     id: `proj_benchmark_${seed}_${nodeCount}`,
     name: `Benchmark Story ${nodeCount} Nodes`,
+    entities,
     nodes,
     edges,
     variables,

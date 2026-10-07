@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { Project } from "@repo/schema";
+import { isReadableSchemaVersion, type Project } from "@repo/schema";
 import type {
   FetchVersionOutcome,
   ListVersionsOutcome,
@@ -98,7 +98,7 @@ export const HistoryDialog: React.FC<HistoryDialogProps> = ({
   };
 
   const handleRestoreClick = async (v: VersionSummaryDto) => {
-    if (actionPending || v.schemaVersion !== 1) return;
+    if (actionPending || !isReadableSchemaVersion(v.schemaVersion)) return;
 
     if (isDirty) {
       const ok = window.confirm(
@@ -134,7 +134,7 @@ export const HistoryDialog: React.FC<HistoryDialogProps> = ({
   };
 
   const handleDownloadClick = async (v: VersionSummaryDto) => {
-    if (actionPending || v.schemaVersion !== 1) return;
+    if (actionPending || !isReadableSchemaVersion(v.schemaVersion)) return;
 
     setActionPending(true);
     setActionError(null);
@@ -217,7 +217,7 @@ export const HistoryDialog: React.FC<HistoryDialogProps> = ({
                 {versions.map((v) => {
                   const isLatest = v.versionNumber === highestVersion;
                   const isSynced = v.versionNumber === baseVersion;
-                  const isSupported = v.schemaVersion === 1;
+                  const isSupported = isReadableSchemaVersion(v.schemaVersion);
 
                   return (
                     <div

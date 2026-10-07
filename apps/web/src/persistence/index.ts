@@ -14,9 +14,8 @@ export {
   validateProjectDocument,
   type ValidateProjectDocumentResult,
   checkFileSizeBytes,
-  MIGRATIONS,
-  type MigrationFn,
 } from "./parse.js";
+export { migrate, isReadableSchemaVersion, type MigrationResult } from "@repo/schema";
 export { fileNameFor } from "./slug.js";
 export { isDirty } from "./dirty.js";
 export { makeEmptyProject } from "./empty.js";

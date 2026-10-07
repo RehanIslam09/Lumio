@@ -1,9 +1,11 @@
-import { ProjectSchema, type Project } from "@repo/schema";
+import {
+  ProjectSchema,
+  CURRENT_SCHEMA_VERSION,
+  checkEntityAndSpeakerDetails,
+  type Project,
+} from "@repo/schema";
 
-/**
- * Value copied from apps/web/src/persistence/types.ts:4 (CURRENT_SCHEMA_VERSION = 1).
- */
-export const SUPPORTED_SCHEMA_VERSION = 1;
+export const SUPPORTED_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
 
 export interface ValidationErrorDetail {
   path: string;
@@ -209,16 +211,16 @@ export function validateProjectInput(
     };
   }
 
-  // 2. schemaVersion must equal SUPPORTED_SCHEMA_VERSION
-  if (schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
+  // 2. schemaVersion must equal CURRENT_SCHEMA_VERSION
+  if (schemaVersion !== CURRENT_SCHEMA_VERSION) {
     return {
       ok: false,
       code: "unsupported-schema-version",
-      supported: SUPPORTED_SCHEMA_VERSION,
+      supported: CURRENT_SCHEMA_VERSION,
       details: [
         {
           path: "schemaVersion",
-          message: `Unsupported schema version (supported version is ${SUPPORTED_SCHEMA_VERSION})`,
+          message: `Unsupported schema version (supported version is ${CURRENT_SCHEMA_VERSION})`,
         },
       ],
     };
@@ -298,6 +300,12 @@ export function validateProjectInput(
         message: `Edge "${edge.id}" references missing target node "${edge.to}"`,
       });
     }
+  }
+
+  // (e) Entity and speaker integrity
+  const entityDetails = checkEntityAndSpeakerDetails(project);
+  for (const d of entityDetails) {
+    integrityDetails.push(d);
   }
 
   if (integrityDetails.length > 0) {
