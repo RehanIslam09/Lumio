@@ -54,6 +54,7 @@ import { CloudOpenDialog } from "./components/CloudOpenDialog.js";
 import { SaveNotFoundDialog } from "./components/SaveNotFoundDialog.js";
 import { HistoryDialog } from "./components/HistoryDialog.js";
 import { PlaytestDialog } from "./components/PlaytestDialog.js";
+import { SimulationDialog } from "./components/SimulationDialog.js";
 
 import {
   StoryNode,
@@ -328,6 +329,8 @@ function MainStudio() {
   const [expandedEntityId, setExpandedEntityId] = useState<string | null>(null);
   const [isPlaytestOpen, setIsPlaytestOpen] = useState(false);
   const playtestTriggerRef = useRef<HTMLButtonElement>(null);
+  const [isSimulationOpen, setIsSimulationOpen] = useState(false);
+  const simulateTriggerRef = useRef<HTMLButtonElement>(null);
 
   const project = editorState.present;
   const dirty = isMarkerDirty(project, savedMarker);
@@ -651,6 +654,8 @@ function MainStudio() {
         onReset={handleReset}
         onPlaytest={() => setIsPlaytestOpen(true)}
         playtestTriggerRef={playtestTriggerRef}
+        onSimulate={() => setIsSimulationOpen(true)}
+        simulateTriggerRef={simulateTriggerRef}
       />
 
       <MessageBar
@@ -734,6 +739,14 @@ function MainStudio() {
         selectedNodeId={effectiveSelection?.kind === "node" ? effectiveSelection.id : null}
         onSelectNode={(nodeId) => setSelected({ kind: "node", id: nodeId })}
         triggerRef={playtestTriggerRef}
+      />
+
+      <SimulationDialog
+        isOpen={isSimulationOpen}
+        onClose={() => setIsSimulationOpen(false)}
+        project={project}
+        onSelectTarget={(target) => setSelected(target)}
+        triggerRef={simulateTriggerRef}
       />
 
       <main className="app-main">

@@ -21,6 +21,7 @@
 14. Open questions
 15. Benchmarks & Scale Measurements `DECIDED`
 16. Playtest Mode `DECIDED`
+17. Simulation & Coverage Analysis `DECIDED`
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -78,7 +79,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker}.ts`), pure playtest session engine (`src/playtest/{types,session}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,PlaytestDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker}.ts`), pure playtest session & simulation engine (`src/playtest/{types,session,simulate,crossCheck}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,PlaytestDialog,SimulationDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Entity, Issue, Variable; pure migration chain (`migrate`), `countCodePoints`, `isReadableSchemaVersion`, derived shape keys
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -634,11 +635,17 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - Deleting an entity uses native inline confirmation button rather than a modal dialog
 - **Playtest Mode technical debt (W-030):**
   - Choices have no label text (FlowEdge has no label field in schema)
-  - No random simulation or path coverage analysis (deferred to W-031)
   - No saved playthroughs or replay logs export
   - No variable editing or inspector overriding during an active playtest session
   - Edge effects failing at runtime are only discovered on choose (not pre-flagged as blocked in choices list)
   - Playtest ignores the static checker's findings (writers can traverse paths flagged with warnings)
+- **Simulation & Coverage Analysis technical debt (W-031):**
+  - Uniform random policy: choices sampled uniformly; no weighted likelihoods or writer-specified choice probabilities
+  - No variable-aware guided search: does not use symbolic execution or SAT solvers to synthesize inputs satisfying complex branch conditions
+  - No per-run traces saved: individual path trajectories discarded after aggregating counts
+  - Synchronous execution on main thread: bounded by step/run limits, not offloaded to a Web Worker
+  - Ephemeral results: simulation reports live in memory, not persisted across browser reloads
+  - Edge labels absent: edge findings identify branches by source and target node titles
 
 
 ## 15. Benchmarks & Scale Measurements `DECIDED`
@@ -689,4 +696,47 @@ Pure narrative execution engine allowing game writers to walk through story grap
      - Maintains concrete, mutating variable state across transitions.
      - Edge availability changes dynamically based on current values.
      - Discovers runtime-specific behaviors (e.g. state-dependent bottlenecks) rather than global static graph topology.
+
+
+## 17. Simulation & Coverage Analysis `DECIDED`
+
+Automated Monte Carlo story traversal engine and topological cross-checking analysis (`apps/web/src/playtest/simulate.ts` and `crossCheck.ts`).
+
+### Architecture & Runtime Semantics
+1. **Simulation Engine (`simulate.ts`):**
+   - Pure, deterministic TypeScript module importing only the playtest session engine, `@repo/dsl`, and `@repo/schema`.
+   - Uses an inline 32-bit mulberry32 seeded pseudo-random number generator (PRNG).
+   - Input options: `seed` (number), `runs` (clamped to `1..5000`, default 500), `maxSteps` (clamped to `1..2000`, default 200), optional `startNodeId`.
+   - Reuses a shared `SessionParseCache` across all runs so condition and effect ASTs parse at most once.
+   - Run loop: repeatedly samples uniformly at random among available outgoing choices until status is not `'playing'` or `maxSteps` is reached.
+   - Computes outcome counts (`ended`, `stuck`, `stepLimit`, `error`), `endCounts`, `stuckCounts`, `visitCounts` (distinct runs visiting each node), `edgeTakenCounts`, `neverVisited` nodes, `neverTakenEdges`, `neverAvailableEdges`, `longestRun`, and `averageSteps`.
+   - Invariant: Outcomes add up strictly: `sum(endCounts) + stuck + stepLimit + error = runs`.
+
+2. **Topological Cross-Checking (`crossCheck.ts`):**
+   - Computes structural reachability independently via a pure breadth-first search (BFS) over `project.edges` without importing `@repo/checker`.
+   - Produces ordered findings categorized into 6 distinct kinds:
+     1. `'never-visited-but-reachable'`: Topologically reachable from start, but unvisited in simulation (condition-blocked suspect).
+     2. `'unreachable-confirmed'`: Topologically unreachable and unvisited in simulation (structural orphan).
+     3. `'ending-never-reached'`: `'end'` node never reached despite structural reachability.
+     4. `'edge-never-available'`: Choice whose source was visited, but condition was never satisfied in any run.
+     5. `'stuck-spot'`: Node where runs got stuck with no available choices.
+     6. `'loop-suspect'`: Runs that hit the `maxSteps` limit without reaching an end or dead end.
+   - Ordered strictly by kind in the hierarchy above, and within each kind in project collection order.
+
+3. **The Honesty Rule:**
+   - Random simulation can only prove that a path **was** reached; it cannot prove that a node or ending **cannot** be reached.
+   - Every "never" finding is a suspicion whose statistical confidence scales with run count and graph branching factor.
+   - Reports include a visible confidence note quoting the total runs and minimum observed visit frequency.
+
+### Analysis Contrast Table
+
+| Feature / Concern | Static Consistency Checker (`@repo/checker`) | Interactive Playtest Mode (`PlaytestDialog`) | Simulation & Coverage Report (`SimulationDialog`) |
+|---|---|---|---|
+| **Paradigm** | Static Graph Analysis | Dynamic Single-Path Execution | Dynamic Monte Carlo Multi-Path Simulation |
+| **Execution** | None (pure AST & graph topology walk) | Single manual writer choices | Automated pseudo-random repeated walks (1..5000 runs) |
+| **Variable State** | Static declarations & read/write references | Concrete mutating state updated per choice | Concrete state evaluated across hundreds of deterministic runs |
+| **Condition Handling** | Syntax & static type validation | Runtime truth evaluation on current state | Statistical sampling of dynamic branch availability |
+| **Output** | Strict compiler-style errors & warnings | Interactive UI step-by-step walkthrough | Coverage metrics, ending distributions, cross-check findings |
+| **Scope** | Global topological invariants | Single concrete narrative thread | Statistical path space coverage & condition bottlenecks |
+
 

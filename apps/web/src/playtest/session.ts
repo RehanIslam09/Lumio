@@ -161,6 +161,7 @@ export function startSession(
   const state = initialState(project.variables);
   const visits = new Map<string, number>([[startNode.id, 1]]);
   const cache = createParseCache();
+  if (options?.cache) Object.assign(cache, options.cache);
 
   const interimSession: Session = {
     project,

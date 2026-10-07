@@ -593,4 +593,38 @@ describe("Property P1: Generator projects traversal", () => {
     expect(stuck / total).toBeGreaterThanOrEqual(0.05);
     expect(ended / total).toBeGreaterThanOrEqual(0.05);
   });
+
+  it("shared cache and fresh cache produce identical choices and statuses across choose sequence", () => {
+    const project = makeSimpleProject();
+    const sharedCache = { conditions: new Map(), effects: new Map() };
+
+    const freshRes = startSession(project);
+    expect(freshRes.ok).toBe(true);
+    if (!freshRes.ok) return;
+
+    const sharedRes = startSession(project, { cache: sharedCache });
+    expect(sharedRes.ok).toBe(true);
+    if (!sharedRes.ok) return;
+
+    let freshSession = freshRes.session;
+    let sharedSession = sharedRes.session;
+
+    expect(listChoices(freshSession)).toEqual(listChoices(sharedSession));
+    expect(freshSession.status).toBe(sharedSession.status);
+
+    const step1Fresh = choose(freshSession, "e1");
+    const step1Shared = choose(sharedSession, "e1");
+    expect(step1Fresh.ok).toBe(true);
+    expect(step1Shared.ok).toBe(true);
+    if (!step1Fresh.ok || !step1Shared.ok) return;
+
+    freshSession = step1Fresh.session;
+    sharedSession = step1Shared.session;
+
+    expect(listChoices(freshSession)).toEqual(listChoices(sharedSession));
+    expect(freshSession.status).toBe(sharedSession.status);
+    expect(sharedCache.conditions.size).toBeGreaterThan(0);
+    expect(sharedCache.effects.size).toBeGreaterThan(0);
+  });
 });
+

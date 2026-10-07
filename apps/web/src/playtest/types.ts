@@ -40,6 +40,7 @@ export interface Session {
 
 export interface StartSessionOptions {
   readonly startNodeId?: string;
+  readonly cache?: SessionParseCache;
 }
 
 export type StartSessionResult =

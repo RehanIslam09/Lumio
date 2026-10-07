@@ -33,6 +33,8 @@ interface ToolbarProps {
   onReset: () => void;
   onPlaytest?: () => void;
   playtestTriggerRef?: React.RefObject<HTMLButtonElement | null>;
+  onSimulate?: () => void;
+  simulateTriggerRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -63,6 +65,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onReset,
   onPlaytest,
   playtestTriggerRef,
+  onSimulate,
+  simulateTriggerRef,
 }) => {
   return (
     <header className="app-header">
@@ -156,6 +160,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title="Open story playtest mode"
           >
             Playtest
+          </button>
+
+          <button
+            ref={simulateTriggerRef}
+            type="button"
+            className="btn btn-secondary"
+            onClick={onSimulate}
+            disabled={isOperationPending}
+            title="Run story simulation and coverage report"
+          >
+            Simulate
           </button>
 
           <button

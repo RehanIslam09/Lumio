@@ -24,6 +24,59 @@
 
 ## Entries
 
+### W-031 | 2026-10-07 | Story simulation and path coverage report with topological cross-checking
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat: implement simulation engine, topological cross-check, and SimulationDialog in apps/web`
+- **Goal:** Implement pure deterministic Monte Carlo simulation engine with inline mulberry32 PRNG and shared AST caching in `apps/web/src/playtest`, topological BFS cross-checking analysis against dynamic coverage, scale benchmark measurements on 300 and 1,000 nodes, and native `<dialog>` SimulationDialog modal with canvas selection.
+- **Files changed:**
+  - `apps/web/src/playtest/types.ts`: added optional `cache?: SessionParseCache` to `StartSessionOptions` (boundary exception).
+  - `apps/web/src/playtest/session.ts`: used `options?.cache` via `Object.assign` to reuse condition and effect AST parses across simulation runs without removing any lines.
+  - `apps/web/src/playtest/session.test.ts`: added test asserting shared cache and fresh cache produce identical choices and statuses across choose sequence.
+  - `apps/web/src/playtest/simulate.ts`: implemented pure Monte Carlo simulation engine with inline mulberry32 PRNG, bounded input clamping, distinct per-run visit tracking, and honesty confidence note.
+  - `apps/web/src/playtest/simulate.test.ts`: 12 tests covering hand-crafted graphs, clamping, distinct run visit counting, determinism (Property S2), frozen safety, and generator project invariants (Property S1).
+  - `apps/web/src/playtest/crossCheck.ts`: implemented pure topological BFS reachability and cross-checking against simulation coverage, producing ordered findings.
+  - `apps/web/src/playtest/crossCheck.test.ts`: 7 tests covering all 6 finding kinds, strict kind-hierarchy ordering, `sampleProject` defects, and generator robustness (Property S3).
+  - `apps/web/src/benchmark/measure.ts`: extended scale benchmark with simulate timings (200 runs, 5 reps) on 300, 1,000, and 3,000 nodes.
+  - `apps/web/src/components/SimulationDialog.tsx`: native `<dialog>` modal with runs/steps/seed inputs, clamping display, summary cards, endings table, grouped findings with canvas selection, and confidence note.
+  - `apps/web/src/components/Toolbar.tsx`: added Simulate button next to Playtest with trigger ref for accessible focus return.
+  - `apps/web/src/App.tsx`: wired SimulationDialog open state, project snapshot, target selection, and trigger ref.
+  - `apps/web/src/index.css`: styled SimulationDialog elements with strict `sim-` prefix.
+  - `docs/ARCHITECTURE.md`: added Section 17 "Simulation & Coverage Analysis", updated repo map and debt list.
+  - `docs/context/work-archive.md`: archived full entry W-023 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-031, rotated W-023 to older work.
+- **New/changed public APIs:**
+  - `apps/web/src/playtest/types.ts`:
+    - `StartSessionOptions`: added optional `cache?: SessionParseCache`
+  - `apps/web/src/playtest/simulate.ts`:
+    - `interface SimulateOptions { seed?: number; runs?: number; maxSteps?: number; startNodeId?: string }`
+    - `interface SimulationOutcomeCounts { ended: number; stuck: number; stepLimit: number; error: number }`
+    - `interface SimulationReport { ok: true; runs: number; outcomeCounts: SimulationOutcomeCounts; endCounts: ReadonlyMap<string, number>; stuckCounts: ReadonlyMap<string, number>; visitCounts: ReadonlyMap<string, number>; edgeTakenCounts: ReadonlyMap<string, number>; neverVisited: readonly string[]; neverTakenEdges: readonly string[]; neverAvailableEdges: readonly string[]; stepLimitRuns: number; averageSteps: number; longestRun: number; startNodeId: string; seed: number; clamped: readonly string[]; confidenceNote: string }`
+    - `type SimulateResult = SimulationReport | { ok: false; error: "no-start-node" }`
+    - `simulate(project: Project, options?: SimulateOptions): SimulateResult`
+  - `apps/web/src/playtest/crossCheck.ts`:
+    - `type FindingKind = "never-visited-but-reachable" | "unreachable-confirmed" | "ending-never-reached" | "edge-never-available" | "stuck-spot" | "loop-suspect"`
+    - `interface Finding { kind: FindingKind; nodeId?: string; edgeId?: string; message: string }`
+    - `crossCheck(project: Project, report: SimulationReport): readonly Finding[]`
+- **Decisions and why:**
+  - Mulberry32 PRNG: implemented inline deterministic 32-bit generator without external dependencies or global state (Design A).
+  - Shared parse cache: `SessionParseCache` passed via `StartSessionOptions` to avoid re-parsing conditions and effects across 500+ runs, achieving ~90ms simulation on 300 nodes, ~320ms on 1000 nodes, and ~975ms on 3000 nodes (Boundary exception).
+  - Independent topological BFS: `crossCheck.ts` performs its own reachability BFS rather than importing `@repo/checker` to ensure comparison independence.
+  - Honesty rule: random simulation confirms reachability, not unreachability; report includes explicit confidence note quoting sample size and minimum observed visit frequency.
+  - CSS scoping: all new classes strictly prefixed `sim-` to guarantee zero style collisions.
+- **Assumptions / UNVERIFIED:** none (manual browser validation verified by user).
+- **Verification:**
+  - Manual browser validation: verified by user (Simulate toolbar button, dialog open/focus, default inputs 200/100/1337, summary stats, endings table, findings list, Show on canvas navigation, Close/Escape dismiss without canvas mutation).
+  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 718 total tests passing: 104 dsl, 82 checker, 154 server, 378 web).
+  - Scale benchmark: `simulate()` runs in 90.81 ms median on 300 nodes, 328.25 ms median on 1,000 nodes, and 975.23 ms median on 3,000 nodes (runs=200, 5 reps).
+  - Web production build: `pnpm --filter @repo/web build` -> pass (CSS 52.03 kB, JS 634.17 kB; delta +11.07 kB JS, +4.01 kB CSS vs discovery baseline).
+- **Known issues / debt:**
+  - Uniform random policy without branch weights.
+  - No variable-aware guided search / SAT solving.
+  - Trajectory replay traces not persisted.
+  - Synchronous main-thread execution bounded by input limits.
+- **Next steps:**
+  - User to review changes and commit manually.
+
 ### W-030 | 2026-10-07 | Playtest mode: pure evaluator, session engine, and modal dialog
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat: implement playtest evaluator in @repo/dsl, session engine, and PlaytestDialog in apps/web`
@@ -403,56 +456,8 @@
 - **Next steps:**
   - User to execute manual browser test script and commit changes manually.
 
-### W-023 | 2026-10-05 | Project save/load API for apps/server: CRUD, optimistic concurrency, version history, text safety, and rate limiting
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement project save/load API with optimistic concurrency, versioning, and text safety`
-- **Goal:** Implement project CRUD API for apps/server (list, create, read latest, save new version under row lock with optimistic concurrency, version history, version read, and delete) with text safety, envelope validation, rate limiting, and S3a session auth.
-- **Files changed:**
-  - `apps/server/package.json`: added `@repo/schema: workspace:*` dependency.
-  - `apps/server/src/auth/passwordHasher.ts`: replaced `Algorithm.Argon2id ?? 2` with constant `2`, removed `Algorithm` import.
-  - `apps/server/src/app.ts`: added optional `projects?: { service }` to `AppDependencies` and mounted `createProjectRoutes` at `/api/projects`.
-  - `apps/server/src/compose.ts`: wired `createDrizzleProjectRepo`, `createProjectService`, and injected rate limit / project limits into `createApp`.
-  - `apps/server/src/projects/validate.ts`: implemented pure envelope validation, schema parse, graph integrity, text safety, and name code-point constraints.
-  - `apps/server/src/projects/validate.test.ts`: 26 unit tests for envelope, schema version, graph integrity, text safety, and name rules.
-  - `apps/server/src/projects/repositories.ts`: `ProjectRepo` interface, DTOs, and `DocumentTooLargeError`.
-  - `apps/server/src/projects/fakes.ts`: in-memory `FakeProjectRepo` for unit testing.
-  - `apps/server/src/projects/drizzleProjectRepo.ts`: Drizzle ORM implementation with `FOR NO KEY UPDATE` row locks, `max(version_number)` query, and Postgres error code mappings.
-  - `apps/server/src/projects/service.ts`: `createProjectService` orchestrating business rules, rate limits, UUID and int32 validation, and returning discriminated unions.
-  - `apps/server/src/projects/service.test.ts`: 7 unit tests covering rules, 404, conflicts, rate limiting, and project limits.
-  - `apps/server/src/projects/routes.ts`: Hono routes for all 7 endpoints with exact middleware sequence (`no-store`, CSRF, `requireAuth`, `Content-Type`, 6 MB `bodyLimit`, handlers).
-  - `apps/server/src/projects/routes.test.ts`: 10 route tests via `app.request()` covering auth, CSRF, OPTIONS preflight, 415, 413, 100 KB payload, and secrecy.
-  - `apps/server/src/projects/projects.int.test.ts`: 10 integration tests against `lumio_test` (lifecycle, round-trip, concurrency race, cap race, delete-vs-save race, authorization, text safety, size check, name sync, and cascade).
-  - `docs/ARCHITECTURE.md`: added Section 13 "Projects API `DECIDED`" with endpoints table, limits table, concurrency flow, updated repo map, and technical debt.
-  - `docs/context/work-archive.md`: archived full entry W-015 per R7.4 rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-023, rotated W-015 to older work, deduplicated older work list.
-- **New/changed public APIs:**
-  - `apps/server/src/projects/validate.ts`: `validateProjectInput(raw: unknown): Result<Project, ValidationError>`
-  - `apps/server/src/projects/repositories.ts`: `ProjectRepo`, `ProjectSummary`, `ProjectWithLatest`, `ProjectVersionSummary`, `ProjectVersionDetail`, `DocumentTooLargeError`
-  - `apps/server/src/projects/service.ts`: `createProjectService(deps: ProjectServiceDependencies): ProjectService`
-  - `apps/server/src/projects/routes.ts`: `createProjectRoutes(deps: ProjectRoutesDependencies): Hono`
-  - `apps/server/src/projects/drizzleProjectRepo.ts`: `createDrizzleProjectRepo(db: NodePgDatabase<typeof schema>): ProjectRepo`
-  - `apps/server/src/projects/fakes.ts`: `FakeProjectRepo`
-- **Decisions and why:**
-  - Middleware scoping: S3a 16 KB body limit and Content-Type check are scoped inside `createAuthRoutes` (`apps/server/src/auth/routes.ts:110-152`). Project routes mount `PROJECT_BODY_LIMIT_BYTES = 6_000_000` (6 MB) independently. Auth runs *before* body parsing so unauthenticated requests get 401, not 413.
-  - Preflight: OPTIONS requests under `/api/projects` succeed without a session (handled by global CORS middleware in `app.ts`, returning 204 with CORS headers and skipping `requireAuth` and CSRF).
-  - Lock mode: `FOR NO KEY UPDATE` used on `users` (create cap) and `projects` (save and delete) in Drizzle via `sql` select so foreign-key checks from other transactions (e.g. login inserting session) are not blocked while serializing creates/saves.
-  - Read committed & lock sequence: `max(version_number)` is read in a statement issued strictly *after* acquiring the row lock on `projects`.
-  - Zero rows under lock: If `FOR NO KEY UPDATE` returns 0 rows (e.g. project deleted while waiting), repo returns null and service returns unified 404 (never an error or race crash).
-  - Text safety: Pure `isWellFormedUnicode` helper scans UTF-16 code units (every high surrogate 0xD800..0xDBFF followed by low surrogate 0xDC00..0xDFFF; no lone surrogates) without TypeScript lib typing issues or `as`/`any` casts.
-  - Rate limiting: Rate limiter injected into `createApp`/`composeApp` to allow integration tests to pass 60+ write concurrency tests without 429 false positives while enforcing 60/min default in production.
-- **Assumptions / UNVERIFIED:**
-  - Manual PowerShell 7 test script is UNVERIFIED until executed against running server.
-- **Verification:**
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful, 428 tests passing: 81 dsl, 59 checker, 144 web, 144 server in 11.239s).
-  - `1..3 | ForEach-Object { pnpm --filter @repo/server exec vitest run }` -> pass (3 consecutive runs: 144/144 tests passing each, run durations: 6.79s, 6.86s, 7.75s).
-- **Known issues / debt:**
-  - Per-process in-memory rate limiter is not shared across multi-node server deployments (future task: Redis-backed rate limiting).
-  - Document diffing/patching not yet implemented (entire JSON document stored per version).
-- **Next steps:**
-  - User to review changes and commit manually.
-  - Connect web client to project API in subsequent task.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-023 | 2026-10-05 | Project save/load API for apps/server: CRUD, optimistic concurrency, version history, text safety, and rate limiting
 - W-022 | 2026-10-05 | Promote commit ccc3d70 as stable-006
 - W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
 - W-020 | 2026-10-05 | Database layer for apps/server: Drizzle ORM + node-postgres, schema constraints, migrations, and test suite

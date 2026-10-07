@@ -2,6 +2,55 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-023 | 2026-10-05 | Project save/load API for apps/server: CRUD, optimistic concurrency, version history, text safety, and rate limiting
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement project save/load API with optimistic concurrency, versioning, and text safety`
+- **Goal:** Implement project CRUD API for apps/server (list, create, read latest, save new version under row lock with optimistic concurrency, version history, version read, and delete) with text safety, envelope validation, rate limiting, and S3a session auth.
+- **Files changed:**
+  - `apps/server/package.json`: added `@repo/schema: workspace:*` dependency.
+  - `apps/server/src/auth/passwordHasher.ts`: replaced `Algorithm.Argon2id ?? 2` with constant `2`, removed `Algorithm` import.
+  - `apps/server/src/app.ts`: added optional `projects?: { service }` to `AppDependencies` and mounted `createProjectRoutes` at `/api/projects`.
+  - `apps/server/src/compose.ts`: wired `createDrizzleProjectRepo`, `createProjectService`, and injected rate limit / project limits into `createApp`.
+  - `apps/server/src/projects/validate.ts`: implemented pure envelope validation, schema parse, graph integrity, text safety, and name code-point constraints.
+  - `apps/server/src/projects/validate.test.ts`: 26 unit tests for envelope, schema version, graph integrity, text safety, and name rules.
+  - `apps/server/src/projects/repositories.ts`: `ProjectRepo` interface, DTOs, and `DocumentTooLargeError`.
+  - `apps/server/src/projects/fakes.ts`: in-memory `FakeProjectRepo` for unit testing.
+  - `apps/server/src/projects/drizzleProjectRepo.ts`: Drizzle ORM implementation with `FOR NO KEY UPDATE` row locks, `max(version_number)` query, and Postgres error code mappings.
+  - `apps/server/src/projects/service.ts`: `createProjectService` orchestrating business rules, rate limits, UUID and int32 validation, and returning discriminated unions.
+  - `apps/server/src/projects/service.test.ts`: 7 unit tests covering rules, 404, conflicts, rate limiting, and project limits.
+  - `apps/server/src/projects/routes.ts`: Hono routes for all 7 endpoints with exact middleware sequence (`no-store`, CSRF, `requireAuth`, `Content-Type`, 6 MB `bodyLimit`, handlers).
+  - `apps/server/src/projects/routes.test.ts`: 10 route tests via `app.request()` covering auth, CSRF, OPTIONS preflight, 415, 413, 100 KB payload, and secrecy.
+  - `apps/server/src/projects/projects.int.test.ts`: 10 integration tests against `lumio_test` (lifecycle, round-trip, concurrency race, cap race, delete-vs-save race, authorization, text safety, size check, name sync, and cascade).
+  - `docs/ARCHITECTURE.md`: added Section 13 "Projects API `DECIDED`" with endpoints table, limits table, concurrency flow, updated repo map, and technical debt.
+  - `docs/context/work-archive.md`: archived full entry W-015 per R7.4 rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-023, rotated W-015 to older work, deduplicated older work list.
+- **New/changed public APIs:**
+  - `apps/server/src/projects/validate.ts`: `validateProjectInput(raw: unknown): Result<Project, ValidationError>`
+  - `apps/server/src/projects/repositories.ts`: `ProjectRepo`, `ProjectSummary`, `ProjectWithLatest`, `ProjectVersionSummary`, `ProjectVersionDetail`, `DocumentTooLargeError`
+  - `apps/server/src/projects/service.ts`: `createProjectService(deps: ProjectServiceDependencies): ProjectService`
+  - `apps/server/src/projects/routes.ts`: `createProjectRoutes(deps: ProjectRoutesDependencies): Hono`
+  - `apps/server/src/projects/drizzleProjectRepo.ts`: `createDrizzleProjectRepo(db: NodePgDatabase<typeof schema>): ProjectRepo`
+  - `apps/server/src/projects/fakes.ts`: `FakeProjectRepo`
+- **Decisions and why:**
+  - Middleware scoping: S3a 16 KB body limit and Content-Type check are scoped inside `createAuthRoutes` (`apps/server/src/auth/routes.ts:110-152`). Project routes mount `PROJECT_BODY_LIMIT_BYTES = 6_000_000` (6 MB) independently. Auth runs *before* body parsing so unauthenticated requests get 401, not 413.
+  - Preflight: OPTIONS requests under `/api/projects` succeed without a session (handled by global CORS middleware in `app.ts`, returning 204 with CORS headers and skipping `requireAuth` and CSRF).
+  - Lock mode: `FOR NO KEY UPDATE` used on `users` (create cap) and `projects` (save and delete) in Drizzle via `sql` select so foreign-key checks from other transactions (e.g. login inserting session) are not blocked while serializing creates/saves.
+  - Read committed & lock sequence: `max(version_number)` is read in a statement issued strictly *after* acquiring the row lock on `projects`.
+  - Zero rows under lock: If `FOR NO KEY UPDATE` returns 0 rows (e.g. project deleted while waiting), repo returns null and service returns unified 404 (never an error or race crash).
+  - Text safety: Pure `isWellFormedUnicode` helper scans UTF-16 code units (every high surrogate 0xD800..0xDBFF followed by low surrogate 0xDC00..0xDFFF; no lone surrogates) without TypeScript lib typing issues or `as`/`any` casts.
+  - Rate limiting: Rate limiter injected into `createApp`/`composeApp` to allow integration tests to pass 60+ write concurrency tests without 429 false positives while enforcing 60/min default in production.
+- **Assumptions / UNVERIFIED:**
+  - Manual PowerShell 7 test script is UNVERIFIED until executed against running server.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful, 428 tests passing: 81 dsl, 59 checker, 144 web, 144 server in 11.239s).
+  - `1..3 | ForEach-Object { pnpm --filter @repo/server exec vitest run }` -> pass (3 consecutive runs: 144/144 tests passing each, run durations: 6.79s, 6.86s, 7.75s).
+- **Known issues / debt:**
+  - Per-process in-memory rate limiter is not shared across multi-node server deployments (future task: Redis-backed rate limiting).
+  - Document diffing/patching not yet implemented (entire JSON document stored per version).
+- **Next steps:**
+  - User to review changes and commit manually.
+  - Connect web client to project API in subsequent task.
+
 ### W-022 | 2026-10-05 | Promote commit ccc3d70 as stable-006
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-006 promotion at commit ccc3d70`

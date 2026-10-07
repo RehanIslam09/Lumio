@@ -5,6 +5,7 @@ import { check } from "@repo/checker";
 import { listConnections } from "../lib/connections.js";
 import { computeLayout } from "../lib/layout.js";
 import { MAX_FILE_BYTES } from "../persistence/types.js";
+import { simulate } from "../playtest/simulate.js";
 
 interface TimingResult {
   min: number;
@@ -93,6 +94,19 @@ export async function runMeasurements() {
       computeLayout(project);
     });
 
+    // 7. simulate (dynamic analysis: 200 runs on 300 and 1000 nodes)
+    let simStats: TimingResult | undefined = undefined;
+    if (count === 300 || count === 1000) {
+      simStats = measureOperation(() => {
+        simulate(project, { runs: 200, seed: 42 });
+      }, 5);
+    }
+    if (count === 3000) {
+      simStats = measureOperation(() => {
+        simulate(project, { runs: 200, seed: 42 });
+      }, 5);
+    }
+
     results.push({
       count,
       sizeBytes,
@@ -105,6 +119,7 @@ export async function runMeasurements() {
       check: checkStats,
       listConn: listConnStats,
       layout: layoutStats,
+      sim: simStats,
     });
   }
 
@@ -128,6 +143,15 @@ export async function runMeasurements() {
     console.log(
       `| **${r.count}** | ${sizeStr} | ${headStr} | ${genStr} | ${parseStr} | ${checkStr} | ${connStr} | ${layoutStr} |`,
     );
+  }
+
+  console.log("\n### Simulation Measurements (runs=200, 5 repetitions: min / median)\n");
+  console.log("| Node Count | simulate() (200 runs) |");
+  console.log("|---|---|");
+  for (const r of results) {
+    if (r.sim) {
+      console.log(`| **${r.count}** | ${r.sim.min.toFixed(2)} / ${r.sim.median.toFixed(2)} ms |`);
+    }
   }
 
   console.log("\n### Headroom & Capacity Estimates\n");
