@@ -5,11 +5,11 @@
 
 | Field | Value |
 |---|---|
-| Promoted on | 2026-10-05 |
+| Promoted on | 2026-10-07 |
 | Branch | `main` |
-| Commit | `ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3` |
-| Tag | `stable-006` |
-| Gate result | `pnpm check -- --force` passed (14/14 tasks successful: typecheck, lint, test with 375 Vitest/fast-check tests across 5 packages) |
+| Commit | `2a79caf` |
+| Tag | `stable-009` |
+| Gate result | W-027 gate passed: 14/14 tasks successful, 599 tests passing; W-027 build passed; manual schema v2 migration, cloud persistence, history restore, and history download checks passed. |
 | Approved by | Rehan Islam |
 
 ## What exists and works
@@ -83,3 +83,14 @@ stable-008:
 - Stale-generation guards fixed
 - Tests: 550 passing
 - Gate: 14/14, 0 cached
+
+stable-009:
+- Schema v2 implemented with entities, node body, and speaker support
+- v1 → v2 migration with current-version write policy
+- v1 golden fixtures and migration/property/round-trip coverage added
+- Cloud persistence preserves old v1 versions and creates new v2 versions
+- History restore and download verified
+- W-027 build: JS 594.26 kB (gzip 177.33 kB), CSS 38.78 kB (gzip 6.93 kB)
+- Tests: 599 passing
+- Gate: 14/14
+- Commit: `2a79caf`
