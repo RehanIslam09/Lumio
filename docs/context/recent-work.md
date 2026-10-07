@@ -24,6 +24,68 @@
 
 ## Entries
 
+### W-030 | 2026-10-07 | Playtest mode: pure evaluator, session engine, and modal dialog
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat: implement playtest evaluator in @repo/dsl, session engine, and PlaytestDialog in apps/web`
+- **Goal:** Implement additive expression evaluator and effect applicator in `@repo/dsl`, immutable deterministic playtest session engine with parse caching in `apps/web/src/playtest`, and native `<dialog>` PlaytestDialog with choices, variables diffing, visited trail, and focus management.
+- **Files changed:**
+  - `packages/dsl/src/evaluator.ts`: implemented pure evaluator (`evaluateExpr`, `evaluateCondition`, `applyEffect`, `initialState`) with strict runtime typing, short-circuiting `&&`/`||`, division-by-zero/non-finite checks, and immutable state updates.
+  - `packages/dsl/src/evaluator.test.ts`: 23 unit and property tests covering all operators, short-circuiting error suppression, division by zero, -0 arithmetic, non-mutation, Property T4 (type soundness), Property T5 (oracle vs mini-eval), and Property T6 (no-crash fuzzing).
+  - `packages/dsl/src/index.ts`: exported evaluator types and functions.
+  - `apps/web/src/playtest/types.ts`: defined Session, Step, Choice, SessionStatus, and session engine interfaces.
+  - `apps/web/src/playtest/session.ts`: implemented `startSession`, `listChoices`, `choose`, `back`, and `restart` with per-session parse caching, atomic effect application, and 1,000-step history cap.
+  - `apps/web/src/playtest/session.test.ts`: 21 unit and property tests covering choices ordering, blocked/error statuses, atomic rollback, deep-freeze snapshot safety, 1,000-step history cap, status priority, and Property P1 random walk traversal on benchmark graphs.
+  - `apps/web/src/components/PlaytestDialog.tsx`: created native `<dialog>` modal with fresh session lifecycle on open, "Start from selected node" checkbox, speaker resolution, pre-wrap body text, choices list, variables table with last-step diff highlights (capped at 200), visited trail (last 50), Back/Restart, and "Show on canvas" selection.
+  - `apps/web/src/components/Toolbar.tsx`: added Playtest button with trigger ref for accessible focus return.
+  - `apps/web/src/App.tsx`: wired PlaytestDialog open state, pass present project snapshot and selected node, and guarded global keydown listener against dialog focus.
+  - `apps/web/src/index.css`: styled Playtest dialog, story/choices pane, variables table, status banners, and visited trail.
+  - `docs/ARCHITECTURE.md`: added Playtest section with runtime semantics and checker contrast, updated repo map, and documented playtest technical debt items.
+  - `docs/context/work-archive.md`: archived full W-022 entry per 8-entry rolling cap.
+  - `docs/context/recent-work.md`: recorded entry W-030, rotated W-022 to older work.
+- **New/changed public APIs:**
+  - `@repo/dsl`:
+    - `type Value = number | string | boolean`
+    - `type VariableState = ReadonlyMap<string, Value>`
+    - `type EvalErrorCode = "undefined-variable" | "type-mismatch" | "division-by-zero" | "non-finite-number"`
+    - `interface EvalError { code: EvalErrorCode; message: string; start: number; end: number }`
+    - `type EvalResult<T> = { ok: true; value: T } | { ok: false; error: EvalError }`
+    - `type EffectResult = { ok: true; state: ReadonlyMap<string, Value> } | { ok: false; error: EvalError }`
+    - `initialState(variables: readonly Variable[]): ReadonlyMap<string, Value>`
+    - `evaluateExpr(expr: Expr, state: VariableState): EvalResult<Value>`
+    - `evaluateCondition(expr: Expr | undefined, state: VariableState): EvalResult<boolean>`
+    - `applyEffect(effect: Effect, state: VariableState): EffectResult`
+  - `apps/web/src/playtest/session.ts`:
+    - `startSession(project: Project, options?: StartSessionOptions): StartSessionResult`
+    - `listChoices(session: Session): readonly Choice[]`
+    - `choose(session: Session, edgeId: string): ChooseResult`
+    - `back(session: Session): Session`
+    - `restart(session: Session): Session`
+- **Decisions and why:**
+  - Strict evaluator runtime typing: operators enforce exact runtime types matching the typechecker without coercion; cross-type `==` and `!=` yield `type-mismatch` (Amendment 1).
+  - Short-circuit proof: `&&` and `||` short-circuit so undefined variables or division by zero in the right operand are never evaluated when the left operand determines the outcome (Amendment 2).
+  - Number semantics: arithmetic handles `-0` and `0` explicitly, non-finite values return `non-finite-number`, and division by zero returns `division-by-zero` (Amendment 3).
+  - Per-session parse cache: `Session` encapsulates `conditions` and `effects` AST caches to avoid duplicate parsing across choice evaluations while avoiding global module state (Amendment 4).
+  - Snapshot safety: pure session functions operate on immutable snapshots and preserve original `project` references without mutation (Amendment 5).
+  - History cap: fixed 1,000-step limit drops oldest step on 1,001st step; `back()` recovers previous steps accurately (Amendment 6).
+  - Status priority: 'end' nodes always report 'ended'; non-end nodes with 0 available choices report 'stuck' (Amendment 7).
+  - Keymap dialog guard: `handleKeyDown` checks `(e.target as HTMLElement)?.closest("dialog")` to prevent canvas deletions or undo/redo while interacting inside modal dialogs (Amendment 9).
+- **Assumptions / UNVERIFIED:**
+  - Manual browser testing script is UNVERIFIED until tested by user.
+- **Verification:**
+  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 697 total tests passing: 104 dsl, 82 checker, 154 server, 357 web).
+  - Web production build: `pnpm --filter @repo/web build` -> pass (JS: 622.97 kB, CSS: 48.02 kB).
+  - Evaluator properties: Property T4 (type soundness, 100 runs), Property T5 (oracle vs mini-eval, 100 runs), Property T6 (no-crash fuzzing, 100 runs).
+  - Session properties: Property P1 (generator walk, 30 runs, distribution: accepted=114, rejected=0, stuck=0).
+- **Known issues / debt:**
+  - Choices have no label text (edge has no label field).
+  - No random simulation / coverage (W-031).
+  - No saved playthroughs.
+  - No variable editing during playtest.
+  - Effects failing at runtime are only discovered on choose.
+  - Playtest ignores the checker's findings.
+- **Next steps:**
+  - User to review changes and commit manually.
+
 ### W-029 | 2026-10-07 | Entity-based checker rules and web inspector wiring
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement entity-based checker rules, lifted inspector state, and parity tests`
@@ -390,27 +452,8 @@
   - User to review changes and commit manually.
   - Connect web client to project API in subsequent task.
 
-### W-022 | 2026-10-05 | Promote commit ccc3d70 as stable-006
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-006 promotion at commit ccc3d70`
-- **Goal:** Promote commit `ccc3d70` as sixth stable baseline (`stable-006`) via `/promote-stable` workflow.
-- **Files changed:**
-  - `docs/context/last-stable-state.md`: updated to record stable-006 baseline (commit ccc3d70), gate result, capabilities, environment, and rollback instructions
-  - `docs/context/recent-work.md`: added entry W-022 documenting the promotion, rotated W-014 to archive
-  - `docs/context/work-archive.md`: archived full entry W-014 per R7.4 rolling window cap
-- **New/changed public APIs:** none
-- **Decisions and why:**
-  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
-  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`).
-  - Rotated oldest full entry (W-014) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
-- **Assumptions / UNVERIFIED:** none
-- **Verification:**
-  - `pnpm check -- --force` -> pass (14/14 tasks successful across 5 packages, 375 tests passing: 81 dsl, 59 checker, 144 web, 91 server).
-- **Known issues / debt:** none
-- **Next steps:**
-  - User to tag commit with `git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`.
-
 ## Older work (one line each; full detail in work-archive.md)
+- W-022 | 2026-10-05 | Promote commit ccc3d70 as stable-006
 - W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
 - W-020 | 2026-10-05 | Database layer for apps/server: Drizzle ORM + node-postgres, schema constraints, migrations, and test suite
 - W-019 | 2026-10-05 | Server skeleton: apps/server with Hono, validated config, CORS allowlist, and /health route

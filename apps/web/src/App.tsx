@@ -53,6 +53,7 @@ import { ConflictDialog } from "./components/ConflictDialog.js";
 import { CloudOpenDialog } from "./components/CloudOpenDialog.js";
 import { SaveNotFoundDialog } from "./components/SaveNotFoundDialog.js";
 import { HistoryDialog } from "./components/HistoryDialog.js";
+import { PlaytestDialog } from "./components/PlaytestDialog.js";
 
 import {
   StoryNode,
@@ -325,6 +326,8 @@ function MainStudio() {
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [activeTab, setActiveTab] = useState<PanelTab>("issues");
   const [expandedEntityId, setExpandedEntityId] = useState<string | null>(null);
+  const [isPlaytestOpen, setIsPlaytestOpen] = useState(false);
+  const playtestTriggerRef = useRef<HTMLButtonElement>(null);
 
   const project = editorState.present;
   const dirty = isMarkerDirty(project, savedMarker);
@@ -507,6 +510,9 @@ function MainStudio() {
   // Global key listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement && e.target.closest("dialog")) {
+        return;
+      }
       const targetIsEditable = isTargetEditable(e.target);
       const action = interpretKey({
         key: e.key,
@@ -643,6 +649,8 @@ function MainStudio() {
         onUndo={handleUndo}
         onRedo={handleRedo}
         onReset={handleReset}
+        onPlaytest={() => setIsPlaytestOpen(true)}
+        playtestTriggerRef={playtestTriggerRef}
       />
 
       <MessageBar
@@ -718,6 +726,15 @@ function MainStudio() {
           onDownload={downloadProjectAsFile}
         />
       )}
+
+      <PlaytestDialog
+        isOpen={isPlaytestOpen}
+        onClose={() => setIsPlaytestOpen(false)}
+        project={project}
+        selectedNodeId={effectiveSelection?.kind === "node" ? effectiveSelection.id : null}
+        onSelectNode={(nodeId) => setSelected({ kind: "node", id: nodeId })}
+        triggerRef={playtestTriggerRef}
+      />
 
       <main className="app-main">
         <StoryCanvas

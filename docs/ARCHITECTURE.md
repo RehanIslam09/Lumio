@@ -20,6 +20,7 @@
 13. Projects API `DECIDED`
 14. Open questions
 15. Benchmarks & Scale Measurements `DECIDED`
+16. Playtest Mode `DECIDED`
 
 ## 1. Overview `DECIDED`
 A web tool for writers of large, non-linear game narratives. Two graphs:
@@ -77,11 +78,11 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker}.ts`), pure playtest session engine (`src/playtest/{types,session}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,PlaytestDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Entity, Issue, Variable; pure migration chain (`migrate`), `countCodePoints`, `isReadableSchemaVersion`, derived shape keys
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
-  dsl/          Language parser & typechecker (pure): AST, lexer, parser, typechecker for conditions and effects + tests
+  dsl/          Language parser, typechecker, and evaluator (pure): AST, lexer, parser, typechecker, evaluator for conditions and effects (`src/evaluator.ts`) + tests
 docs/
   RULES.md  ARCHITECTURE.md  context/
 .agent/workflows/
@@ -631,6 +632,13 @@ Versioned JSON (`schemaVersion`), documented schema, validated by Zod (R3.5).
   - Character renaming does not auto-update mentions in node body text (speaker is linked by entity ID only)
   - No entity color coding, tags, custom attributes, or avatar images
   - Deleting an entity uses native inline confirmation button rather than a modal dialog
+- **Playtest Mode technical debt (W-030):**
+  - Choices have no label text (FlowEdge has no label field in schema)
+  - No random simulation or path coverage analysis (deferred to W-031)
+  - No saved playthroughs or replay logs export
+  - No variable editing or inspector overriding during an active playtest session
+  - Edge effects failing at runtime are only discovered on choose (not pre-flagged as blocked in choices list)
+  - Playtest ignores the static checker's findings (writers can traverse paths flagged with warnings)
 
 
 ## 15. Benchmarks & Scale Measurements `DECIDED`
@@ -648,4 +656,37 @@ Caveat: Measured on single Windows dev box; UNVERIFIED as general performance. M
 
 - **Capacity Headroom:** At 3,000 nodes, document size is ~1.20 MB (25% of the 5 MB `MAX_FILE_BYTES` / `MAX_DOCUMENT_BYTES` limit), leaving 3.68 MB headroom. Linear extrapolation estimates ~12,100 nodes before hitting the 5 MB ceiling.
 - **Whole-graph Operations:** All pure editor algorithms (`computeLayout`, `listConnections`, `check`, `parseProjectFile`) execute in under 7 ms even at 3,000 nodes.
+
+
+## 16. Playtest Mode `DECIDED`
+
+Pure narrative execution engine allowing game writers to walk through story graphs from start to finish with dynamic condition evaluation and atomic variable mutations.
+
+### Architecture & Runtime Semantics
+1. **Pure DSL Evaluator (`@repo/dsl`):**
+   - Pure runtime functions: `evaluateExpr`, `evaluateCondition`, `applyEffect`, `initialState`.
+   - `Value = number | string | boolean`; `VariableState = ReadonlyMap<string, Value>`.
+   - Strict typing without coercion: operators require exact runtime operand types matching typechecker rules; cross-type `==` and `!=` produce `type-mismatch`.
+   - Short-circuiting: `&&` and `||` evaluate left operands first; false left on `&&` and true left on `||` return immediately without evaluating right operands (suppressing errors and undefined variable lookups).
+   - Arithmetic safeguards: division by zero returns `division-by-zero`; non-finite numbers return `non-finite-number`; `-0` and `0` values handled cleanly.
+   - Atomic effects: effects on an edge execute sequentially; if any effect fails parsing or evaluation, the entire step aborts with zero mutations.
+   - Immutability: input states are never mutated.
+
+2. **Session Engine (`apps/web/src/playtest/`):**
+   - Pure TypeScript, zero DOM or React dependencies, imports only `@repo/dsl` and `@repo/schema`.
+   - `Session` encapsulates frozen `project` snapshot, current `nodeId`, `state`, `visits` map, `history` array (capped at 1,000 steps), `status` (`'playing' | 'ended' | 'stuck' | 'error'`), and per-session AST parse cache.
+   - Status priority: nodes of type `'end'` are always `'ended'`; non-end nodes with zero available outgoing choices are `'stuck'`; engine errors yield `'error'`.
+   - History and back: `back()` restores exact previous state (no-op at start). At 1,000 steps, the oldest step is dropped on the 1,001st step. `restart()` restores the initial node and fresh variable defaults.
+   - Per-session parse caching: condition and effect string parses are memoized per session instance, eliminating redundant AST parses during step evaluation without global state.
+
+3. **Consistency Checker vs. Playtest Contrast:**
+   - **Static Consistency Checker (`@repo/checker`):**
+     - Whole-graph static analysis over the entire project data structure.
+     - Detects unreachable nodes, inescapable dead ends, expression syntax errors, and static type mismatches without executing code or maintaining runtime state.
+     - Operates globally and non-interactively (live in Web Worker and pre-export validation).
+   - **Interactive Playtest Mode (`apps/web/src/playtest/`):**
+     - Dynamic single-trajectory execution along player choice paths.
+     - Maintains concrete, mutating variable state across transitions.
+     - Edge availability changes dynamically based on current values.
+     - Discovers runtime-specific behaviors (e.g. state-dependent bottlenecks) rather than global static graph topology.
 

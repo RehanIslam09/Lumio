@@ -2,6 +2,26 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-022 | 2026-10-05 | Promote commit ccc3d70 as stable-006
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `docs: record stable-006 promotion at commit ccc3d70`
+- **Goal:** Promote commit `ccc3d70` as sixth stable baseline (`stable-006`) via `/promote-stable` workflow.
+- **Files changed:**
+  - `docs/context/last-stable-state.md`: updated to record stable-006 baseline (commit ccc3d70), gate result, capabilities, environment, and rollback instructions
+  - `docs/context/recent-work.md`: added entry W-022 documenting the promotion, rotated W-014 to archive
+  - `docs/context/work-archive.md`: archived full entry W-014 per R7.4 rolling window cap
+- **New/changed public APIs:** none
+- **Decisions and why:**
+  - Verified working tree clean and gate passing before user confirmation per `/promote-stable`.
+  - Did not execute `git tag` per R6.1; provided tag command for user manual execution (`git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`).
+  - Rotated oldest full entry (W-014) to `work-archive.md` to maintain the rolling 8-entry cap in `recent-work.md` (R7.4).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - `pnpm check -- --force` -> pass (14/14 tasks successful across 5 packages, 375 tests passing: 81 dsl, 59 checker, 144 web, 91 server).
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to tag commit with `git tag stable-006 ccc3d70c70f28cbd1c97c6e9af2faa09f1e5c5b3`.
+
 ### W-021 | 2026-10-05 | Accounts and sessions for apps/server: registration, login, logout, me, Argon2id, httpOnly cookies, CSRF, and rate limiting
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement accounts and sessions with Argon2id, httpOnly cookies, CSRF protection, and rate limiting`

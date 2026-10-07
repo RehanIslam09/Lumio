@@ -31,6 +31,8 @@ interface ToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   onReset: () => void;
+  onPlaytest?: () => void;
+  playtestTriggerRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -59,6 +61,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onUndo,
   onRedo,
   onReset,
+  onPlaytest,
+  playtestTriggerRef,
 }) => {
   return (
     <header className="app-header">
@@ -142,6 +146,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               Redo
             </button>
           </div>
+
+          <button
+            ref={playtestTriggerRef}
+            type="button"
+            className="btn btn-secondary"
+            onClick={onPlaytest}
+            disabled={isOperationPending}
+            title="Open story playtest mode"
+          >
+            Playtest
+          </button>
 
           <button
             type="button"
