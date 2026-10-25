@@ -1,5 +1,6 @@
 import React from "react";
 import type { FlowNodeType } from "@repo/schema";
+import { Link } from "../router/Link.js";
 import { FileActions } from "./FileActions.js";
 import { EditableTitle } from "./EditableTitle.js";
 import type { AuthState } from "../cloud/state.js";
@@ -16,6 +17,8 @@ interface ToolbarProps {
   varsCount: number;
   auth: AuthState;
   isOperationPending: boolean;
+  isSaving?: boolean;
+  isSaveFailed?: boolean;
   onRenameProject: (name: string) => void;
   onNew: () => void;
   onOpen: (file: File) => void;
@@ -48,6 +51,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   varsCount,
   auth,
   isOperationPending,
+  isSaving = false,
+  isSaveFailed = false,
   onRenameProject,
   onNew,
   onOpen,
@@ -68,9 +73,28 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onSimulate,
   simulateTriggerRef,
 }) => {
+  const handleDashboardClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isDirty) {
+      const ok = window.confirm(
+        "You have unsaved changes. Return to dashboard without saving?",
+      );
+      if (!ok) {
+        e.preventDefault();
+      }
+    }
+  };
+
   return (
     <header className="app-header">
       <div className="header-left">
+        <Link
+          href="/dashboard"
+          className="header-back-link"
+          title="Return to Dashboard"
+          onClick={handleDashboardClick}
+        >
+          ← Dashboard
+        </Link>
         <div className="header-badge">Lumio Narrative Studio</div>
         <h1 className="header-title">
           <EditableTitle name={projectName} onRename={onRenameProject} />
@@ -80,11 +104,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             Cloud · v{binding.baseVersion}
           </span>
         )}
-        {isDirty && (
+        {isSaving ? (
+          <span className="save-status-badge save-pending" role="status">
+            Saving…
+          </span>
+        ) : isSaveFailed ? (
+          <span
+            className="save-status-badge save-failed"
+            role="alert"
+            title="Save to cloud failed. Your local edits are preserved."
+          >
+            Save failed
+          </span>
+        ) : isDirty ? (
           <span className="unsaved-badge" title="You have unsaved changes in this session">
             Unsaved changes
           </span>
-        )}
+        ) : binding ? (
+          <span
+            className="save-status-badge save-success"
+            title={`All changes saved to cloud (v${binding.baseVersion})`}
+          >
+            Saved
+          </span>
+        ) : null}
       </div>
 
       <div className="header-right">

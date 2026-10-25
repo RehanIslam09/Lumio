@@ -18,6 +18,16 @@ import type { Project, Issue, FlowNodeType, VariableType, Variable } from "@repo
 import { getSampleProjectWithSyntaxError } from "./demo/sampleProject.js";
 import { computeLayout } from "./lib/layout.js";
 import { groupIssues } from "./lib/decorate.js";
+import { useRouter } from "./router/useRouter.js";
+import { AppHeader } from "./components/shell/AppHeader.js";
+import {
+  LandingPage,
+  DashboardPage,
+  LoginPage,
+  RegisterPage,
+  ProjectWorkspace,
+  NotFoundPage,
+} from "./components/shell/index.js";
 import { projectToFlow, type Selection } from "./lib/flowModel.js";
 import { makeNode, makeEdge, makeVariable } from "./lib/defaults.js";
 import { interpretKey, isTargetEditable } from "./lib/keymap.js";
@@ -313,16 +323,30 @@ function StoryCanvas({
   );
 }
 
-function MainStudio() {
+export interface MainStudioProps {
+  initialProject?: Project;
+  initialBinding?: ProjectBinding | null;
+  initialWarnings?: string[];
+}
+
+export function MainStudio({
+  initialProject,
+  initialBinding,
+  initialWarnings,
+}: MainStudioProps = {}) {
   const { screenToFlowPosition } = useReactFlow();
   const [editorState, setEditorState] = useState<EditorState>(() =>
-    createEditor(getSampleProjectWithSyntaxError(false)),
+    createEditor(initialProject ?? getSampleProjectWithSyntaxError(false)),
   );
   const [savedMarker, setSavedMarker] = useState<CleanMarker>(() =>
     createCleanMarker(editorState.present),
   );
   const [loadCounter, setLoadCounter] = useState(1);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(() =>
+    initialWarnings && initialWarnings.length > 0
+      ? `Project opened with warnings:\n${initialWarnings.join("\n")}`
+      : null,
+  );
   const [selection, setSelected] = useState<Selection>(null);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [activeTab, setActiveTab] = useState<PanelTab>("issues");
@@ -336,6 +360,7 @@ function MainStudio() {
   const dirty = isMarkerDirty(project, savedMarker);
 
   const cloud = useCloud({
+    initialBinding,
     onReplaceProject: (nextProject, nextBinding) => {
       replaceActiveProject(nextProject, nextBinding);
     },
@@ -629,6 +654,11 @@ function MainStudio() {
         varsCount={project.variables.length}
         auth={cloud.state.auth}
         isOperationPending={cloud.state.operation.kind === "pending"}
+        isSaving={
+          cloud.state.operation.kind === "pending" &&
+          (cloud.state.operation.op === "save" || cloud.state.operation.op === "saveOverwrite")
+        }
+        isSaveFailed={cloud.state.operation.kind === "failed"}
         onRenameProject={(name) => dispatch({ type: "renameProject", name })}
         onNew={handleNew}
         onOpen={handleOpen}
@@ -820,10 +850,31 @@ function MainStudio() {
 }
 
 export function App() {
+  const { route } = useRouter();
+
+  if (route.kind === "editor") {
+    return (
+      <ReactFlowProvider>
+        <MainStudio />
+      </ReactFlowProvider>
+    );
+  }
+
+  if (route.kind === "project") {
+    return <ProjectWorkspace projectId={route.projectId} />;
+  }
+
   return (
-    <ReactFlowProvider>
-      <MainStudio />
-    </ReactFlowProvider>
+    <div className="app-shell">
+      <AppHeader currentRoute={route} />
+      <div className="shell-body">
+        {route.kind === "landing" && <LandingPage />}
+        {route.kind === "dashboard" && <DashboardPage />}
+        {route.kind === "login" && <LoginPage />}
+        {route.kind === "register" && <RegisterPage />}
+        {route.kind === "notFound" && <NotFoundPage path={route.path} />}
+      </div>
+    </div>
   );
 }
 

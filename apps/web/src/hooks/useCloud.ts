@@ -36,14 +36,19 @@ export interface UseCloudOptions {
   onReplaceProject: (project: Project, binding: ProjectBinding | null) => void;
   onSavedCleanMarker: (marker: CleanMarker) => void;
   onSetMessage: (message: string | null) => void;
+  initialBinding?: ProjectBinding | null;
 }
 
 export function useCloud({
   onReplaceProject,
   onSavedCleanMarker,
   onSetMessage,
+  initialBinding,
 }: UseCloudOptions) {
-  const [state, dispatch] = useReducer(cloudReducer, initialCloudState);
+  const [state, dispatch] = useReducer(cloudReducer, initialCloudState, (initial) => ({
+    ...initial,
+    binding: initialBinding ?? null,
+  }));
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [cloudOpenDialogOpen, setCloudOpenDialogOpen] = useState(false);

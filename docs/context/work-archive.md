@@ -2,6 +2,277 @@
 
 > [!info] Do NOT read by default. Open only when a `recent-work.md` entry points here or you are debugging history.
 
+### W-028 | 2026-10-07 | Entities + node body + speaker in the editor (apps/web)
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add entities panel, node body and speaker controls, and editor actions`
+- **Goal:** Allow writers to use Content Model v2 in the editor UI: manage entities (characters, locations, items) with duplicate warnings and cascading delete, edit node body via <textarea> with live code-point counter and accessible alerts, and assign character speakers to nodes with dangling-reference safety.
+- **Files changed:**
+  - `apps/web/src/editor/types.ts`: extended `EditorAction` with `addEntity`, `updateEntity`, `deleteEntity`, and `updateNode` patch fields (`body?: string | null; speakerId?: string | null`).
+  - `apps/web/src/editor/apply.ts`: implemented validation and application logic for `addEntity`, `updateEntity` (rejection if character used as speaker changes kind), `deleteEntity` (cascading `speakerId` removal), and `updateNode` (`body` cap <= 20000 code points, `speakerId` character verification, no-op reference equality).
+  - `apps/web/src/editor/editor.test.ts`: added 11 new tests (total 38 tests) covering entity caps (1,000 entities, 120 name, 5000 desc), surrogate pairs and code point boundaries (20,000 vs 20,001), structural sharing on no-ops, missing entities fallback, and cascading deletion with 1-undo restoration.
+  - `apps/web/src/editor/editor.property.test.ts`: extended property generator with invalid entity and speaker picks; verified E1 invariants, E2 undo identity, E3 purity, E4 rejections, and E5 cascading deletion with single undo.
+  - `apps/web/src/lib/entities.ts`: implemented pure helpers `speakerUsage`, `sortedEntities`, `speakerOptions`, `duplicateNameIds`, and `bodyCounter`.
+  - `apps/web/src/lib/entities.test.ts`: created 10 unit tests for entity helpers covering ordering, usage indexing, duplicate detection, speaker options disambiguation, and code point counting.
+  - `apps/web/src/lib/defaults.ts`: added pure helpers `makeDefaultEntityName` and `makeEntity`.
+  - `apps/web/src/lib/keymap.test.ts`: added unit tests for `isTargetEditable` covering `INPUT`, `TEXTAREA`, `SELECT`, `contenteditable`, and non-editable targets.
+  - `apps/web/src/components/DraftField.tsx`: added `showCounter` prop, character count badge, and change-only `aria-live` announcement.
+  - `apps/web/src/components/InspectorPanel.tsx`: added "Speaker" dropdown and "Body" multiline DraftField with live code-point counter.
+  - `apps/web/src/components/EntitiesPanel.tsx`: created 4th tab panel with collapsed summary rows, single expanded row editing, duplicate name warnings, "Used by" node selection links, and cascading delete confirmation.
+  - `apps/web/src/components/RightPanel.tsx`: added 4th `Entities` tab button and panel rendering.
+  - `apps/web/src/App.tsx`: wired `onAddEntity`, `onUpdateEntity`, `onDeleteEntity` dispatches to RightPanel.
+  - `apps/web/src/index.css`: added tab-bar sizing rules (12px, 10px 4px padding), counter badges, and entity card styles.
+  - `docs/ARCHITECTURE.md`: updated Repo map, Section 7 (Entities tab, body editing, draft rule), Section 8 (Editor actions), and Section 14 (debt list).
+  - `docs/context/work-archive.md`: archived full W-020 entry per 8-entry rolling cap.
+  - `docs/context/recent-work.md`: recorded entry W-028, rotated W-020 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/editor/types.ts`:
+    - `type AddEntityAction = { type: "addEntity"; entity: Entity }`
+    - `type UpdateEntityAction = { type: "updateEntity"; id: string; patch: { name?: string; kind?: EntityKind; description?: string | null } }`
+    - `type DeleteEntityAction = { type: "deleteEntity"; id: string }`
+  - `apps/web/src/lib/entities.ts`:
+    - `speakerUsage(input: Project | readonly FlowNode[]): Map<string, string[]>`
+    - `sortedEntities(input?: Project | readonly Entity[]): readonly Entity[]`
+    - `speakerOptions(project: Project): SpeakerOption[]`
+    - `duplicateNameIds(input?: Project | readonly Entity[]): Set<string>`
+    - `bodyCounter(body: string | null | undefined): { count: number; max: number; isOver: boolean }`
+  - `apps/web/src/lib/defaults.ts`:
+    - `makeDefaultEntityName(kind: EntityKind, existing: readonly Entity[] | undefined): string`
+    - `makeEntity(kind: EntityKind, existing: readonly Entity[] | undefined): Entity`
+- **Decisions and why:**
+  - `DraftField` keeps draft state across rejected actions: does not commit from unmount or cleanup; preserves text exactly as typed (Amendment 1).
+  - Derived draft state on render (`value !== prevValue` comparison) avoids `useEffect` `setState` hazards (Amendment 2).
+  - Live body code-point counter uses visible counter text with `aria-live="polite"` container firing only when `isOver` state flips (Amendment 2.5).
+  - Right panel tab-bar styled with `font-size: 12px`, `padding: 10px 4px`, `gap: 4px` fitting 4 tabs across 420px width (Amendment 3).
+  - "Used by" character links reuse `onSelectNode` mechanism without canvas camera recentering (Amendment 4).
+  - Rejection messages specify affected speaker count for kind changes and missing/non-character reason for speakers (Amendment 5).
+  - Entity names and descriptions stored verbatim without silent trimming; whitespace-only names rejected (Amendment 5).
+  - Memoization keyed on `project.entities` for `sortedEntities` and `project.nodes` for `speakerUsage` (Amendment 7).
+- **Assumptions / UNVERIFIED:** none
+- **Verification:**
+  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 624 total tests passing: 81 dsl, 59 checker, 154 server, 330 web).
+  - Web production build: `pnpm --filter @repo/web build` -> pass (JS: 603.84 kB, CSS: 41.66 kB).
+- **Known issues / debt:**
+  - No entity filtering/search in Entities tab (planned for later).
+  - Textarea is plain text without syntax highlighting or autocomplete.
+- **Next steps:**
+  - Graph-level consistency checking for entity/speaker consistency in `@repo/checker`.
+
+### W-027 | 2026-10-06 | Content Model v2 (Data Layer): entities, node body/speaker, and migration chain
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat: implement Content Model v2, pure migration chain, and schema bump 1->2`
+- **Goal:** Upgrade project data model to schemaVersion 2 adding optional cast entities (max 1000), node body (<= 20,000 code points), and node speakerId referencing character entities; implement pure chained migration in @repo/schema; preserve immutable stored rows while rejecting legacy write versions.
+- **Files changed:**
+  - `packages/schema/src/index.ts`: added `CURRENT_SCHEMA_VERSION = 2`, `MIN_SUPPORTED_SCHEMA_VERSION = 1`, limits (`MAX_ENTITIES_PER_PROJECT = 1000`, `MAX_ENTITY_NAME_CODE_POINTS = 120`, `MAX_ENTITY_DESC_CODE_POINTS = 5000`, `MAX_NODE_BODY_CODE_POINTS = 20000`); implemented loop-based `countCodePoints`, `isReadableSchemaVersion`, `getEntities`, `EntityKindSchema`, `EntitySchema`; updated `FlowNodeSchema` (body, speakerId) and `ProjectSchema` (entities); derived `KNOWN_*_KEYS` sets; implemented `checkEntityAndSpeakerDetails` integrity rules; created pure `migrate(raw, fromVersion)` chain.
+  - `apps/web/src/persistence/fixtures/v1-sample.lumio.json`: golden v1 fixture for 15-node sample story frozen with `schemaVersion: 1` and fixed `exportedAt`.
+  - `apps/web/src/persistence/fixtures/v1-branching.lumio.json`: golden v1 fixture for 6-node branching story with variables and conditions frozen with `schemaVersion: 1`.
+  - `apps/web/src/lib/schema.test.ts`: created comprehensive test suite (32 unit and property tests) covering constants, `countCodePoints` at and above caps, `isReadableSchemaVersion` 11-case table test, `getEntities`, `EntitySchema`, `FlowNodeSchema`, `ProjectSchema`, derived shape keys equivalence, v2 clean parsing without unknown warnings, genuine unknown warnings, entity integrity, and fast-check generator migration round-trip.
+  - `apps/web/src/persistence/types.ts`: re-exported `CURRENT_SCHEMA_VERSION, MIN_SUPPORTED_SCHEMA_VERSION` from `@repo/schema`.
+  - `apps/web/src/persistence/serialize.ts`: writes `CURRENT_SCHEMA_VERSION`; preserves exact presence/absence of `entities` key.
+  - `apps/web/src/persistence/parse.ts`: uses derived `KNOWN_*_KEYS`, delegates migration to `migrate` from `@repo/schema`, and appends entity and speaker integrity checks.
+  - `apps/web/src/persistence/index.ts`: re-exported `migrate`, `isReadableSchemaVersion`, and `CURRENT_SCHEMA_VERSION`.
+  - `apps/web/src/persistence/persistence.test.ts`: added serializer identity round-trip tests for projects with and without entities; added golden fixture frozen assertions.
+  - `apps/server/src/projects/validate.ts`: updated `SUPPORTED_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION` (2), rejects write requests with `schemaVersion !== 2` with 422 `unsupported-schema-version` (`supported: 2`), appends entity/speaker integrity details.
+  - `apps/server/src/projects/validate.test.ts`: updated write tests to use `CURRENT_SCHEMA_VERSION`; tested Rule 2 rejection for versions 1 and 3; added Rule 7 tests for duplicate entity IDs, invalid speaker IDs, whitespace names, and caps.
+  - `apps/server/src/projects/service.ts`: uses `CURRENT_SCHEMA_VERSION` as fallback supported schema version.
+  - `apps/server/src/projects/service.test.ts`: updated create/save payloads to pass `CURRENT_SCHEMA_VERSION`.
+  - `apps/server/src/projects/routes.test.ts`: updated write payloads to pass `CURRENT_SCHEMA_VERSION`.
+  - `apps/server/src/projects/projects.int.test.ts`: updated write payloads to `CURRENT_SCHEMA_VERSION`; added Test 11 for v2 content persistence, write rejection at v1 (422), and immutable reading of legacy v1 rows.
+  - `apps/web/src/cloud/outcomes.ts`: updated `runCloudFetchVersion` and `runCloudOpen` to check `isReadableSchemaVersion` and migrate documents from versions `< CURRENT_SCHEMA_VERSION` before validation.
+  - `apps/web/src/cloud/outcomes.test.ts`: updated save tests and unsupported schema assertions; added v1 migration tests on open and fetchVersion.
+  - `apps/web/src/components/HistoryDialog.tsx`: replaced hardcoded `schemaVersion === 1` checks with `isReadableSchemaVersion`.
+  - `apps/web/src/hooks/useCloud.ts`: updated save calls to use `CURRENT_SCHEMA_VERSION`; updated 422 error copy per Amendment 8.
+  - `apps/web/src/benchmark/generator.ts`: updated generator to construct character entities for cast pool, assign `speakerId` on nodes, and populate deterministic short `body`.
+  - `apps/web/src/benchmark/generator.test.ts`: added test verifying generated character entities, speakerIds, and bodies; added scale measurement test.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 4 Data model with Schema Versioning & Content Model v2 section.
+  - `docs/context/work-archive.md`: archived full entry W-019 per 8-entry rolling cap.
+  - `docs/context/recent-work.md`: recorded entry W-027, rotated W-019 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `@repo/schema`:
+    - `CURRENT_SCHEMA_VERSION = 2`, `MIN_SUPPORTED_SCHEMA_VERSION = 1`
+    - `MAX_ENTITIES_PER_PROJECT = 1000`, `MAX_ENTITY_NAME_CODE_POINTS = 120`, `MAX_ENTITY_DESC_CODE_POINTS = 5000`, `MAX_NODE_BODY_CODE_POINTS = 20000`
+    - `countCodePoints(str: string): number`
+    - `isReadableSchemaVersion(version: unknown): boolean`
+    - `getEntities(project: Project): readonly Entity[]`
+    - `EntityKindSchema`, `EntitySchema`, `type EntityKind`, `type Entity`
+    - `KNOWN_PROJECT_KEYS`, `KNOWN_NODE_KEYS`, `KNOWN_EDGE_KEYS`, `KNOWN_VARIABLE_KEYS`, `KNOWN_ENTITY_KEYS`
+    - `migrate(raw: unknown, fromVersion: number): MigrationResult`
+    - `checkEntityAndSpeakerDetails(project: Project): IntegrityDetail[]`
+    - `checkEntityAndSpeakerIntegrity(project: Project): string[]`
+- **Decisions and why:**
+  - Single pure migration chain in `@repo/schema` returning `{ ok: true, value } | { ok: false, reason }` without throwing, reused across web parse and cloud outcomes (Amendment 1).
+  - Serializer identity: `serializeProject` preserves the exact presence/absence of `entities` key without injecting defaults; reading helper `getEntities(project)` normalizes absence to empty array (Amendment 2).
+  - Derived known keys: derived from Zod schema shape keys (`Object.keys(Schema.shape)`) to eliminate drift (Amendment 4).
+  - Loop-based Unicode counter: `countCodePoints` iterates via `charCodeAt` checking surrogate pairs without array allocations, ensuring O(1) memory on large bodies up to 20,000 code points (Amendment 7).
+  - Server write rule: server only accepts writes at `CURRENT_SCHEMA_VERSION` (2); writes at 1 return 422 with `supported: 2`; stored database rows remain immutable (Amendment 1, 3).
+- **Assumptions / UNVERIFIED:**
+  - Manual testing of 422 outdated app alert via UI is UNVERIFIED until interactive browser test.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful, 599 total tests passing: 81 dsl, 59 checker, 305 web, 154 server).
+  - Scale measurement:
+    - 1000 nodes v1: 230,501 bytes (230.5 B/node)
+    - 1000 nodes v2: 315,134 bytes (315.1 B/node)
+    - Overhead per node in v2: ~84.6 B/node
+    - Estimated max nodes under 5 MB limit: ~15,866 nodes
+  - Web production bundle:
+    - Measured (W-027): JS 594.26 kB (gzip 177.33 kB), CSS 38.78 kB (gzip 6.93 kB) via `pnpm --filter @repo/web build`
+- **Known issues / debt:** none
+- **Next steps:**
+  - UI integration for character/entity inspector and node body editor.
+
+### W-026 | 2026-10-06 | Version history UI: dialog, list/restore/download, and generation-ref guards
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add version history dialog, restore, download, and generation-ref guards`
+- **Goal:** Implement Version History dialog in apps/web: fetch version history list, restore version as a working copy (dirty against baseVersion), download version as JSON file, format timestamps, and fix generation guards across useCloud async callbacks using a synchronized generationRef.
+- **Files changed:**
+  - `apps/web/src/api/types.ts`: added `VersionSummaryDto`, `VersionListResponse`, and `VersionGetResponse` interfaces.
+  - `apps/web/src/api/guards.ts`: implemented runtime guards `isVersionSummaryDto`, `isVersionListResponse`, and `isVersionGetResponse` (envelope-only validation for document).
+  - `apps/web/src/api/guards.test.ts`: 8 new unit tests covering valid DTOs, wrong types, missing fields, arrays, null, extra keys, boolean check on `createdByMe`, and envelope-only document check.
+  - `apps/web/src/api/client.ts`: added `listVersions(projectId)` and `getVersion(projectId, versionNumber)` client methods.
+  - `apps/web/src/api/client.test.ts`: 3 new unit tests for `listVersions` and `getVersion` (200, 401, 404, network error, retry-after).
+  - `apps/web/src/cloud/types.ts`: added `ListVersionsOutcome` and `FetchVersionOutcome` type unions.
+  - `apps/web/src/cloud/outcomes.ts`: implemented pure controllers `runCloudListVersions` and `runCloudFetchVersion`.
+  - `apps/web/src/cloud/outcomes.test.ts`: 12 new unit tests for `runCloudListVersions` and `runCloudFetchVersion` (success, auth, 404, validation errors).
+  - `apps/web/src/cloud/state.ts`: added `listVersions` and `fetchVersion` to `OperationKind`, added `{ type: "versionRestored" }` action, bumped generation on restore, and exported pure `isHistoryEnabled(state)`.
+  - `apps/web/src/cloud/state.test.ts`: 13 new unit tests for `versionRestored` transition, operation pending exclusion, stale generation dropping, and 12-case table test for `isHistoryEnabled`.
+  - `apps/web/src/hooks/useCloud.ts`: implemented `generationRef = useRef(state.generation)` guard across all post-await side effects (`saveToCloud`, `resolveConflictKeepMine`, `resolveConflictLoadLatest`, `openFromCloud`, `handleSignOut`, `listVersions`, `fetchVersion`); exposed `listVersions`, `fetchVersion`, `historyDialogOpen`, `setHistoryDialogOpen`, and `notFoundContext`.
+  - `apps/web/src/lib/formatDate.ts`: extracted `formatProjectDate` pure date formatting helper.
+  - `apps/web/src/lib/formatDate.test.ts`: 2 unit tests for `formatProjectDate` (valid ISO string, invalid date string fallback).
+  - `apps/web/src/components/SaveNotFoundDialog.tsx`: added `context?: "save" | "history"` prop with tailored descriptive copy.
+  - `apps/web/src/components/CloudOpenDialog.tsx`: updated to use shared `formatProjectDate`.
+  - `apps/web/src/components/HistoryDialog.tsx`: modal dialog with version list, creation dates, author chips ("You"/"Other"), status markers ("Synced" on `baseVersion`, "Latest"), schema compatibility check, Restore and Download buttons.
+  - `apps/web/src/components/FileActions.tsx`: added History button with `isHistoryEnabled`, `historyTitle`, `onOpenHistory`.
+  - `apps/web/src/components/Toolbar.tsx`: wired History button props.
+  - `apps/web/src/App.tsx`: extracted shared `loadProjectIntoEditor`, implemented `restoreWorkingCopy` (dirty working copy restore), wired `HistoryDialog` and `SaveNotFoundDialog` with `notFoundContext`.
+  - `apps/web/src/index.css`: styles for `HistoryDialog`, version list rows, chips, and metadata.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 10 Persistence with Version History UI details, restore semantics, generation-ref pattern, and limits.
+  - `docs/context/work-archive.md`: archived full entry W-018 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-026, rotated W-018 to older work, maintained 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/api/types.ts`: `VersionSummaryDto`, `VersionListResponse`, `VersionGetResponse`
+  - `apps/web/src/api/guards.ts`: `isVersionSummaryDto(value: unknown): value is VersionSummaryDto`, `isVersionListResponse(value: unknown): value is VersionListResponse`, `isVersionGetResponse(value: unknown): value is VersionGetResponse`
+  - `apps/web/src/api/client.ts`: `listVersions(projectId: string): Promise<ApiResult<VersionListResponse>>`, `getVersion(projectId: string, versionNumber: number): Promise<ApiResult<VersionGetResponse>>`
+  - `apps/web/src/cloud/types.ts`: `ListVersionsOutcome`, `FetchVersionOutcome`
+  - `apps/web/src/cloud/outcomes.ts`: `runCloudListVersions`, `runCloudFetchVersion`
+  - `apps/web/src/cloud/state.ts`: `isHistoryEnabled(state: CloudState): boolean`
+  - `apps/web/src/lib/formatDate.ts`: `formatProjectDate(isoString: string): string`
+- **Decisions and why:**
+  - Restore semantics: restoring a version replaces the working copy in the editor and clears undo/redo history, but deliberately keeps `binding.baseVersion` unchanged and leaves the clean baseline marker untouched (or unbound). Because `validateProjectDocument` returns a fresh object in memory, reference comparison `isMarkerDirty` immediately evaluates to true, presenting the "Unsaved changes" badge and protecting users from unintentionally overwriting the cloud without a conscious Save.
+  - Generation-ref pattern: fixed lexical closure race in `useCloud.ts` callbacks where `currentGen === state.generation` compared closed-over state with itself. Kept `generationRef = useRef(state.generation)` updated via `useEffect` and guarded every post-await branch across all async cloud methods with `if (currentGen !== generationRef.current) return;`.
+  - Single project loading helper: in `App.tsx`, unified `replaceActiveProject` and `restoreWorkingCopy` over `loadProjectIntoEditor(validatedProject, { resetHistory: true })`, preventing duplicate editor initialization logic.
+  - Reused 404 dialog: reused `SaveNotFoundDialog` by adding an optional `context?: "save" | "history"` prop to toggle the explanation text between save ("Would you like to save it as a new cloud project?") and history ("You can save your current local work as a new cloud project."), keeping dialog logic unified.
+  - 401 unauthenticated handling: when a 401 occurs while `HistoryDialog` is open, `HistoryDialog` closes immediately before transitioning cloud auth to anonymous and popping `AuthDialog`, ensuring modals never stack or trap focus.
+- **Assumptions / UNVERIFIED:**
+  - Visual layout and dialog interactions in physical browser are UNVERIFIED until manual browser verification.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 4 packages; 550 total tests passing: 81 dsl, 59 checker, 266 web, 144 server in 17.584s).
+  - `pnpm --filter @repo/web build` -> pass (built in 363ms; JS bundle size 591.38 kB gzip 176.44 kB; CSS 38.78 kB gzip 6.93 kB; delta +9.20 kB JS, +1.80 kB CSS).
+- **Known issues / debt:**
+  - No visual diff viewer for versions.
+  - Versions cannot be named or tagged with custom commit messages.
+  - Version history is capped at newest 200 versions returned by server.
+- **Next steps:**
+  - Manual browser test verification.
+
+### W-025 | 2026-10-06 | Benchmark story generator, scale measurements, and defect injection
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add benchmark story generator, defect injection, and scale measurements`
+- **Goal:** Implement deterministic benchmark story generator (`generateBenchmarkProject`, `generateBenchmarkWithDefects`) with layered layout and isolated defect grafting; run scale measurements up to 3,000 nodes; export benchmark-300.json and benchmark-3000.json for local UI testing.
+- **Files changed:**
+  - `.gitignore`: added `benchmark-output/` to ignore benchmark export files.
+  - `apps/web/src/benchmark/types.ts`: created `BenchmarkOptions`, `PlantedDefect`, and `BenchmarkWithDefectsResult` interfaces.
+  - `apps/web/src/benchmark/ambient.d.ts`: ambient type definitions for node standard modules (`node:fs`, `node:path`, `node:url`, `process`) in web tsconfig.
+  - `apps/web/src/benchmark/generator.ts`: implemented deterministic generator using Mulberry32 PRNG, layered 2D layout, round-robin cast assignment, well-typed DSL conditions/effects with zero warnings on clean mode, and clean graph grafting for isolated planted defects (`unreachable-from-start`, `cannot-reach-end`, `undefined-variable`).
+  - `apps/web/src/benchmark/generator.test.ts`: 14 unit and property tests covering determinism, exact node/ending counts, cast density, DSL syntax parse, 0-issue clean checker mode, exact defect matching on planted mode, multi-seed sweeps (seeds 1..100 across sizes 20, 50, 300), and fast-check properties.
+  - `apps/web/src/benchmark/measure.ts`: measurement script for 300, 1000, 3000 nodes recording generation, serialization, parse round-trip, checker, `listConnections`, and `computeLayout` min/median timings over 5 runs.
+  - `apps/web/src/benchmark/generateFiles.ts`: CLI script generating `benchmark-300.json` (123.66 KB) and `benchmark-3000.json` (1204.51 KB) in `benchmark-output/`.
+  - `docs/ARCHITECTURE.md`: updated index, Section 3 repo map, and Section 15 Benchmarks & Scale Measurements with timing table and capacity headroom.
+  - `docs/context/work-archive.md`: archived full entry W-017 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-025, rotated W-017 to older work, maintained 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/benchmark/types.ts`: `BenchmarkOptions`, `PlantedDefect`, `BenchmarkWithDefectsResult`
+  - `apps/web/src/benchmark/generator.ts`:
+    - `generateBenchmarkProject(options: BenchmarkOptions & { defects: "planted" }): BenchmarkWithDefectsResult`
+    - `generateBenchmarkProject(options?: BenchmarkOptions): Project`
+    - `generateBenchmarkWithDefects(options: BenchmarkOptions): BenchmarkWithDefectsResult`
+- **Decisions and why:**
+  - Pure TypeScript with zero bundle footprint: Generator and scripts placed in `apps/web/src/benchmark/` without being imported by the app runtime (`App.tsx`), keeping production web bundle size unchanged at 582.18 kB.
+  - Clean graph grafting for defect isolation: Clean DAG with redundant incoming/outgoing edges is built first, then 3 defects are grafted so no clean node depends on defect nodes, ensuring exactly 3 issues fire with zero cascade.
+  - Cast density constraint: Node titles follow `${speaker}: ${title}` for all node types (`start`, `scene`, `end`) using round-robin assignment from `castPool`, ensuring unique speaker count equals `castSize` exactly.
+  - Extrapolation and limits: At 3,000 nodes, document serialized size is 1.20 MB (25% of 5 MB limit), confirming `benchmark-3000.json` opens cleanly through the local file persistence path.
+- **Assumptions / UNVERIFIED:**
+  - Performance numbers are measured on a single Windows development box; general cross-platform performance is UNVERIFIED.
+  - Canvas rendering and Web Worker performance are UNVERIFIED (measurements execute purely on Node main thread).
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 4 packages; 510 total tests passing: 81 dsl, 59 checker, 226 web, 144 server in 11.865s).
+    - Tasks: 14 successful, 14 total. Time: 11.865s.
+  - `pnpm --filter @repo/web build` -> pass (built in 161ms; JS bundle size 582.18 kB identical before and after).
+  - Scale measurements (`pnpm --filter @repo/server exec tsx ../web/src/benchmark/measure.ts`) -> 300 nodes (123.66 KB, 0.88ms gen, 0.68ms check), 1000 nodes (399.19 KB, 8.52ms gen, 0.85ms check), 3000 nodes (1204.51 KB, 66.78ms gen, 2.13ms check).
+- **Known issues / debt:**
+  - Benchmark generator is not wired into the UI (intended: only accessible via file generation / test scripts).
+- **Next steps:**
+  - User can test loading `benchmark-300.json` and `benchmark-3000.json` via local "Open file" button.
+
+### W-024 | 2026-10-05 | Cloud features in apps/web: session auth, cloud save/open, conflict resolution, and dirty state tracking
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add cloud persistence, session authentication, and conflict resolution`
+- **Goal:** Implement cloud features in apps/web: optional session auth dialog (sign-in/register), "Save to cloud" with optimistic concurrency conflict dialog, "Open from cloud" with list and project deletion, dirty state marker tracking, single project replacement path, and session expiry handling.
+- **Files changed:**
+  - `apps/web/src/api/config.ts`: API base URL resolution from `VITE_API_URL` or window.location origin, origin validator, timeout constant.
+  - `apps/web/src/api/config.test.ts`: 8 unit tests for URL resolution, trailing slashes, default fallbacks, and validation.
+  - `apps/web/src/api/types.ts`: DTOs, HTTP error taxonomy, and request/response interfaces.
+  - `apps/web/src/api/guards.ts`: runtime validation guards for API envelopes, projects, versions, users, and error responses.
+  - `apps/web/src/api/guards.test.ts`: 13 unit tests for guards (valid, wrong types, missing fields, arrays, extra keys, null/undefined, never-throw contract).
+  - `apps/web/src/api/client.ts`: typed fetch client (`createApiClient`) with 9 endpoints, AbortController timeouts, credentials: "include", Retry-After header parsing.
+  - `apps/web/src/api/client.test.ts`: 18 tests covering 200, 201, 204, 401, 404, 409, 413, 429 Retry-After, 500, network error, timeout abort, fast-check property test.
+  - `apps/web/src/cloud/types.ts`: typed outcome unions (`SaveOutcome`, `ListOutcome`, `OpenOutcome`, `DeleteOutcome`, `AuthOutcome`), `ProjectBinding`, and `CleanMarker`.
+  - `apps/web/src/cloud/outcomes.ts`: pure functional controllers for save, save-overwrite, list, open, delete, and auth without DOM/React dependencies.
+  - `apps/web/src/cloud/outcomes.test.ts`: 17 unit tests verifying outcome discrimination, 409 conflict extraction, 401 session expiry, retry-after preservation.
+  - `apps/web/src/cloud/state.ts`: pure reducer for cloud state, generation counter, active in-flight request guards, clean marker helpers (`isMarkerDirty`, `computeNextCleanMarker`, `createUnboundMarker`), and compile-time exhaustiveness via `assertNever(value: never): never` in default branch.
+  - `apps/web/src/cloud/state.test.ts`: 12 unit tests covering transitions, generation bump ignoring stale async outcomes, typed unbound marker on project deletion.
+  - `apps/web/src/hooks/useCloud.ts`: React orchestration hook wrapping client, startup `/me` check, toast dispatch, and modal triggers.
+  - `apps/web/src/persistence/parse.ts`: extracted `validateProjectDocument(raw: unknown)` pure move without modifying existing error order or tests.
+  - `apps/web/src/components/AuthDialog.tsx`: native `<dialog>` for email/password login and registration.
+  - `apps/web/src/components/ConflictDialog.tsx`: native `<dialog>` offering Overwrite, Load Cloud, Download My Copy, and Cancel.
+  - `apps/web/src/components/CloudOpenDialog.tsx`: native `<dialog>` listing remote projects with formatted date, Open, and Delete confirmation.
+  - `apps/web/src/components/SaveNotFoundDialog.tsx`: native `<dialog>` prompting to re-create project if deleted remotely.
+  - `apps/web/src/components/FileActions.tsx`: added Cloud Save, Cloud Open, and Cloud v{n} status chip.
+  - `apps/web/src/components/Toolbar.tsx`: wired Account button and cloud status chip.
+  - `apps/web/src/App.tsx`: single project replacement function `replaceActiveProject`, shared `downloadProjectAsFile`, bound clean marker comparison, cloud dialog mounts.
+  - `apps/web/src/index.css`: modal dialog styling, cloud badge, error banners, and account buttons.
+  - `apps/web/src/vite-env.d.ts`: typings for `VITE_API_URL`.
+  - `apps/web/.env.example`: template for frontend environment variables.
+  - `docs/ARCHITECTURE.md`: updated Repo map, Section 10 Persistence (Cloud Persistence & Sync `DECIDED`, state machine, outcomes, concurrency), and Section 14 technical debt.
+  - `docs/context/work-archive.md`: archived full entry W-016 per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-024, rotated W-016 to older work.
+- **New/changed public APIs:**
+  - `apps/web/src/api/config.ts`: `resolveApiBaseUrl(envUrl?: string, locationOrigin?: string): string`, `getApiBaseUrl(): string`
+  - `apps/web/src/api/client.ts`: `createApiClient(baseUrl?: string): ApiClient`
+  - `apps/web/src/api/guards.ts`: `isProjectSummary`, `isProjectWithDocument`, `isProjectVersionSummary`, `isProjectMutationResponse`, `isUserDto`, `isErrorEnvelope`, `extractErrorMessage`
+  - `apps/web/src/persistence/parse.ts`: `validateProjectDocument(raw: unknown): ParseFileResult`
+  - `apps/web/src/cloud/types.ts`: `ProjectBinding`, `CleanMarker`, `SaveOutcome`, `ListOutcome`, `OpenOutcome`, `DeleteOutcome`, `AuthOutcome`
+  - `apps/web/src/cloud/state.ts`: `cloudReducer`, `isMarkerDirty`, `computeNextCleanMarker`, `createUnboundMarker`
+  - `apps/web/src/cloud/outcomes.ts`: `runCloudSave`, `runCloudSaveOverwrite`, `runCloudList`, `runCloudOpen`, `runCloudDelete`, `runCheckSession`, `runSignIn`, `runRegister`, `runSignOut`
+  - `apps/web/src/hooks/useCloud.ts`: `useCloud(options: UseCloudOptions): UseCloudReturn`
+- **Decisions and why:**
+  - Zero browser storage: No localStorage, sessionStorage, indexedDB, or JS-accessible cookies used for authentication or tokens. Session is handled completely via server `httpOnly` cookie with `credentials: "include"`.
+  - Pure move in `parse.ts`: Extracted schema + integrity validation into `validateProjectDocument(raw: unknown)` without modifying existing error messages, error order, or warnings; verified 18/18 persistence tests pass identically.
+  - Clean marker after save: Clean marker after successful save is the sent snapshot (`result.savedSnapshot`), NOT the response or current present. Edits made while HTTP request is in-flight leave the document correctly dirty.
+  - Remote deletion unbinding: When a bound project is deleted via "Open from cloud", binding becomes null and clean marker transitions to `{ kind: "unbound" }`, marking the current editor canvas as unsaved changes so work is never lost silently.
+  - Single load path: Consolidated local Open, Cloud Open, and "Load cloud version" into `replaceActiveProject(nextProject, nextBinding)`. Increments `loadCounter`, bumps cloud generation, sets `savedMarker`, and resets selections in one atomic sequence.
+  - Compile-time exhaustiveness: Used `assertNever(value: never): never` in `cloudReducer` default case to ensure strict compile-time exhaustiveness without lint errors, casts, or disables.
+  - Server contract: Guards for POST /api/projects and PUT /api/projects/:id do not require `document` field in response (server returns `{ project, version }` without document per W-023). Only GET /api/projects/:id requires `document`.
+  - Accessible native `<dialog>`: All modals (Auth, Conflict, Cloud Open, SaveNotFound) use HTML5 `<dialog>` with `.showModal()`, backdrop dismiss, Escape key handling, and auto-focus on first interactive input.
+- **Assumptions / UNVERIFIED:**
+  - All end-to-end interactive UI behaviors in the manual browser script (live session cookie exchanges, cross-tab project deletion, conflict dialog resolution flows, camera resets, and offline network behaviors) are UNVERIFIED until user tests in a live browser. Only unit/property tests, typechecking, and static build outputs are verified.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 4 packages; 496 total tests passing: 81 dsl, 59 checker, 212 web, 144 server in 13.786s).
+  - `pnpm --filter @repo/web build` -> pass (built in 191ms, 0 errors).
+- **Known issues / debt:**
+  - Project versions endpoints (`/api/projects/:id/versions`) are implemented on server but unused by web frontend v1; cloud binding tracks `baseVersion: number` solely for optimistic concurrency.
+  - Concurrent tab coordination relies on optimistic concurrency (409) rather than BroadcastChannel or WebSockets (deferred to S4 CRDT/sync).
+- **Next steps:**
+  - User to execute manual browser test script and commit changes manually.
+
 ### W-023 | 2026-10-05 | Project save/load API for apps/server: CRUD, optimistic concurrency, version history, text safety, and rate limiting
 - **Status:** DONE
 - **Git:** uncommitted (user commits manually). Suggested message: `feat(server): implement project save/load API with optimistic concurrency, versioning, and text safety`
