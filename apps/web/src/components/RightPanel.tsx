@@ -53,6 +53,8 @@ interface RightPanelProps {
     patch: { name?: string; kind?: EntityKind; description?: string | null },
   ) => void;
   onDeleteEntity: (id: string) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -82,9 +84,15 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onAddEntity,
   onUpdateEntity,
   onDeleteEntity,
+  isCollapsed = false,
+  onToggleCollapse,
 }) => {
   return (
-    <aside className="right-sidebar" aria-label="Editor Sidebar">
+    <aside
+      className={`right-sidebar ${isCollapsed ? "collapsed" : ""}`}
+      aria-label="Editor Sidebar"
+      aria-hidden={isCollapsed}
+    >
       <nav className="sidebar-tabs" role="tablist" aria-label="Sidebar Sections">
         <button
           type="button"
@@ -142,6 +150,17 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           <span className="tab-label">Entities</span>
           <span className="tab-badge">{(project.entities ?? []).length}</span>
         </button>
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="sidebar-tab-collapse-btn"
+            onClick={onToggleCollapse}
+            title="Collapse sidebar (Ctrl+\)"
+            aria-label="Collapse sidebar"
+          >
+            ✕
+          </button>
+        )}
       </nav>
 
       <div className="tab-content">

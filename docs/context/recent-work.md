@@ -22,404 +22,373 @@
 
 ---
 
-## Entries
-
-### W-037 | 2026-10-12 | Workspace URL hydration, project loading, and save-state integration
+### W-047 | 2026-10-27 | Premium Auth Experience & Signed-Out Dashboard
 - **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): URL-driven workspace hydration, project loading lifecycle, and save-state integration`
-- **Goal:** Connect /projects/:id directly to PostgreSQL project persistence via runCloudOpen, manage loading/error/unauthenticated/retry lifecycle states, mount the editor with loaded story data and cloud binding, truthful save-state feedback (Saving, Saved, Save failed, Unsaved changes), and guard against stale responses and accidental navigation.
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): premium auth experience, signed-out dashboard, and presentation layer`
+- **Goal:** Transform Lumio's sign-in, registration, and signed-out dashboard experiences into a polished, responsive, and cohesive product experience without weakening authentication, server-authoritative validation, security, or editor functionality.
 - **Files changed:**
-  - `apps/web/src/components/shell/ProjectWorkspace.tsx`: created container component orchestrating URL-driven story hydration, loading skeleton (`role="status"`), 404 not found card, 401 unauthenticated notice with auth links, recoverable error card with retry action, stale request cancellation on project switch, and mounting `MainStudio` with persisted project and binding.
-  - `apps/web/src/components/shell/index.ts`: exported `ProjectWorkspace`, `type ProjectWorkspaceProps`, and `type ProjectLoadStatus` from shell barrel.
-  - `apps/web/src/components/shell/ProjectWorkspace.test.ts`: 19 unit and integration tests covering URL parameter extraction, loading skeleton, 404, 401, network failure with retry, invalid schema/document handling, stale response guards, editor initialization, dirty tracking, saving/saved/save-failed status badges, in-flight concurrent edit preservation, version incrementing, and dashboard navigation guard.
-  - `apps/web/src/hooks/useCloud.ts`: extended `UseCloudOptions` with `initialBinding?: ProjectBinding | null` to initialize reducer with cloud binding for loaded projects.
-  - `apps/web/src/components/Toolbar.tsx`: added `isSaving` and `isSaveFailed` props, rendered truthful save-state badges (`Saving…`, `Saved`, `Save failed`, `Unsaved changes`), and added unsaved-changes confirmation prompt to `← Dashboard` backlink.
-  - `apps/web/src/App.tsx`: parameterized `MainStudio` with `initialProject`, `initialBinding`, and `initialWarnings`; wired `isSaving` and `isSaveFailed` to Toolbar; wired `ProjectWorkspace` when `route.kind === "project"`.
-  - `apps/web/src/index.css`: added scoped styles for `.save-status-badge`, `.save-pending`, `.save-success`, `.save-failed`, `.workspace-skeleton-body`, `.skeleton-bar`, `.skeleton-canvas-preview`, and reduced-motion rules.
-  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map with `ProjectWorkspace`.
-  - `docs/context/work-archive.md`: archived full entry W-028 per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-037, rotated W-028 to older work, maintaining exactly 8 full entries.
+  - `apps/web/src/components/shell/authPresentation.ts`: created pure presentation helpers exporting `PASSWORD_MIN_LENGTH = 10`, `PASSWORD_MAX_LENGTH = 128`, `validatePasswordRequirements(password)` matching server Unicode code point rules, `AUTH_FEATURES` describing 4 real Lumio capabilities, and `isDevNavVisible(isDevEnv)`.
+  - `apps/web/src/components/shell/authPresentation.test.ts`: 11 unit tests covering password boundary checks (9, 10, 128, 129 code points, emoji surrogate pairs), feature item metadata and uniqueness, and dev nav visibility in dev vs prod.
+  - `apps/web/src/components/shell/AuthShowcase.tsx`: created product showcase panel for desktop viewports (>=1024px) featuring soft gradient glow, faint dot grid, decorative 9-node animated SVG story graph with reduced-motion fallback, headline "Branch your story. Test every path.", and 3 concise capability proof points.
+  - `apps/web/src/components/shell/AuthCard.tsx`: upgraded to two-panel desktop layout (showcase + max-400px centered form panel); updated copy to "Welcome back" (login) and "Create your account" (register); added accessible password visibility eye icon button (`aria-label`, `aria-pressed`, `type="button"`); added live green check indicator for minimum 10-character password requirement in registration; added submit button loading spinner and disabled state; updated cross-links and "Back to home" navigation.
+  - `apps/web/src/components/shell/SignedOutDashboard.tsx`: created deliberate, product-oriented signed-out dashboard experience with headline "Your stories live here", primary "Sign in", secondary "Create an account", tertiary "Try the editor without an account" (/editor), 4 capability cards driven by `AUTH_FEATURES`, and a non-interactive blurred story preview strip using `sampleProject` and `buildStoryThumbnail` (`aria-hidden="true"`, `tabIndex={-1}`, pointer-events disabled).
+  - `apps/web/src/components/shell/DashboardPage.tsx`: wired `SignedOutDashboard` for unauthenticated sessions (`!loading && isUnauthenticated`), isolating signed-out users from project data, header counters, and new-story controls while preserving 100% of authenticated story management.
+  - `apps/web/src/App.tsx`: updated shell routing to exclude shared `AppHeader` on login and register routes while preserving it on landing, dashboard, and other views.
+  - `apps/web/src/components/shell/AppHeader.tsx`: gated the `Editor` `Dev` navigation item with `isDevNavVisible(import.meta.env.DEV)` and optional `isDevEnv` prop, hiding it in production while preserving direct `/editor` route access.
+  - `apps/web/src/components/shell/AuthPages.test.ts`: updated copy assertions ("Welcome back", "Create your account", cross-links, "At least 10 characters") and added tests for two-panel showcase rendering, button type, and AppHeader exclusion on auth routes (36 tests passing).
+  - `apps/web/src/components/shell/DashboardPage.test.ts`: updated unauthenticated session test to verify "Your stories live here", CTA destinations, 4 feature cards, and non-interactive preview strip (19 tests passing).
+  - `apps/web/src/components/shell/AppHeader.test.ts`: added tests verifying Editor Dev nav item is hidden in production (`isDevEnv: false`) and visible in development (`isDevEnv: true`) (15 tests passing).
+  - `apps/web/src/index.css`: added scoped styles for `.auth-` layout, showcase panel, 9-node graph pulse animation, eye toggle, password check indicator, loading spinner, and `.dash-signed-out-` hero, preview strip, and feature cards with full `prefers-reduced-motion` support.
+  - `docs/context/work-archive.md`: archived full W-039 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-047, rotated W-039 to older work, maintaining exactly 8 full entries.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map with new presentation and shell components.
 - **New/changed public APIs:**
-  - `apps/web/src/components/shell/ProjectWorkspace.tsx`:
-    - `ProjectWorkspace: React.FC<ProjectWorkspaceProps>`
-    - `type ProjectWorkspaceProps = { projectId: string; client?: ApiClient }`
-    - `type ProjectLoadStatus = "loading" | "loaded" | "notFound" | "unauthenticated" | "error"`
-  - `apps/web/src/App.tsx`:
-    - `interface MainStudioProps { initialProject?: Project; initialBinding?: ProjectBinding | null; initialWarnings?: string[] }`
-    - `MainStudio: React.FC<MainStudioProps>`
-  - `apps/web/src/hooks/useCloud.ts`:
-    - `UseCloudOptions`: added optional `initialBinding?: ProjectBinding | null`
+  - `apps/web/src/components/shell/authPresentation.ts`:
+    - `PASSWORD_MIN_LENGTH: 10`
+    - `PASSWORD_MAX_LENGTH: 128`
+    - `validatePasswordRequirements(password: string): PasswordRequirementState`
+    - `AUTH_FEATURES: readonly AuthFeatureItem[]`
+    - `isDevNavVisible(isDevEnv: boolean | undefined): boolean`
+  - `apps/web/src/components/shell/AuthShowcase.tsx`:
+    - `AuthShowcase: React.FC`
+  - `apps/web/src/components/shell/SignedOutDashboard.tsx`:
+    - `SignedOutDashboard: React.FC`
+  - `apps/web/src/components/shell/AppHeader.tsx`:
+    - `AppHeaderProps.isDevEnv?: boolean`
 - **Decisions and why:**
-  - URL as single source of truth: `/projects/:id` uses the URL parameter directly, loads through `runCloudOpen`, and never displays fixture or sample content during load or after failure.
-  - Keyed unmount/remount on project switch: Wrapped `MainStudio` in `<ReactFlowProvider key={projectId}>` so navigating between projects triggers a clean unmount and remount, completely preventing editor state or binding leaks across project IDs.
-  - Active flag cancellation: `useEffect` in `ProjectWorkspace` uses `let active = true` cleanup flag to discard in-flight HTTP responses from previous project IDs if the user navigates before completion.
-  - Truthful save states: Distinct visual badges in Toolbar for "Saving…" (in-flight), "Saved" (confirmed clean persistence), "Save failed" (retaining local edits), and "Unsaved changes" (dirty baseline).
-  - Concurrent edit preservation: When local edits occur while a save request is in flight, `computeNextCleanMarker` marks only the submitted snapshot clean; newer edits remain dirty.
-  - Explicit persistence model: Kept user-triggered persistence without debounced autosave to prevent excessive row-locked version creation and rate limiting.
-  - Unsaved navigation guard: Attached confirmation dialog to `← Dashboard` backlink in `Toolbar`, halting navigation on cancel while preserving standard browser `beforeunload` for tab close/reload.
+  - Exact Unicode password validation parity (Scope A): Password length validation in `validatePasswordRequirements` uses `Array.from(password).length`, identical to `apps/server/src/auth/password.ts:11-15`. Correctly handles surrogate pairs (e.g. emojis). Client feedback is strictly for presentation and does not bypass server-authoritative validation.
+  - Clean separation of showcase and form (Scope B): At >=1024px, a two-panel CSS grid layout provides a rich narrative engineering atmosphere with the 9-node decorative SVG story graph on the left and a focused 400px form on the right. Below 1024px, the showcase panel is cleanly hidden (`display: none`), centering the form without clutter or horizontal overflow.
+  - Keyboard and accessibility safety (Scope B): Password toggle button is explicitly `type="button"` with `aria-label` and `aria-pressed`, preventing accidental form submission when toggling visibility. The error banner includes `role="alert"` and `aria-live="polite"`.
+  - Truthful signed-out dashboard (Scope C): Replacing the generic session notice with `SignedOutDashboard` showcases Lumio's capabilities using `AUTH_FEATURES` and a non-interactive blurred story preview based on `sampleProject`. No fake session state or mock dashboard data is added to authenticated workflows.
+  - Non-interactive preview isolation (Scope C): The preview strip is marked `aria-hidden="true"` with `tabIndex={-1}` and CSS `pointer-events: none`, ensuring screen readers and keyboard navigation completely skip decorative preview cards.
+  - Shell header exclusion on auth routes (Scope D): `App.tsx` evaluates `isAuthRoute = route.kind === "login" || route.kind === "register"` to omit `AppHeader`, giving the auth pages a dedicated, distraction-free layout with their own "Back to home" navigation.
+  - Environment-gated Editor Dev nav (Scope D): `isDevNavVisible(import.meta.env.DEV)` gates the header's Editor Dev link in production builds without gating or restricting direct access to `/editor`.
 - **Assumptions / UNVERIFIED:**
-  - Manual browser testing in dev server (`pnpm dev`) across live project navigation and editing flows is UNVERIFIED until physical user review.
+  - Manual browser testing in dev server (`pnpm dev`) is UNVERIFIED until physical user review.
 - **Verification:**
-  - `pnpm --filter @repo/web test src/components/shell/ProjectWorkspace.test.ts` -> pass (19/19 tests passed in 30ms).
-  - `pnpm --filter @repo/web test` -> pass (491 web tests passed across 33 test files).
+  - `pnpm --filter @repo/web test src/components/shell/authPresentation.test.ts` -> pass (11/11 tests passed in 12ms).
+  - `pnpm --filter @repo/web test src/components/shell/AuthPages.test.ts` -> pass (36/36 tests passed in 637ms).
+  - `pnpm --filter @repo/web test src/components/shell/DashboardPage.test.ts` -> pass (19/19 tests passed in 113ms).
+  - `pnpm --filter @repo/web test src/components/shell/AppHeader.test.ts` -> pass (15/15 tests passed in 55ms).
+  - `pnpm --filter @repo/web test` -> pass (50 test files, 650 passed in 2.25s).
   - `pnpm --filter @repo/web typecheck` -> pass (`tsc --noEmit` exited 0).
   - `pnpm --filter @repo/web lint` -> pass (`eslint .` exited 0).
-  - `pnpm --filter @repo/web build` -> pass (built in 2.62s; CSS 84.68 kB, JS 680.02 kB).
-  - Monorepo recursive verification: `pnpm -r run typecheck` (5/5 packages clean), `pnpm -r run lint` (5/5 packages clean), `pnpm -r run test` (831 total tests passing across all packages: 104 dsl, 82 checker, 154 server, 491 web).
-  - Root gate `pnpm check` -> pass (14/14 turbo tasks successful).
-- **Known issues / debt:**
-  - Standard HTML5 History `popstate` cannot be synchronously intercepted without synthetic history hacks; in-app backlink and tab close are fully protected.
-- **Next steps:**
-  - User to review changes and commit manually.
-  - Proceed to W-038 (Markdown node body authoring and preview) upon authorization.
-
-### W-036 | 2026-10-12 | Story Dashboard: project listing, creation, deletion, and session handling
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): implement story dashboard with project listing, creation, and deletion`
-- **Goal:** Replace /dashboard placeholder with a functional, responsive narrative project management hub using Lumio's existing APIs, types, and dark engineering visual identity.
-- **Files changed:**
-  - `apps/web/src/components/shell/CreateStoryDialog.tsx`: created accessible `<dialog>` modal with title input, autofocus, validation (required, <= 120 chars), pending state, and error handling.
-  - `apps/web/src/components/shell/DeleteStoryDialog.tsx`: created accessible confirmation modal explicitly identifying story title, permanent deletion warning callout, pending state, and server error handling.
-  - `apps/web/src/components/shell/DashboardPage.tsx`: implemented main dashboard page with header, user session badge, loading skeleton (`role="status"`), populated story cards with version chips and formatted dates, empty state card with CTA, error card with retry button, session expired notice (401) with `/login` and `/register` links, creation flow navigating to server-returned project ID, and deletion flow removing story on 204 success.
-  - `apps/web/src/components/shell/index.ts`: exported `DashboardPage`, `CreateStoryDialog`, and `DeleteStoryDialog` from shell barrel.
-  - `apps/web/src/App.tsx`: wired `DashboardPage` in place of `DashboardPlaceholder` when `route.kind === "dashboard"`.
-  - `apps/web/src/index.css`: added scoped CSS for `.dashboard-*`, `.story-card`, loading skeleton, empty state, error card, delete modal, responsive layout, and reduced motion.
-  - `apps/web/src/components/shell/DashboardPage.test.ts`: 19 unit and integration tests covering loading state, populated cards, empty state, 401 unauthenticated notice, retry action, title validation (empty, > 120 chars), schema versioning (CURRENT_SCHEMA_VERSION = 2), server ID navigation, delete dialog and execution, and AppHeader navigation indication.
-  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map with `DashboardPage`, `CreateStoryDialog`, and `DeleteStoryDialog`.
-  - `docs/context/work-archive.md`: archived full entry W-027 per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-036, rotated W-027 to older work, maintaining exactly 8 full entries.
-- **New/changed public APIs:**
-  - `apps/web/src/components/shell/DashboardPage.tsx`:
-    - `DashboardPage: React.FC<DashboardPageProps>`
-    - `type DashboardPageProps`
-  - `apps/web/src/components/shell/CreateStoryDialog.tsx`:
-    - `CreateStoryDialog: React.FC<CreateStoryDialogProps>`
-    - `type CreateStoryDialogProps`
-  - `apps/web/src/components/shell/DeleteStoryDialog.tsx`:
-    - `DeleteStoryDialog: React.FC<DeleteStoryDialogProps>`
-    - `type DeleteStoryDialogProps`
-- **Decisions and why:**
-  - Real API contracts without fabricated metrics: `ProjectSummaryDto` exposes `id`, `name`, `createdAt`, `updatedAt`, `latestVersion`. Story cards display only these verified contract properties, strictly omitting fabricated document-level metrics (node count, word count, edge count) per R1.1.
-  - Honest boundary with W-037: Navigating to `/projects/:id` continues to render `ProjectWorkspacePlaceholder` (which states hydration is scheduled for W-037), without prematurely mounting the sample editor or faking project document hydration.
-  - Server-assigned navigation on creation: Project creation uses `makeEmptyProject` with `CURRENT_SCHEMA_VERSION = 2`. On success, navigation directs strictly to `res.data.project.id` returned by the server, never a client-generated UUID.
-  - Explicit 401 session handling: 401 responses display a distinct "Authentication Required" session notice card with direct links to `/login` and `/register`, and are never silently converted into an empty project list (`projects: []`).
-  - Two-step deletion safety: Requires explicit confirmation via modal identifying the project name; only removes the story from the list after the backend returns 204 success, preserving the card and showing an error message on failure.
-  - Zero new dependencies: All UI components use semantic HTML5 (`<main>`, `<dialog>`, `<article>`, `<header>`) and Vanilla CSS adhering to the existing Lumio dark tokens.
-- **Assumptions / UNVERIFIED:**
-  - Manual browser testing of interactive creation and deletion flows in live browser is UNVERIFIED until physical browser review.
-- **Verification:**
-  - `pnpm --filter @repo/web test src/components/shell/DashboardPage.test.ts` -> pass (19 tests passed)
-  - `pnpm --filter @repo/web test` -> pass (472 web tests passed across 32 test files)
-  - `pnpm --filter @repo/web typecheck` -> pass (tsc --noEmit clean)
-  - `pnpm --filter @repo/web lint` -> pass (eslint clean, 0 errors, 0 warnings)
-  - `pnpm --filter @repo/web build` -> pass (built in 222ms; dist/assets/index-B1W1OxlA.js 674.72 kB gzip 195.87 kB, CSS 83.06 kB gzip 13.39 kB)
-  - Monorepo recursive gates:
-    - `pnpm -r run typecheck` -> pass (5/5 workspace projects)
-    - `pnpm -r run lint` -> pass (5/5 workspace projects)
-    - `pnpm -r run test` -> pass (812 tests passed: 104 dsl, 82 checker, 154 server, 472 web)
+  - `pnpm --filter @repo/web build` -> pass (360 modules transformed, dist built cleanly in 343ms).
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 turbo tasks successful, 0 errors across 5 workspaces in 14.33s).
+  - Root gate `pnpm check` -> pass (14/14 turbo tasks successful, 0 errors across 5 workspaces in 7.65s).
 - **Known issues / debt:** none
 - **Next steps:**
-  - TASK W-037: Project Workspace Hydration (connect project route /projects/:id with project document fetching and editor state).
-
-### W-035 | 2026-10-12 | Dedicated authentication pages: /login, /register, and form validation
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add dedicated authentication pages (/login, /register) with client validation`
-- **Goal:** Implement dedicated, accessible full-page authentication experiences for `/login` and `/register` using existing router and auth backend; provide client-side validation, password visibility toggle, pending submission states, actionable error feedback, and redirect to `/dashboard`.
-- **Files changed:**
-  - `apps/web/src/components/shell/AuthCard.tsx`: implemented shared accessible auth card container with email validation, Unicode code-point password length check (10..128 code points), show/hide toggle button, polite aria-live error banners, pending states, and server outcome mapping.
-  - `apps/web/src/components/shell/LoginPage.tsx`: implemented dedicated `/login` page component routing to `/dashboard` on sign-in.
-  - `apps/web/src/components/shell/RegisterPage.tsx`: implemented dedicated `/register` page component with 10-character password guidance routing to `/dashboard` on registration.
-  - `apps/web/src/components/shell/index.ts`: exported `AuthCard`, `LoginPage`, and `RegisterPage` from shell barrel.
-  - `apps/web/src/App.tsx`: wired `LoginPage` and `RegisterPage` for `route.kind === "login"` and `"register"` routes.
-  - `apps/web/src/index.css`: added scoped `.auth-page`, `.auth-card`, inputs, password toggle, banners, focus rings, responsive padding, and reduced-motion rules.
-  - `apps/web/src/components/shell/AuthPages.test.ts`: 34 unit and integration tests covering email/password validation, surrogate-pair code point counting, error mapping, SSR semantic markup, API client outcomes, and shell navigation.
-  - `docs/ARCHITECTURE.md`: updated Repo map in Section 3 to document `LoginPage`, `RegisterPage`, and `AuthCard`.
-  - `docs/context/work-archive.md`: archived full entry W-026 per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-035, rotated W-026 to older work, maintained 8 full entries.
-- **New/changed public APIs:**
-  - `apps/web/src/components/shell/AuthCard.tsx`:
-    - `isValidEmail(email: string): boolean`
-    - `countCodePoints(str: string): number`
-    - `validateEmailField(email: string): string | undefined`
-    - `validatePasswordField(password: string, mode: "login" | "register"): string | undefined`
-    - `formatAuthOutcomeError(outcome: AuthOutcome, mode: "login" | "register"): string`
-    - `AuthCard: React.FC<AuthCardProps>`
-  - `apps/web/src/components/shell/LoginPage.tsx`:
-    - `LoginPage: React.FC<LoginPageProps>`
-  - `apps/web/src/components/shell/RegisterPage.tsx`:
-    - `RegisterPage: React.FC<RegisterPageProps>`
-- **Decisions and why:**
-  - Reused existing authentication backend & API client: Directly invoked `runAuthLogin` and `runAuthRegister` from `cloud/outcomes.ts` over `createApiClient` without creating parallel clients, duplicate state, or custom endpoints.
-  - Server-identical password length semantics: Used `Array.from(password).length` (Unicode code points) matching backend `validatePassword` in `apps/server/src/auth/password.ts`, ensuring emojis and surrogate pairs are validated identically.
-  - Accessible password visibility control: Provided keyboard-accessible `<button type="button">` with dynamic `aria-label` and `aria-pressed`, switching input `type` between `password` and `text`.
-  - Sensitive credential disposal: Password state is cleared immediately upon capture in `handleSubmit`, on successful submission, and on component unmount, while retaining email in state so users don't have to retype it after errors.
-  - Safe client routing: On successful authentication, client calls `navigate("/dashboard")` without adding unapproved query parameters or auth guard redirect loops.
-- **Assumptions / UNVERIFIED:**
-  - Automated tests and production bundle compilation verified; manual browser interaction in dev server is UNVERIFIED until user testing.
-- **Verification:**
-  - `pnpm --filter @repo/web test src/components/shell/AuthPages.test.ts` -> pass (34/34 tests passed in 29ms).
-  - `pnpm --filter @repo/web test` -> pass (453/453 tests passed across 31 test files in 1.88s).
-  - `pnpm --filter @repo/web typecheck` -> pass (`tsc --noEmit` exited 0).
-  - `pnpm --filter @repo/web lint` -> pass (`eslint .` exited 0).
-  - `pnpm --filter @repo/web build` -> pass (built in 400ms; CSS 72.48 kB, JS 662.87 kB).
-  - Monorepo recursive verification: `pnpm -r run typecheck` (5/5 packages passed), `pnpm -r run lint` (5/5 packages passed), `pnpm -r run test` (793 total tests passing across all 4 test-bearing packages: 104 dsl, 82 checker, 154 server, 453 web).
-- **Known issues / debt:**
-  - None.
-- **Next steps:**
-  - User to conduct manual browser verification in dev mode (`pnpm dev`) and commit changes.
-  - Proceed to W-036 (Story Dashboard) upon authorization.
-
-### W-034 | 2026-10-09 | Landing page: product introduction, authentic visual preview, and capabilities
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): add product landing page with authentic visual workflow and capabilities`
-- **Goal:** Implement the product landing page at `/` introducing Lumio as a narrative-engineering workbench for branching game stories; provide authentic visual preview grounded in verified prologue sample fixture; explain core capabilities and authoring workflow pipeline; provide primary and secondary calls to action to `/editor` and `/dashboard`.
-- **Files changed:**
-  - `apps/web/src/components/shell/LandingPage.tsx`: implemented semantic landing page with hero, authentic fixture-backed workbench preview, 5 core capabilities, 4-step pipeline, CTA banner, and accessible footer.
-  - `apps/web/src/components/shell/index.ts`: created barrel exports for shell components (`AppHeader`, `LandingPage`, placeholders).
-  - `apps/web/src/components/shell/LandingPage.test.ts`: 7 unit tests verifying single semantic `h1`, accessible landmark, CTA destinations, fixture rule IDs, capabilities, workflow steps, and footer.
-  - `apps/web/src/App.tsx`: mounted `LandingPage` for `route.kind === "landing"`.
-  - `apps/web/src/index.css`: added scoped `.landing-*` styles, responsive grid/flex layouts, touch targets, focus indicators, and reduced-motion rules.
-  - `docs/ARCHITECTURE.md`: updated Repo map in Section 3 to document `LandingPage` and shell barrel.
-  - `docs/context/work-archive.md`: archived full entry W-025 per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-034, rotated W-025 to older work, maintained 8 full entries.
-- **New/changed public APIs:**
-  - `apps/web/src/components/shell/LandingPage.tsx`:
-    - `LandingPage: React.FC`
-  - `apps/web/src/components/shell/index.ts`:
-    - exports `AppHeader`, `LandingPage`, `LandingPlaceholder`, `DashboardPlaceholder`, `AuthPlaceholder`, `ProjectWorkspacePlaceholder`, `NotFoundPage`
-- **Decisions and why:**
-  - Authentic visual fixture integrity: Product showcase mini-canvas and diagnostics sidebar strictly reflect real nodes (`Favonius Cathedral`, `Starsnatch Precipice`, `Song of Freedom`) and verified checker rules (`cannot-reach-end`, `undefined-variable`, `variable-never-read`) from `sampleProject.ts`, with an explicit fixture label rather than fabricated live runtime or misleading "0 errors" claims.
-  - Clean client routing CTAs: Primary CTA leads to `/editor` (launching the development editor with back-navigation to dashboard), secondary CTA leads to `/dashboard`.
-  - Zero external dependencies: Built with semantic HTML5 elements (`<main id="main-content">`, `<section aria-labelledby="...">`, `<article>`, `<footer>`) and scoped CSS using existing `:root` design tokens.
-  - Responsive & motion-safe: Fluid clamp font sizes, grid layouts collapsing on tablet/mobile with horizontal scroll protection for canvas, min 44px touch targets, and `prefers-reduced-motion` overrides.
-- **Assumptions / UNVERIFIED:**
-  - Automated tests and bundle compilation verified; cross-browser touch and rendering on physical mobile devices is UNVERIFIED until manual browser verification.
-- **Verification:**
-  - `pnpm --filter @repo/web test src/components/shell/LandingPage.test.ts` -> pass (7/7 tests passed in 11ms).
-  - `pnpm --filter @repo/web test src/router/` -> pass (34/34 tests passed in 7ms).
-  - `pnpm --filter @repo/web typecheck` -> pass (`tsc --noEmit` exited 0).
-  - `pnpm --filter @repo/web lint` -> pass (`eslint .` exited 0).
-  - `pnpm --filter @repo/web build` -> pass (built in 166ms; CSS 68.38 kB, JS 658.35 kB).
-  - `pnpm check` -> pass (14/14 turbo tasks successful across all packages; 759 total tests passing: 104 dsl, 82 checker, 154 server, 419 web in 10.106s).
-- **Known issues / debt:**
-  - None.
-- **Next steps:**
-  - User to conduct manual browser verification in dev mode (`pnpm dev`) and commit changes.
-
-### W-033 | 2026-10-09 | Application shell, client-side routing, and view container layout
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): application shell, lightweight client router, and view container layout`
-- **Goal:** Implement zero-dependency typed client router with History API and popstate handling, application shell layout with accessible navigation header, honest placeholder pages for Landing (/), Dashboard (/dashboard), Auth (/login, /register), and Project workspace (/projects/:id), while preserving the full existing editor canvas at /editor.
-- **Files changed:**
-  - `apps/web/src/router/types.ts`: defined typed `Route` union (`landing`, `login`, `register`, `dashboard`, `editor`, `project`, `notFound`) and `NavigationOptions`.
-  - `apps/web/src/router/router.ts`: implemented pure `normalizePath`, `safeDecodeURIComponent`, `matchPath`, `formatPath`, and `navigate` dispatcher with `NAVIGATE_EVENT`.
-  - `apps/web/src/router/useRouter.ts`: implemented custom React hook listening to `popstate` and `NAVIGATE_EVENT` with clean listener unmount lifecycle.
-  - `apps/web/src/router/Link.tsx`: implemented accessible `Link` component preserving modifier keys, middle clicks, external targets, and external protocols.
-  - `apps/web/src/router/index.ts`: exported router types, functions, and components.
-  - `apps/web/src/router/router.test.ts`: 27 unit tests covering normalization, safe URI decoding, static routes, parameterized `/projects/:id`, malformed encodings, formatting, and history operations.
-  - `apps/web/src/router/navigation.test.ts`: 7 unit tests covering `Link` click interception, modifier keys, middle clicks, external targets, and `useRouter` listener cleanup.
-  - `apps/web/src/components/shell/AppHeader.tsx`: created top navigation bar with logo, active link indication via `aria-current="page"`, and auth action links.
-  - `apps/web/src/components/shell/Placeholders.tsx`: created honest, accessible placeholder views for Landing, Dashboard, Login, Register, Project workspace (with explicit note that rehydration is scheduled for W-037), and 404 Not Found.
-  - `apps/web/src/components/Toolbar.tsx`: added "← Dashboard" link in editor header-left for returning to dashboard from development canvas.
-  - `apps/web/src/App.tsx`: wired `useRouter` to render shell and placeholders for general routes, and mounted `<ReactFlowProvider><MainStudio /></ReactFlowProvider>` cleanly when `route.kind === "editor"`.
-  - `apps/web/src/index.css`: styled `.app-shell`, `.shell-header`, navigation links, active badges, and placeholder cards.
-  - `docs/ARCHITECTURE.md`: updated Repo map to reflect router and shell modules.
-  - `docs/context/work-archive.md`: archived full entry W-024 per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-033, rotated W-024 to older work.
-- **New/changed public APIs:**
-  - `apps/web/src/router/types.ts`:
-    - `type Route = { kind: "landing" } | { kind: "login" } | { kind: "register" } | { kind: "dashboard" } | { kind: "editor" } | { kind: "project"; projectId: string } | { kind: "notFound"; path: string }`
-    - `interface NavigationOptions { replace?: boolean }`
-  - `apps/web/src/router/router.ts`:
-    - `safeDecodeURIComponent(str: string): string | null`
-    - `normalizePath(rawPath: string): string`
-    - `matchPath(pathname: string): Route`
-    - `formatPath(route: Route): string`
-    - `navigate(to: string | Route, options?: NavigationOptions): void`
-  - `apps/web/src/router/useRouter.ts`:
-    - `useRouter(): UseRouterResult`
-  - `apps/web/src/router/Link.tsx`:
-    - `Link(props: LinkProps): React.JSX.Element`
-- **Decisions and why:**
-  - Zero-dependency routing: implemented lightweight ~100-line typed pathname router in pure TypeScript to adhere to R2.4 and avoid bundle weight.
-  - Separate development editor entry point: `/editor` mounts `MainStudio` with all canvas, toolbar, diagnostics, and dialogs intact; `/projects/:id` renders an honest project placeholder clearly disclosing that rehydration will be implemented in W-037 (per explicit user instruction).
-  - Preserved Link behaviors: `Link` checks `e.button === 0`, absence of modifier keys (`metaKey`, `altKey`, `ctrlKey`, `shiftKey`), internal paths, and non-external targets before intercepting with `e.preventDefault()`, preserving native browser tab opening.
-  - Error-resilient URI decoding: `safeDecodeURIComponent` wraps `decodeURIComponent` in `try/catch` to map malformed percent sequences (e.g. `/projects/%E0%A4%A`) safely to `notFound` without uncaught runtime exceptions.
-- **Assumptions / UNVERIFIED:**
-  - Manual browser testing across all 9 checklist items requires live browser execution (automated tests and build verified).
-- **Verification:**
-  - Monorepo gate: `pnpm check` -> pass (14/14 tasks successful, 752 total tests passing: 104 dsl, 82 checker, 154 server, 412 web).
-  - Focused routing tests: 34 tests passing across `router.test.ts` (27) and `navigation.test.ts` (7).
-  - Web production build: `pnpm --filter @repo/web build` -> pass (built in 564ms, CSS: 56.85 kB, JS: 644.83 kB).
-  - TypeScript strict typecheck: `pnpm --filter @repo/web typecheck` -> pass (0 errors).
-  - ESLint 10: `pnpm --filter @repo/web lint` -> pass (0 warnings, 0 errors).
-- **Known issues / debt:**
-  - `/projects/:id` does not rehydrate story data from server (explicitly deferred to W-037).
-  - Landing and dashboard are minimal placeholders (scheduled for W-034 and W-036).
-- **Next steps:**
-  - User to review changes and commit manually.
-  - Proceed to W-034 (marketing landing page) upon approval.
-
-### W-031 | 2026-10-07 | Story simulation and path coverage report with topological cross-checking
-- **Status:** DONE
-- **Git:** committed (`a0e9d983b4b48edf3e9b01760c98be2ec4bfb17c`). Promoted to `stable-013`.
-- **Goal:** Implement pure deterministic Monte Carlo simulation engine with inline mulberry32 PRNG and shared AST caching in `apps/web/src/playtest`, topological BFS cross-checking analysis against dynamic coverage, scale benchmark measurements on 300 and 1,000 nodes, and native `<dialog>` SimulationDialog modal with canvas selection.
-- **Files changed:**
-  - `apps/web/src/playtest/types.ts`: added optional `cache?: SessionParseCache` to `StartSessionOptions` (boundary exception).
-  - `apps/web/src/playtest/session.ts`: used `options?.cache` via `Object.assign` to reuse condition and effect AST parses across simulation runs without removing any lines.
-  - `apps/web/src/playtest/session.test.ts`: added test asserting shared cache and fresh cache produce identical choices and statuses across choose sequence.
-  - `apps/web/src/playtest/simulate.ts`: implemented pure Monte Carlo simulation engine with inline mulberry32 PRNG, bounded input clamping, distinct per-run visit tracking, and honesty confidence note.
-  - `apps/web/src/playtest/simulate.test.ts`: 12 tests covering hand-crafted graphs, clamping, distinct run visit counting, determinism (Property S2), frozen safety, and generator project invariants (Property S1).
-  - `apps/web/src/playtest/crossCheck.ts`: implemented pure topological BFS reachability and cross-checking against simulation coverage, producing ordered findings.
-  - `apps/web/src/playtest/crossCheck.test.ts`: 7 tests covering all 6 finding kinds, strict kind-hierarchy ordering, `sampleProject` defects, and generator robustness (Property S3).
-  - `apps/web/src/benchmark/measure.ts`: extended scale benchmark with simulate timings (200 runs, 5 reps) on 300, 1,000, and 3,000 nodes.
-  - `apps/web/src/components/SimulationDialog.tsx`: native `<dialog>` modal with runs/steps/seed inputs, clamping display, summary cards, endings table, grouped findings with canvas selection, and confidence note.
-  - `apps/web/src/components/Toolbar.tsx`: added Simulate button next to Playtest with trigger ref for accessible focus return.
-  - `apps/web/src/App.tsx`: wired SimulationDialog open state, project snapshot, target selection, and trigger ref.
-  - `apps/web/src/index.css`: styled SimulationDialog elements with strict `sim-` prefix.
-  - `docs/ARCHITECTURE.md`: added Section 17 "Simulation & Coverage Analysis", updated repo map and debt list.
-  - `docs/context/work-archive.md`: archived full entry W-023 per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-031, rotated W-023 to older work.
-- **New/changed public APIs:**
-  - `apps/web/src/playtest/types.ts`:
-    - `StartSessionOptions`: added optional `cache?: SessionParseCache`
-  - `apps/web/src/playtest/simulate.ts`:
-    - `interface SimulateOptions { seed?: number; runs?: number; maxSteps?: number; startNodeId?: string }`
-    - `interface SimulationOutcomeCounts { ended: number; stuck: number; stepLimit: number; error: number }`
-    - `interface SimulationReport { ok: true; runs: number; outcomeCounts: SimulationOutcomeCounts; endCounts: ReadonlyMap<string, number>; stuckCounts: ReadonlyMap<string, number>; visitCounts: ReadonlyMap<string, number>; edgeTakenCounts: ReadonlyMap<string, number>; neverVisited: readonly string[]; neverTakenEdges: readonly string[]; neverAvailableEdges: readonly string[]; stepLimitRuns: number; averageSteps: number; longestRun: number; startNodeId: string; seed: number; clamped: readonly string[]; confidenceNote: string }`
-    - `type SimulateResult = SimulationReport | { ok: false; error: "no-start-node" }`
-    - `simulate(project: Project, options?: SimulateOptions): SimulateResult`
-  - `apps/web/src/playtest/crossCheck.ts`:
-    - `type FindingKind = "never-visited-but-reachable" | "unreachable-confirmed" | "ending-never-reached" | "edge-never-available" | "stuck-spot" | "loop-suspect"`
-    - `interface Finding { kind: FindingKind; nodeId?: string; edgeId?: string; message: string }`
-    - `crossCheck(project: Project, report: SimulationReport): readonly Finding[]`
-- **Decisions and why:**
-  - Mulberry32 PRNG: implemented inline deterministic 32-bit generator without external dependencies or global state (Design A).
-  - Shared parse cache: `SessionParseCache` passed via `StartSessionOptions` to avoid re-parsing conditions and effects across 500+ runs, achieving ~90ms simulation on 300 nodes, ~320ms on 1000 nodes, and ~975ms on 3000 nodes (Boundary exception).
-  - Independent topological BFS: `crossCheck.ts` performs its own reachability BFS rather than importing `@repo/checker` to ensure comparison independence.
-  - Honesty rule: random simulation confirms reachability, not unreachability; report includes explicit confidence note quoting sample size and minimum observed visit frequency.
-  - CSS scoping: all new classes strictly prefixed `sim-` to guarantee zero style collisions.
-- **Assumptions / UNVERIFIED:** none (manual browser validation verified by user).
-- **Verification:**
-  - Manual browser validation: verified by user (Simulate toolbar button, dialog open/focus, default inputs 200/100/1337, summary stats, endings table, findings list, Show on canvas navigation, Close/Escape dismiss without canvas mutation).
-  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 718 total tests passing: 104 dsl, 82 checker, 154 server, 378 web).
-  - Scale benchmark: `simulate()` runs in 90.81 ms median on 300 nodes, 328.25 ms median on 1,000 nodes, and 975.23 ms median on 3,000 nodes (runs=200, 5 reps).
-  - Web production build: `pnpm --filter @repo/web build` -> pass (CSS 52.03 kB, JS 634.17 kB; delta +11.07 kB JS, +4.01 kB CSS vs discovery baseline).
-- **Known issues / debt:**
-  - Uniform random policy without branch weights.
-  - No variable-aware guided search / SAT solving.
-  - Trajectory replay traces not persisted.
-  - Synchronous main-thread execution bounded by input limits.
-- **Next steps:**
-  - Tag `stable-013`: `git tag stable-013 a0e9d98` (user runs manually per R6.1).
-
-### W-030 | 2026-10-07 | Playtest mode: pure evaluator, session engine, and modal dialog
-- **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat: implement playtest evaluator in @repo/dsl, session engine, and PlaytestDialog in apps/web`
-- **Goal:** Implement additive expression evaluator and effect applicator in `@repo/dsl`, immutable deterministic playtest session engine with parse caching in `apps/web/src/playtest`, and native `<dialog>` PlaytestDialog with choices, variables diffing, visited trail, and focus management.
-- **Files changed:**
-  - `packages/dsl/src/evaluator.ts`: implemented pure evaluator (`evaluateExpr`, `evaluateCondition`, `applyEffect`, `initialState`) with strict runtime typing, short-circuiting `&&`/`||`, division-by-zero/non-finite checks, and immutable state updates.
-  - `packages/dsl/src/evaluator.test.ts`: 23 unit and property tests covering all operators, short-circuiting error suppression, division by zero, -0 arithmetic, non-mutation, Property T4 (type soundness), Property T5 (oracle vs mini-eval), and Property T6 (no-crash fuzzing).
-  - `packages/dsl/src/index.ts`: exported evaluator types and functions.
-  - `apps/web/src/playtest/types.ts`: defined Session, Step, Choice, SessionStatus, and session engine interfaces.
-  - `apps/web/src/playtest/session.ts`: implemented `startSession`, `listChoices`, `choose`, `back`, and `restart` with per-session parse caching, atomic effect application, and 1,000-step history cap.
-  - `apps/web/src/playtest/session.test.ts`: 21 unit and property tests covering choices ordering, blocked/error statuses, atomic rollback, deep-freeze snapshot safety, 1,000-step history cap, status priority, and Property P1 random walk traversal on benchmark graphs.
-  - `apps/web/src/components/PlaytestDialog.tsx`: created native `<dialog>` modal with fresh session lifecycle on open, "Start from selected node" checkbox, speaker resolution, pre-wrap body text, choices list, variables table with last-step diff highlights (capped at 200), visited trail (last 50), Back/Restart, and "Show on canvas" selection.
-  - `apps/web/src/components/Toolbar.tsx`: added Playtest button with trigger ref for accessible focus return.
-  - `apps/web/src/App.tsx`: wired PlaytestDialog open state, pass present project snapshot and selected node, and guarded global keydown listener against dialog focus.
-  - `apps/web/src/index.css`: styled Playtest dialog, story/choices pane, variables table, status banners, and visited trail.
-  - `docs/ARCHITECTURE.md`: added Playtest section with runtime semantics and checker contrast, updated repo map, and documented playtest technical debt items.
-  - `docs/context/work-archive.md`: archived full W-022 entry per 8-entry rolling cap.
-  - `docs/context/recent-work.md`: recorded entry W-030, rotated W-022 to older work.
-- **New/changed public APIs:**
-  - `@repo/dsl`:
-    - `type Value = number | string | boolean`
-    - `type VariableState = ReadonlyMap<string, Value>`
-    - `type EvalErrorCode = "undefined-variable" | "type-mismatch" | "division-by-zero" | "non-finite-number"`
-    - `interface EvalError { code: EvalErrorCode; message: string; start: number; end: number }`
-    - `type EvalResult<T> = { ok: true; value: T } | { ok: false; error: EvalError }`
-    - `type EffectResult = { ok: true; state: ReadonlyMap<string, Value> } | { ok: false; error: EvalError }`
-    - `initialState(variables: readonly Variable[]): ReadonlyMap<string, Value>`
-    - `evaluateExpr(expr: Expr, state: VariableState): EvalResult<Value>`
-    - `evaluateCondition(expr: Expr | undefined, state: VariableState): EvalResult<boolean>`
-    - `applyEffect(effect: Effect, state: VariableState): EffectResult`
-  - `apps/web/src/playtest/session.ts`:
-    - `startSession(project: Project, options?: StartSessionOptions): StartSessionResult`
-    - `listChoices(session: Session): readonly Choice[]`
-    - `choose(session: Session, edgeId: string): ChooseResult`
-    - `back(session: Session): Session`
-    - `restart(session: Session): Session`
-- **Decisions and why:**
-  - Strict evaluator runtime typing: operators enforce exact runtime types matching the typechecker without coercion; cross-type `==` and `!=` yield `type-mismatch` (Amendment 1).
-  - Short-circuit proof: `&&` and `||` short-circuit so undefined variables or division by zero in the right operand are never evaluated when the left operand determines the outcome (Amendment 2).
-  - Number semantics: arithmetic handles `-0` and `0` explicitly, non-finite values return `non-finite-number`, and division by zero returns `division-by-zero` (Amendment 3).
-  - Per-session parse cache: `Session` encapsulates `conditions` and `effects` AST caches to avoid duplicate parsing across choice evaluations while avoiding global module state (Amendment 4).
-  - Snapshot safety: pure session functions operate on immutable snapshots and preserve original `project` references without mutation (Amendment 5).
-  - History cap: fixed 1,000-step limit drops oldest step on 1,001st step; `back()` recovers previous steps accurately (Amendment 6).
-  - Status priority: 'end' nodes always report 'ended'; non-end nodes with 0 available choices report 'stuck' (Amendment 7).
-  - Keymap dialog guard: `handleKeyDown` checks `(e.target as HTMLElement)?.closest("dialog")` to prevent canvas deletions or undo/redo while interacting inside modal dialogs (Amendment 9).
-- **Assumptions / UNVERIFIED:**
-  - Manual browser testing script is UNVERIFIED until tested by user.
-- **Verification:**
-  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 697 total tests passing: 104 dsl, 82 checker, 154 server, 357 web).
-  - Web production build: `pnpm --filter @repo/web build` -> pass (JS: 622.97 kB, CSS: 48.02 kB).
-  - Evaluator properties: Property T4 (type soundness, 100 runs), Property T5 (oracle vs mini-eval, 100 runs), Property T6 (no-crash fuzzing, 100 runs).
-  - Session properties: Property P1 (generator walk, 30 runs, distribution: accepted=114, rejected=0, stuck=0).
-- **Known issues / debt:**
-  - Choices have no label text (edge has no label field).
-  - No random simulation / coverage (W-031).
-  - No saved playthroughs.
-  - No variable editing during playtest.
-  - Effects failing at runtime are only discovered on choose.
-  - Playtest ignores the checker's findings.
-- **Next steps:**
   - User to review changes and commit manually.
 
-### W-029 | 2026-10-07 | Entity-based checker rules and web inspector wiring
+### W-046 | 2026-10-26 | Centered, full-length editor title and universal limit
 - **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(checker): implement entity-based checker rules, lifted inspector state, and parity tests`
-- **Goal:** Implement Content Model v2 graph-level consistency rules in `@repo/checker` (`invalid-speaker`, `speaker-without-text`, `character-never-speaks`, `duplicate-entity-name`), lift expanded entity state to `apps/web` App to coordinate inspector selection on issue clicks, and establish parity tests.
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): centered full-length editor title with universal limit and keyboard isolation`
+- **Goal:** Center the project title in the editor top bar using a 3-zone grid layout, allow full-length display with auto-sized input and live character counter, establish a universal TITLE_MAX = 80 limit across editor and create dialog while safely supporting legacy longer titles, and enforce complete keyboard isolation inside the title input.
 - **Files changed:**
-  - `packages/schema/src/index.ts`: added 4 rule IDs to `IssueRuleIdSchema`, optional `entityId?: string` to `IssueSchema`, updated refinement to exactly 1 anchor among `nodeId`, `variableId`, `entityId`.
-  - `packages/checker/src/index.ts`: implemented 4 new rules in `check()`, handling duplicate entity IDs via first-occurrence-wins semantics, and deterministic issue ordering.
-  - `packages/checker/src/index.test.ts`: updated Property U2 to check all anchor kinds against project collections, added schema entityId refinement tests, deterministic ordering test, unit tests for each rule, duplicate entity ID tests, legacy v1 compatibility test, and Property E1 fuzzing test (82 tests total).
-  - `apps/web/src/lib/decorate.ts`: added `byEntity` Map to `GroupedIssues` and updated `groupIssues` to bucket issues by `entityId`.
-  - `apps/web/src/lib/decorate.test.ts`: updated tests for `byEntity` mapping in `groupIssues`.
-  - `apps/web/src/lib/checker.test.ts`: created web checker parity tests verifying fast-check correspondence between `duplicate-entity-name` & `duplicateNameIds`, and `character-never-speaks` & `speakerUsage`, plus duplicate entity ID semantics and golden v1 fixture compatibility.
-  - `apps/web/src/components/IssuesPanel.tsx`: updated issue selection predicate to match `issue.entityId === selectedEntityId`, added `entityId` to issue keys and target labels.
-  - `apps/web/src/components/RightPanel.tsx`: threaded `expandedEntityId`, `onToggleExpandEntity`, and `entityIssues` to `EntitiesPanel`.
-  - `apps/web/src/components/EntitiesPanel.tsx`: replaced local `expandedId` state with lifted `expandedEntityId` and `onToggleExpandEntity`, rendered `.entity-issues-badge` in collapsed header and `.entity-issues-list` in expanded card.
-  - `apps/web/src/App.tsx`: lifted `expandedEntityId` state; updated `handleSelectIssue` to activate `entities` tab and set `expandedEntityId` on entity issues without altering canvas selection or camera; reset `expandedEntityId` on project load.
-  - `apps/web/src/index.css`: styled `.entity-issues-badge`, `.entity-issues-list`, and `.entity-issue-item`.
-  - `docs/ARCHITECTURE.md`: updated file map (checker.test.ts), Section 6 issue rules table (12 rules total), and Issue model interface.
-  - `docs/context/work-archive.md`: archived full W-021 entry per 8-entry rolling cap.
-  - `docs/context/recent-work.md`: recorded entry W-029, rotated W-021 to older work, maintaining exactly 8 full entries.
+  - `apps/web/src/components/titleHelper.ts`: created pure helper module exporting `TITLE_MAX = 80`, `TITLE_COUNTER_THRESHOLD = 60`, `TITLE_WARNING_THRESHOLD = 72`, `titleCounterState(length)`, and `validateTitleCommit(draft, original)` supporting legacy titles up to their existing length without truncation.
+  - `apps/web/src/components/titleHelper.test.ts`: 17 unit tests verifying counter thresholds (59, 60, 71, 72, 79, 80, 81, 100) and commit validation rules across new and legacy titles.
+  - `apps/web/src/components/EditableTitle.tsx`: upgraded to dual display/edit mode; display mode renders `<button type="button">` with `aria-label="${name}, edit title"`, full tooltip, and SVG pencil; edit mode auto-sizes via `field-sizing: content` (ch fallback), fixes `editLimit = max(TITLE_MAX, original.length)`, renders live counter, stops event bubbling for Escape, Enter, Ctrl+Z, Ctrl+Y, and restores focus upon keyboard exit.
+  - `apps/web/src/components/EditableTitle.test.ts`: 7 component unit tests covering display button attributes, SVG pencil, edit mode maxLength, counter tones (neutral, warning, danger), and legacy title display without truncation.
+  - `apps/web/src/components/Toolbar.tsx`: restructured top row into 3 distinct zones (left cluster, center title track, right actions/account cluster).
+  - `apps/web/src/components/shell/CreateStoryDialog.tsx`: updated to import and use shared `TITLE_MAX` constant for character validation, `maxLength` attribute, and hint copy.
+  - `apps/web/src/components/shell/DashboardPage.test.ts`: updated CreateStoryDialog boundary assertions from 120 to 80 (TITLE_MAX).
+  - `apps/web/src/index.css`: styled `.header-top-row` with 3-zone CSS grid (`minmax(max-content, 1fr) minmax(0, 640px) minmax(max-content, 1fr)`), display button and pencil styling, auto-sized input, counter tone badges, error tooltip, responsive fallback at <= 1100px, and removed legacy max-width clamps.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and added Section 19 documenting the 3-zone grid layout, honest centering resolution, and title lifecycle.
+  - `docs/context/work-archive.md`: archived full W-038 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-046, rotated W-038 to older work, maintaining exactly 8 full entries.
 - **New/changed public APIs:**
-  - `packages/schema/src/index.ts`:
-    - `IssueRuleIdSchema`: added `"invalid-speaker" | "speaker-without-text" | "character-never-speaks" | "duplicate-entity-name"`
-    - `IssueSchema`: added optional `entityId?: string`
-    - `type Issue`: `{ id: string; ruleId: IssueRuleId; severity: IssueSeverity; message: string; nodeId?: string; variableId?: string; entityId?: string }`
-  - `apps/web/src/lib/decorate.ts`:
-    - `interface GroupedIssues`: added `byEntity: Map<string, Issue[]>`
+  - `apps/web/src/components/titleHelper.ts`:
+    - `TITLE_MAX: 80`
+    - `TITLE_COUNTER_THRESHOLD: 60`
+    - `TITLE_WARNING_THRESHOLD: 72`
+    - `titleCounterState(length: number): TitleCounterState`
+    - `validateTitleCommit(draft: string, original: string): TitleCommitResult`
+  - `apps/web/src/components/EditableTitle.tsx`:
+    - `interface EditableTitleProps { name: string; onRename: (newName: string) => void; initialEditMode?: boolean; }`
 - **Decisions and why:**
-  - Rule count: 8 existing rules expanded to 12 total (Amendment 1).
-  - First-occurrence-wins semantics for entities: duplicate entity IDs in input are ignored by all entity rules, duplicate-name, never-speaks, and speaker lookups (Amendment 3).
-  - Issue ordering convention: node-anchored issues in node array order, edge-anchored (via node), variable-anchored in variable array order, entity-anchored in first-occurrence entities array order (`character-never-speaks` then `duplicate-entity-name`) (Amendment 6).
-  - Lifted UI state: `expandedEntityId` in `App.tsx` allows clicking an entity issue to select the entities tab and expand the card without moving canvas camera/selection (Amendment 7).
-  - DraftField keys preserved unchanged; stale expanded entity ID renders nothing without errors and re-expands upon undo (Amendment 7).
+  - Honest Grid Resolution (A2): `.header-top-row` uses `minmax(max-content, 1fr) minmax(0, 640px) minmax(max-content, 1fr)`. The title column is physically centered when both side tracks can expand to equal width above their content; when the heavier right cluster requires more space, the title column shifts slightly toward the lighter left cluster rather than squishing controls. At <= 1100px, falls back to flexible left-aligned layout.
+  - Universal Cap & Legacy Safety (A3): `TITLE_MAX = 80` provides a consistent standard across Lumio UI while remaining well within the database limit of 200 (`schema.ts:57`). Existing titles longer than 80 are never truncated and can be kept unchanged or edited down, but not lengthened.
+  - Keyboard Isolation & Accessibility (A4, A5): Display button conforms to WCAG label-in-name (`aria-label="${name}, edit title"`). While editing, `Escape`, `Enter`, `Ctrl+Z`, and `Ctrl+Y` call `e.stopPropagation()` so native input undo/redo and dismissal are preserved without triggering editor canvas actions.
 - **Assumptions / UNVERIFIED:**
-  - Manual browser script is UNVERIFIED (automated gate executed and passed).
+  - Automated tests (unit, integration, routing), types, lint, and production bundle verified; visual appearance in physical browsers across screen widths is UNVERIFIED until user tests in browser.
 - **Verification:**
-  - Monorepo gate: `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful across 5 packages, 652 total tests passing: 81 dsl, 82 checker, 154 server, 335 web).
-  - Parity test distribution: 100 fast-check runs on `checker.test.ts`: `[PARITY DISTRIBUTION 100 runs] duplicates: 27, non-duplicates: 73; silent-characters: 15, speaking-characters: 85`.
-  - Generator verification: 0 issues fired on none and planted modes across seeds 1..100 at sizes 20, 50, 300.
-  - Performance: `measure.ts` confirmed median check time at 300 nodes (0.66ms vs 0.76ms baseline), 1000 nodes (0.91ms vs 0.69ms baseline, delta 1.31x < 2x), 3000 nodes (2.58ms vs 2.66ms baseline).
-  - Web production build: `pnpm --filter @repo/web build` -> pass (JS: 606.89 kB, CSS: 42.14 kB).
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 turbo tasks successful, 0 cached, 975 total tests passed across 5 packages: 104 dsl, 82 checker, 154 server, 635 web).
+  - `pnpm --filter @repo/web test` -> pass (635 web tests passed across 49 test files).
+  - `pnpm --filter @repo/web typecheck` -> pass (0 errors).
+  - `pnpm --filter @repo/web lint` -> pass (0 errors, 0 warnings).
+  - `pnpm --filter @repo/web build` -> pass (built in 371ms).
+  - 4 mutations executed, verified failing, and restored (warning threshold off-by-one, commit truncation, dialog limit 120, legacy lengthening).
+  - Forbidden token scan (`: any`, `@ts-ignore`, non-null `!`, storage) -> 0 matches.
 - **Known issues / debt:** none
 - **Next steps:**
-  - Collaboration layer or project persistence backend integration.
+  - User to review changes in browser and commit manually.
+
+### W-045 | 2026-10-26 | Unified Navigation Header Across Landing and Dashboard
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): unify navigation header across landing and dashboard with modern translucent blur bar and avatar menu`
+- **Goal:** Unify the navigation bar across Landing, Dashboard, and all shell routes into a single router-aware AppHeader using the modern aesthetic (54px translucent blur, brand logo, clean nav links for Landing, Stories, and Editor Dev, and user avatar dropdown menu or Sign In / Get Started buttons); eliminate the redundant local header and duplicate state in DashboardPage, remove the CSS display:none hiding exception, and resolve Debt 4 in ARCHITECTURE.md.
+- **Files changed:**
+  - `apps/web/src/components/shell/AppHeader.tsx`: upgraded shared shell header to modern translucent blur bar (`.shell-header`), unified nav links (`Landing`, `Stories`, `Editor Dev`), accessible user avatar pill with letter initial, chevron, and popup menu (`role="menu"`) with account info, route links, and sign-out handler with focus restoration on Escape; preserved unauthenticated Sign In / Get Started states.
+  - `apps/web/src/components/shell/AppHeader.test.ts`: added tests for avatar button initial, menu attributes, dropdown open/close rendering, pure helper edge cases, and unified navigation links across routes (13/13 tests passed).
+  - `apps/web/src/components/shell/DashboardPage.tsx`: removed redundant local `<header className="dash-nav">`, avatar menu state, and sign out handler; simplified data fetching to direct `runCloudList`.
+  - `apps/web/src/index.css`: updated `.shell-header` with modern translucent blur (`backdrop-filter: blur(12px)`), responsive nav links with active indicator, avatar button and dropdown menu styles; removed `.app-shell:has(.dash-shell) > .shell-header { display: none !important; }` exception hack.
+  - `docs/ARCHITECTURE.md`: updated Section 18 to document the unified navigation header and marked technical debt 4 as resolved.
+  - `docs/context/work-archive.md`: archived full W-037 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-045, rotated W-037 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:** none (AppHeader and DashboardPage props and exports preserved unchanged).
+- **Decisions and why:**
+  - Consolidated Shell Header Architecture (Debt 4 resolved): Replaced disparate header implementations with a single router-aware `AppHeader` mounted at the top of `.app-shell`, eliminating CSS display:none overrides and landmark duplication (`role="banner"` appears once per page).
+  - Modern Translucent Aesthetic: Adopted the 54px translucent dark background (`rgba(10, 15, 29, 0.75)` + `backdrop-filter: blur(12px)`) with subtle 1px border and indigo active state indicator across all routes.
+  - Unified Navigation & User Menu: Consistent navigation links (`Landing`, `Stories`, `Editor Dev`) across all pages. Authenticated users receive a compact avatar pill with initial that opens a fully accessible dropdown menu with landing, stories, editor links and sign-out action; anonymous visitors receive Sign In and Get Started CTAs.
+  - Test Integrity: All existing assertions in `AppHeader.test.ts`, `AuthPages.test.ts`, and `DashboardPage.test.ts` pass without weakening or removing any test.
+- **Assumptions / UNVERIFIED:**
+  - Automated tests (unit, integration, routing), types, lint, and production bundle verified; physical browser visual appearance of backdrop blur across rendering engines is UNVERIFIED until user tests in browser.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 turbo tasks successful, 0 cached, 951 total tests passed across 5 packages: 104 dsl, 82 checker, 154 server, 611 web).
+  - `pnpm --filter @repo/web test` -> pass (611 web tests passed across 47 test files).
+  - `pnpm --filter @repo/web typecheck` -> pass (0 errors).
+  - `pnpm --filter @repo/web lint` -> pass (0 errors, 0 warnings).
+  - `pnpm --filter @repo/web build` -> pass (built in 484ms; CSS 136.44 kB gzip 22.37 kB, JS 766.38 kB gzip 217.93 kB).
+  - Forbidden token scan (`: any`, `@ts-ignore`, non-null `!`, storage) -> 0 matches.
+- **Known issues / debt:** none (Debt 4 resolved).
+- **Next steps:**
+  - User to review changes in browser and commit manually.
+
+### W-044 | 2026-10-26 | Real Story Graph Thumbnails on Dashboard
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): render real down-sampled SVG story graph thumbnails on dashboard`
+- **Goal:** Replace procedural/decorative story graph glyphs on the dashboard (resume card, grid cards, list rows) with real, down-sampled SVG thumbnails of each story's actual graph structure; implement pure spatial coarsening ladder (max 250 nodes, max 500 edges), uniform aspect ratio preservation, editor layout parity for missing positions, thin read-only thumbnail fetch client with abort pass-through, bounded in-memory LRU cache (50 entries) caching strictly thumbnail data, in-flight request deduplication with multi-subscriber abort safety, concurrency limit 2, pure stats formatter, and retirement of `graphGlyph` and its 4 tests.
+- **Files changed:**
+  - `apps/web/src/components/shell/storyThumbnail.ts`: created pure graph thumbnail generator (`buildStoryThumbnail`), spatial grid coarsening ladder (`CELL_LADDER`), representative node selection (start > end > degree > id), uniform scale centering, 3-tier bucketed edge paths, and pure stats formatter (`formatThumbnailStats`).
+  - `apps/web/src/components/shell/storyThumbnail.test.ts`: created 17 pure unit and property tests covering determinism, bounds, uniform aspect ratio preservation (wide & tall), editor layout fallback via `computeLayout`, 15-node sample project, 3,000-node coarsening, representative priority, edge pruning, exact stats strings, fast-check property invariants, and scale/performance measurements.
+  - `apps/web/src/components/shell/projectThumbnailClient.ts`: created thin read-only thumbnail document fetch helper (`fetchProjectThumbnailDocument`) mirroring `client.ts` request semantics with signal pass-through and error mapping.
+  - `apps/web/src/components/shell/projectThumbnailClient.test.ts`: created 6 unit tests with fake fetch covering abort pass-through, 200 document return, 401/404/500/network error mapping.
+  - `apps/web/src/components/shell/storyThumbnailLoader.ts`: created bounded in-memory LRU cache (50 entries) keyed by `${id}:${latestVersion}`, caching only `StoryThumbnailData`, max concurrency 2, FIFO queue, and in-flight request deduplication with multi-subscriber abort safety.
+  - `apps/web/src/components/shell/storyThumbnailLoader.test.ts`: created 8 unit tests covering concurrency limit of 2, cache hit/eviction, version change refetch, shared in-flight dedupe, subscriber abort cancellation, retry recovery, and schema error handling.
+  - `apps/web/src/components/shell/StoryThumbnailView.tsx`: created inline SVG renderer with dot grid pattern, 3-tier combined edge `<path>`s, color-coded node circles, skeleton shimmer, empty state ("No scenes yet"), error state ("Preview unavailable" + Retry), accessible caption text, and `IntersectionObserver` (rootMargin 200px) with immediate fallback.
+  - `apps/web/src/components/shell/StoryThumbnailView.test.ts`: created 5 tests covering skeleton loading, error retry, empty story, real SVG node/edge counts, and sampled overview labels.
+  - `apps/web/src/components/shell/DashboardPage.tsx`: integrated `StoryThumbnailView` with `previewLoader` in resume card (`variant="resume"`), grid card (`variant="card"`), and list row (`variant="list"`). Removed `GraphGlyphPreview`.
+  - `apps/web/src/components/shell/dashboardPresentation.ts`: removed retired `graphGlyph`, `mulberry32`, `fnv1a`, and glyph types.
+  - `apps/web/src/components/shell/dashboardPresentation.test.ts`: removed 4 retired `graphGlyph` tests; 13 remaining presentation tests passing.
+  - `apps/web/src/index.css`: replaced `.dash-glyph-*` styles with `.dash-thumb-*` styles, skeleton shimmer, and reduced-motion safety.
+  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map and Section 18 for thumbnail architecture; updated debts (server-side stored previews, duplicated URL construction in client).
+  - `docs/context/work-archive.md`: archived full W-036 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-044, rotated W-036 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/components/shell/storyThumbnail.ts`:
+    - `type ThumbnailStats = { totalNodes: number; totalEdges: number; endings: number; isSampled: boolean }`
+    - `type StoryThumbnailData = { width: number; height: number; nodes: readonly ThumbnailNode[]; edges: readonly ThumbnailEdge[]; stats: ThumbnailStats }`
+    - `buildStoryThumbnail(project: Project, options?: { targetWidth?: number; targetHeight?: number; maxNodes?: number; maxEdges?: number }): StoryThumbnailData`
+    - `formatThumbnailStats(stats: ThumbnailStats): string`
+  - `apps/web/src/components/shell/projectThumbnailClient.ts`:
+    - `fetchProjectThumbnailDocument(id: string, signal?: AbortSignal, fetchFn?: typeof fetch): Promise<ProjectThumbnailOutcome>`
+  - `apps/web/src/components/shell/storyThumbnailLoader.ts`:
+    - `createStoryThumbnailLoader(options?: StoryThumbnailLoaderOptions): StoryThumbnailLoader`
+  - `apps/web/src/components/shell/StoryThumbnailView.tsx`:
+    - `StoryThumbnailView: React.FC<StoryThumbnailViewProps>`
+- **Decisions and why:**
+  - Bounded memory-only cache (A3): The loader stores strictly `StoryThumbnailData` in a 50-entry Map (LRU via delete + re-insert on access), never holding references to `Project` or the raw JSON document. Measured cached size for a 3,000-node project is 44.65 KB (97% memory reduction vs ~1.5 MB full project JSON).
+  - Editor layout parity for missing positions (A4): Uses `computeLayout(project)` from `apps/web/src/lib/layout.ts`, matching the editor's exact BFS layer placement and orphan grid rules when node positions are absent.
+  - Spatial coarsening ladder: Deterministic cell bucketing using `CELL_LADDER = [1000, 800, 600, 450, 320, 220, 150, 100, 60, 40, 25, 16]`. Chooses highest-priority representative in each cell: Start (`kind === "start"`) > Ending (0 out-degree) > Degree > lexical ID.
+  - Bucketed edge paths: Groups downsampled edges into 3 weight tiers (1, 2, 3+) concatenated into 3 disjoint `<path>` elements, reducing DOM element count from 500 edges to 3 paths (175 total SVG elements for 3,000 nodes).
+  - Multi-subscriber in-flight deduplication (A6): Simultaneous requests for the same `${id}:${latestVersion}` share one promise and one network fetch. Fetch is aborted only when all subscriber signals have aborted.
+  - Honest stats & accessibility (A5, A8): Pure formatter outputting "15 nodes · 16 edges · 2 endings", "1 node · 0 edges · 0 endings", "Overview of 3,000 nodes" when sampled; thumbnail SVG is `aria-hidden="true"`, with the stats string providing accessible text.
+  - Retired fake picture (A9): Removed `graphGlyph` and its 4 tests; raw grep verifies 0 occurrences in codebase.
+- **Assumptions / UNVERIFIED:**
+  - Automated tests (unit, property, concurrency, integration), types, lint, and production bundle verified; visual appearance and responsiveness across screen sizes in physical browser are UNVERIFIED until user tests in browser.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 tasks successful, 0 cached, 944 total tests passed: 104 dsl, 82 checker, 154 server, 604 web)
+  - `pnpm --filter @repo/web test` -> pass (604 web tests passed across 47 test files)
+  - `pnpm --filter @repo/web typecheck` -> pass (0 errors)
+  - `pnpm --filter @repo/web lint` -> pass (0 errors, 0 warnings)
+  - `pnpm --filter @repo/web build` -> pass (built in 304ms; dist/assets/index-PeZcmsWP.js 765.96 kB gzip 217.67 kB, CSS 134.63 kB gzip 22.02 kB)
+  - Forbidden token scan (`: any`, `@ts-ignore`, non-null `!`, storage) -> 0 matches.
+  - `graphGlyph`/`renderCardGlyph` grep -> 0 matches in code/tests/docs.
+  - Measurements:
+    - 300 nodes: min 0.86ms, median 0.90ms
+    - 3,000 nodes: min 8.63ms, median 9.54ms
+    - 3,000 nodes end-to-end (parse+migrate+validate+build): min 26.69ms, median 28.12ms
+    - Cached JSON byte size (3,000 nodes): 45,721 bytes (44.65 KB)
+    - Rendered SVG element count (3,000 nodes): 175 elements
+- **Known issues / debt:**
+  - Client URL construction duplication in `projectThumbnailClient.ts` (isolated debt, 10 lines).
+  - Thumbnails rendered client-side on-the-fly; future optimization could generate and store thumbnails server-side.
+- **Next steps:**
+  - User to review changes and commit manually (`feat(web): render real down-sampled SVG story graph thumbnails on dashboard`).
+
+### W-043 | 2026-10-26 | Story Dashboard Redesign & Presentation Layer
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): redesign story dashboard with professional layout, procedural graph glyphs, and responsive toolbar`
+- **Goal:** Redesign the story dashboard into a professional, cohesive experience matching the landing page aesthetic (#0a0f1d shell, #111827 cards, 14px radii, indigo branding), procedural deterministic graph glyphs, responsive toolbar with natural search and sorting, resume hero card, grid/list view switcher, benchmark filter, accessible deletion dialog with state-lockup bug fix, and live region announcements.
+- **Files changed:**
+  - `apps/web/src/components/shell/dashboardPresentation.ts`: pure helpers (`relativeTime`, `filterAndSort`, `graphGlyph`, `isBenchmarkStory`).
+  - `apps/web/src/components/shell/dashboardPresentation.test.ts`: 16 pure unit tests covering exact relative time strings, boundary conditions, natural sort, benchmark hiding, determinism, and coordinate bounds.
+  - `apps/web/src/components/shell/DeleteStoryDialog.tsx`: fixed state lockup bug where second delete locked button in isPending state forever by wrapping handleDelete in finally block.
+  - `apps/web/src/components/shell/DeleteStoryDialog.test.ts`: unit test verifying delete button is enabled and pristine across open/cancel/reopen cycles.
+  - `apps/web/src/components/shell/DashboardPage.tsx`: complete presentation overhaul with local slim header, avatar menu, page header with active project count, resume card, search/sort/view/benchmark toolbar, grid/list cards with procedural SVG glyphs, 3-dot overflow menu, keyboard focus restoration, and live announcements.
+  - `apps/web/src/components/shell/DashboardPage.test.ts`: updated 4 retired copy assertion sites per A1 table with strength preserved; all 19 tests passing.
+  - `apps/web/src/index.css`: added scoped `.dash-*` classes and named exceptions scoped via `:has(.dash-shell)` for hiding shared header and styling shell body scrollbar.
+  - `docs/ARCHITECTURE.md`: added Section 18 documenting dashboard presentation architecture, procedural glyphs, and debts; updated Section 3 Repo map.
+  - `docs/context/work-archive.md`: archived full W-035 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-043, rotated W-035 to older work, maintained exactly 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/components/shell/dashboardPresentation.ts`:
+    - `type SortOption = "last-updated" | "oldest" | "name-asc" | "name-desc"`
+    - `type ViewMode = "grid" | "list"`
+    - `type GlyphNode = { cx: number; cy: number; r: number; role: "entry" | "terminal" | "branch" | "standard" }`
+    - `type GlyphEdge = { d: string }`
+    - `type GraphGlyphData = { nodes: readonly GlyphNode[]; edges: readonly GlyphEdge[]; strokeColor: string; accentColor: string }`
+    - `relativeTime(now: Date, date: Date | string, timeZone?: string): string`
+    - `filterAndSort(projects: readonly ProjectSummary[], query: string, sort: SortOption, hideBenchmarks: boolean): { visible: ProjectSummary[]; hiddenBenchmarkCount: number }`
+    - `graphGlyph(projectId: string): GraphGlyphData`
+    - `isBenchmarkStory(project: Pick<ProjectSummary, "name" | "id">): boolean`
+- **Decisions and why:**
+  - Named CSS exceptions (A3): Shared `AppHeader` is hidden only on dashboard via `.app-shell:has(.dash-shell) > .shell-header { display: none }`, and `.app-shell:has(.dash-shell) .shell-body` customizes the scrollbar. Both logged as debt together with "shared AppHeader not unified".
+  - Delete bug fix (A4): Identified root cause where `DeleteStoryDialog` did not reset `isPending` on successful deletion (expecting parent to unmount it), but React Fiber kept state because parent only set `deleteTarget` to null without remounting. Fixed by wrapping `handleDelete` in `finally { setIsPending(false); }` and passing `key={deleteTarget?.id ?? "none"}` in `DashboardPage.tsx`.
+  - Pure deterministic graph glyph (A7): FNV-1a 32-bit hash inline + mulberry32 PRNG (seed from hash) deterministically places 6..9 nodes and Bezier curves with brand hue range (235..275 deg). Zero element IDs (`<linearGradient id="...">`) prevents SVG cross-card collisions.
+  - A1 test updates: Only retired UI copy assertions were updated in `DashboardPage.test.ts` ("Your Story Workbench" -> "Your stories", "Ordered by last updated" -> "Last updated", truncated id -> full id, "Open Story →" -> "Open story"). Structural hooks `.dashboard-empty-card` and `.dashboard-loading-card` preserved.
+  - Focus management and clipboard fallback (A9): Cancel returns focus to card menu trigger; success moves focus to page `h1` and announces "Story deleted" in polite live region. Copy ID uses navigator.clipboard with small inline field fallback and polite announcement.
+- **Assumptions / UNVERIFIED:**
+  - Automated tests and production bundle compilation verified; manual browser interaction across viewports, dark visual rendering, backdrop styling, and keyboard navigation are UNVERIFIED until user tests in browser.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 turbo tasks successful; 911 total tests passing across all 4 packages: 104 dsl, 82 checker, 154 server, 571 web in 46.97s).
+  - Web build: `dist/assets/index-DeJWG4-c.css`: 132.65 kB, `dist/assets/index-DaFjM3Nz.js`: 756.81 kB in 377ms.
+  - 3 mutations verified and caught:
+    1. `relativeTime` off-by-one at hour boundary caught by `formats hours at 60min and 23h boundaries`.
+    2. Search query case-sensitivity caught by `performs case-insensitive trimmed query search`.
+    3. `graphGlyph` using `Math.random` caught by `is purely deterministic (same ID produces identical output)`.
+- **Known issues / debt:**
+  - Debt: Benchmark detection uses client-side name/id pattern heuristic (`isBenchmarkStory`); server-level benchmark tagging would eliminate heuristic.
+  - Debt: Graph glyph is decorative and visually represents narrative branching topology; does not parse actual story node count from server.
+  - Debt: Dashboard hides shared `AppHeader` via `.app-shell:has(.dash-shell)` exception; unifying `AppHeader` across editor, landing, and dashboard deferred to future shell task.
+- **Next steps:**
+  - User to conduct manual browser verification in dev mode (`pnpm dev`) and commit changes.
+
+### W-032b | 2026-10-26 | Simulation Dialog Visual Redesign
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): visual redesign of simulation dialog with dark theme, responsive layout, and accessible results`
+- **Goal:** Redesign SimulationDialog into a centered, polished, professional modal with dark theme (#0B0D12 shell, #11141B cards), a 280px left rail with presets, large numeric inputs, and clamping hints, a responsive layout stacking below 820px, accessible rAF metric count-ups, pure verdict presentation, grouped findings with severity tabs and `<details>` IDs, and full adherence to amendments A1–A11.
+- **Files changed:**
+  - `apps/web/src/components/simulationPresentation.ts`: pure helpers (`buildVerdict`, `getFindingSeverity`, `groupFindingsBySeverity`, `ALL_FINDING_KINDS`, `computeOutcomeDistribution`).
+  - `apps/web/src/components/simulationPresentation.test.ts`: 9 failing-first unit tests covering exact verdict strings, singular/plural, percentage distribution totaling 100%, and severity mappings.
+  - `apps/web/src/components/SimulationDialog.tsx`: presentation refactoring with scoped `.sim-*` components, local SVG icons (replacing all emojis), preset controls, randomized seed, running and error states, metric cards with rAF count-up and `aria-hidden`/sr-only fallbacks, 12px outcome distribution bar, endings table with proportion bar, grouped findings with severity pills and `<details>` disclosures, and tutorial trigger.
+  - `apps/web/src/index.css`: replaced `.sim-*` styles with modal centering (`position: fixed; inset: 0; margin: auto; height: fit-content; max-height: 88vh; overflow: hidden;`), backdrop blur/dim, single scroll container below 820px (`.sim-dialog-body { overflow: visible }`), and dark palette tokens.
+  - `docs/ARCHITECTURE.md`: added simulation presentation helper and modal layout architecture in Section 17.
+  - `docs/context/work-archive.md`: archived full W-034 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-032b, rotated W-034 to older work, maintained exactly 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/components/simulationPresentation.ts`:
+    - `type FindingSeverity = "high" | "medium" | "low"`
+    - `const ALL_FINDING_KINDS: readonly FindingKind[]`
+    - `buildVerdict(report: SimulationReport | { ok: false; error: "no-start-node" }): { title: string; sentence: string; severity: "success" | "warning" | "danger" }`
+    - `getFindingSeverity(kind: FindingKind): FindingSeverity`
+    - `groupFindingsBySeverity(findings: readonly Finding[]): Record<FindingSeverity, Finding[]>`
+    - `computeOutcomeDistribution(counts: SimulationOutcomeCounts, total: number): { endedPct: number; stuckPct: number; stepLimitPct: number; errorPct: number }`
+- **Decisions and why:**
+  - Scoped modal centering (A1, A2): Universal CSS reset `* { margin: 0; }` stripped browser `<dialog>` centering. Fixed by specifying `position: fixed; inset: 0; margin: auto; height: fit-content; max-height: 88vh; overflow: hidden;` scoped strictly to `.sim-dialog[open]`.
+  - Single scroll region at mobile/tablet (A3): Below 820px, `.sim-dialog-body` switches to `overflow-y: auto; flex-direction: column;` while `.sim-results` has `overflow: visible;` so the entire dialog scrolls as one coherent container without nested trapped scrollbars.
+  - Pure verdict and accessible metrics (A4, A11): Only the verdict summary carries `aria-live="polite"`. Metric count-up numbers are `aria-hidden` while assistive technology reads static final values via `.sr-only`. Count-up respects `prefers-reduced-motion` and guards against missing `window.matchMedia` in jsdom.
+  - Findings severity grouping and ID disclosure (A9, A10): Display-only kind→severity map maps 6 kinds cleanly (High: `stuck-spot`, `ending-never-reached`; Medium: `never-visited-but-reachable`, `unreachable-confirmed`, `loop-suspect`; Low: `edge-never-available`). Findings keep original `crossCheck` message clamped to 2 lines, while raw node/edge IDs are placed in `<details>`.
+- **Assumptions / UNVERIFIED:**
+  - Automated tests and bundle build pass; interactive animations, browser backdrop blur, dialog centering across physical devices, and keyboard navigation are UNVERIFIED until user tests in browser.
+- **Verification:**
+  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 turbo tasks successful; 894 total tests passing across all 4 packages in 13.89s).
+  - Web build: `dist/assets/index-DQrEHCyZ.css`: 117.41 kB (gzip: 18.89 kB), `dist/assets/index-B9JZG1jR.js`: 739.81 kB (gzip: 210.15 kB).
+- **Known issues / debt:**
+  - Debt: `crossCheck.ts:75` bakes `Node "${node.title}" (${node.id})` text directly into `message`. Findings UI displays message as-is clamped to 2 lines per A9; string formatting refactor in `crossCheck.ts` deferred to future task.
+- **Next steps:**
+  - User to conduct manual browser verification in dev mode (`pnpm dev`) and commit changes.
+
+### W-042 | 2026-10-26 | Comprehensive Lumio Editor Redesign
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): comprehensive editor redesign across toolbar, canvas, inspector, issues, and panels`
+- **Goal:** Transform the Lumio editor from an overcrowded interface into a cohesive, professional narrative authoring environment across 7 verified stages: unified design system tokens, 2-tier application bar and editing toolbar, subtle canvas dot grid with narrative speaker and body previews, writer-first inspector with collapsible advanced details and deletion confirmation safeguards, friendly diagnostic issue presentation with severity filter tabs and search, streamlined variables and entities panels with kind filters, and responsive 1280px layouts with keyboard shortcuts.
+- **Files changed:**
+  - `apps/web/src/index.css`: added editor layout tokens (`--story-node-width`, `--story-node-min-height`, `--shadow-*`), canvas dot grid texture, 2-tier application bar and editing toolbar styling (`.app-header`, `.header-top-row`, `.header-subtoolbar`), dropdown menus (`.dropdown-menu-*`), collapsible sidebar (`.right-sidebar.collapsed`, `.sidebar-collapse-toggle`), inspector advanced details (`.inspector-advanced-details`), delete confirmation boxes (`.delete-confirm-box`), issues filter tabs and search bar (`.issues-filter-tabs`, `.filter-tab-btn`, `.issues-search-bar`), entities filter bar (`.entities-filter-bar`), and 1280px responsive rules with reduced-motion support.
+  - `apps/web/src/lib/keymap.ts`: added `save` action (`Ctrl+S`, `Cmd+S`) to keyboard action interpreter.
+  - `apps/web/src/lib/keymap.test.ts`: added unit tests verifying save shortcut across modifiers.
+  - `apps/web/src/components/FileActions.tsx`: redesigned raw button strip into accessible `[Story ▾]` dropdown menu grouping New, Browse Cloud, Version History, Export JSON File, Import JSON File, and Load Sample Story.
+  - `apps/web/src/components/Toolbar.tsx`: implemented 2-tier header architecture (Top Application Bar for breadcrumb, project title, cloud save status, primary Cloud Save, Playtest, Simulate, Account, Sidebar Toggle; Subtoolbar for Story menu, Add Scene/Node split dropdown, Undo/Redo, and entity counts pill).
+  - `apps/web/src/components/StoryNode.tsx`: enhanced node card presentation with speaker chip, concise body snippet preview, and type indicators while preserving node dimension constants.
+  - `apps/web/src/lib/flowModel.ts`: updated `projectToFlow` to derive `speakerName` from entities and generate clean plain-text `bodySnippet` for graph nodes.
+  - `apps/web/src/lib/flowModel.test.ts`: added unit tests verifying speaker name and body snippet derivation.
+  - `apps/web/src/components/InspectorPanel.tsx`: prioritized writer workflow (Title/Type -> Speaker -> Markdown Body -> Connections -> Advanced Details); added collapsible `<details>` for Node ID and canvas coordinates; added accessible deletion confirmation safeguards for nodes and connections; formatted edge source/target dropdowns with readable node titles.
+  - `apps/web/src/components/IssuesPanel.tsx`: mapped technical rule IDs to friendly narrative titles (e.g. "Unreachable Scene", "Dead-End Scene", "Invalid DSL Syntax"); resolved target UUIDs to human element titles; added severity filter tabs (`All`, `Errors`, `Warnings`), quick text search, and clean "All Rules Passing" empty state.
+  - `apps/web/src/components/VariablesPanel.tsx`: added deletion confirmation safeguard and empty state card with quick-creation CTA.
+  - `apps/web/src/components/EntitiesPanel.tsx`: added entity kind filter tabs (`All`, `Characters`, `Locations`, `Items`), search input, readable node titles for speaker references, and empty state card.
+  - `apps/web/src/components/RightPanel.tsx`: wired collapsible sidebar state and tab header collapse button (`onToggleCollapse`).
+  - `apps/web/src/App.tsx`: wired global `Ctrl+S` / `Cmd+S` cloud save interceptor (preventing native browser page save) and `Ctrl+\` sidebar collapse shortcut.
+  - `docs/context/work-archive.md`: archived full W-033 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-042, rotated W-033 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/lib/keymap.ts`:
+    - `KeymapAction`: added `"save"`
+  - `apps/web/src/components/StoryNode.tsx`:
+    - `StoryNodeData`: added `speakerName?: string | null; bodySnippet?: string | null`
+  - `apps/web/src/components/Toolbar.tsx`:
+    - `ToolbarProps`: added `isSidebarCollapsed?: boolean; onToggleSidebar?: () => void`
+  - `apps/web/src/components/RightPanel.tsx`:
+    - `RightPanelProps`: added `isCollapsed?: boolean; onToggleCollapse?: () => void`
+- **Decisions and why:**
+  - 2-tier header architecture: Eliminates toolbar crowding and wrapping at 1280px by cleanly separating high-level application breadcrumbs and save persistence from node authoring and graph editing tools.
+  - Truthful save semantics: Local file operations are explicitly labeled `Export JSON File…` and `Import JSON File…` inside the `Story` menu, while primary toolbar `Save` and `Ctrl+S`/`Cmd+S` unambiguously trigger Cloud persistence with truthful saving/saved/failed/unsaved status badges.
+  - Non-destructive inspector reorganization: Rather than removing technical fields (IDs, coordinates), they are placed in a semantic `<details>` section, keeping the primary view focused on Title, Speaker, Markdown body, and Connections.
+  - Deletion safeguards: In-line confirmation protects against accidental clicks on destructive deletion without blocking keyboard shortcuts or breaking the undo stack.
+  - Friendly diagnostics: Rule IDs and UUIDs remain accessible in secondary badges/tooltips while narrative writers see friendly descriptions ("Unreachable Scene", "Dead-End Scene") and scene titles.
+- **Assumptions / UNVERIFIED:**
+  - Automated tests passing (100%); interactive manual browser acceptance checklist provided for user review.
+- **Verification:**
+  - Monorepo gate: `pnpm check` -> pass (14/14 turbo tasks successful, 0 errors, 776 total tests passing: 104 dsl, 82 checker, 154 server, 540 web).
+  - Web unit tests: `pnpm --filter @repo/web test` -> pass (39 test files, 540 tests passed in 1.80s).
+  - Web typecheck: `pnpm --filter @repo/web typecheck` -> pass (`tsc --noEmit` exited 0).
+  - Web lint: `pnpm --filter @repo/web lint` -> pass (`eslint .` exited 0).
+  - Web production build: `pnpm --filter @repo/web build` -> pass (built in 189ms, CSS: 105.16 kB, JS: 721.51 kB).
+- **Known issues / debt:** none.
+- **Next steps:**
+  - User to review changes and commit manually.
+
+### W-041 | 2026-10-26 | Design system foundations & token unification
+- **Status:** DONE
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): establish design system tokens, button/input harmonization, and header auth state`
+- **Goal:** Introduce a coherent CSS design-token foundation with the approved Lumio Indigo direction (#6366f1) while preserving dark identity, harmonize shared button and form-input styles maintaining complete backward compatibility with existing classes, and resolve the AppHeader authentication-state discrepancy so signed-in users see identity and Dashboard navigation without contradictory anonymous links.
+- **Files changed:**
+  - `apps/web/src/index.css`: introduced documented design tokens for typography, spacing, border radii, obsidian surface elevations, Lumio Indigo brand colors, semantic feedback, borders, and focus rings; added `.btn-primary` and `.btn-ghost` studio buttons; harmonized `.shell-btn-primary`, `.shell-btn-secondary`, `.form-input:focus-visible`, `.auth-input:focus-visible`, and `.field-*:focus` to use brand and focus ring tokens; added styles for `.shell-user-pill`, `.user-dot`, `.user-email`, and `.shell-btn-header`.
+  - `apps/web/src/components/shell/AppHeader.tsx`: added session integration via optional `user` prop and graceful auto-fetch via `runAuthMe`; conditionally renders user identity pill and direct Dashboard link when signed in, avoiding contradictory anonymous navigation.
+  - `apps/web/src/components/shell/AppHeader.test.ts`: added 6 component unit tests covering anonymous navigation, active page highlighting, authenticated identity display with user email, direct Dashboard navigation link, graceful minimal user handling, and brand landmark.
+  - `docs/context/work-archive.md`: archived full W-031 entry per 8-entry rolling window cap.
+  - `docs/context/recent-work.md`: recorded entry W-041, rotated W-031 to older work, maintaining exactly 8 full entries.
+- **New/changed public APIs:**
+  - `apps/web/src/components/shell/AppHeader.tsx`:
+    - `interface AppHeaderProps { currentRoute: Route; user?: UserDto | null; client?: ApiClient; skipAutoFetch?: boolean }`
+    - `AppHeader: React.FC<AppHeaderProps>`
+- **Decisions and why:**
+  - Lumio Indigo palette: Adopted `#6366f1` as `--color-brand` with dark obsidian/slate background surfaces (`--bg-base: #0f1117`, `--bg-surface: #181b24`, `--bg-elevated: #222634`), retaining high contrast and readability without gratuitous gradients or neon effects.
+  - Compatibility-first harmonization: Preserved existing classes (`.btn-*`, `.shell-btn-*`, `.field-*`, `.form-input`, `.auth-input`) by mapping properties to design tokens, ensuring no existing page or component breaks while immediately establishing a unified aesthetic.
+  - Graceful AppHeader session integration: `AppHeader` accepts `user` and `client` props for clean dependency injection and testability, while seamlessly auto-fetching current session via `runAuthMe` if unsupplied, ensuring zero duplication of authentication state.
+- **Assumptions / UNVERIFIED:**
+  - Browser validation: Marked Not Verified due to environment Playwright CDN network constraint (automated unit, integration, and SSR tests passing).
+- **Verification:**
+  - `pnpm --filter @repo/web test src/components/shell/AppHeader.test.ts` -> pass (6/6 tests passed in 20ms).
+  - `pnpm --filter @repo/web test` -> pass (39 test files, 538 passed in 1.71s).
+  - `pnpm --filter @repo/web typecheck` -> pass (`tsc --noEmit` exited 0).
+  - `pnpm --filter @repo/web lint` -> pass (`eslint .` exited 0).
+  - `pnpm --filter @repo/web build` -> pass (built in 192ms, CSS: 96.33 kB, JS: 710.55 kB).
+  - Root gate `pnpm check` -> pass (14/14 turbo tasks successful, 0 errors across 5 workspaces: 104 dsl, 82 checker, 154 server, 538 web).
+- **Known issues / debt:** none
+- **Next steps:**
+  - User to review changes and commit manually.
 
 ## Older work (one line each; full detail in work-archive.md)
+- W-039 | 2026-10-25 | Visual version history diff | DONE
+- W-038 | 2026-10-12 | Markdown authoring and preview in Inspector panel | DONE
+- W-037 | 2026-10-12 | Workspace URL hydration, project loading, and save-state integration | DONE
+- W-036 | 2026-10-12 | Story Dashboard: project listing, creation, deletion, and session handling | DONE
+- W-035 | 2026-10-12 | Dedicated authentication pages: /login, /register, and form validation | DONE
+- W-034 | 2026-10-09 | Landing page: product introduction, authentic visual preview, and capabilities | DONE
+- W-033 | 2026-10-09 | Application shell, client-side routing, and view container layout | DONE
+- W-031 | 2026-10-07 | Story simulation and path coverage report with topological cross-checking | DONE
+- W-030 | 2026-10-07 | Playtest mode: pure evaluator, session engine, and modal dialog | DONE
+- W-029 | 2026-10-07 | Entity-based checker rules and web inspector wiring | DONE
 - W-028 | 2026-10-07 | Entities + node body + speaker in the editor (apps/web) | DONE
 - W-027 | 2026-10-06 | Content Model v2 (Data Layer): entities, node body/speaker, and migration chain | DONE
 - W-026 | 2026-10-06 | Version history UI: dialog, list/restore/download, and generation-ref guards | DONE

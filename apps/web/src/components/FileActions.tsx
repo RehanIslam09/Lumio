@@ -1,6 +1,6 @@
-import React, { useRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 
-interface FileActionsProps {
+export interface FileActionsProps {
   onNew: () => void;
   onOpen: (file: File) => void;
   onSave: () => void;
@@ -10,22 +10,26 @@ interface FileActionsProps {
   isHistoryEnabled?: boolean;
   historyTitle?: string;
   disabled?: boolean;
+  onReset?: () => void;
 }
 
 export const FileActions: React.FC<FileActionsProps> = ({
   onNew,
   onOpen,
   onSave,
-  onSaveCloud,
   onOpenCloud,
   onOpenHistory,
   isHistoryEnabled = false,
   historyTitle,
   disabled = false,
+  onReset,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
   const handleOpenClick = () => {
+    setIsOpen(false);
     fileInputRef.current?.click();
   };
 
@@ -34,30 +38,42 @@ export const FileActions: React.FC<FileActionsProps> = ({
     if (file) {
       onOpen(file);
     }
-    // Reset file input value so opening the same file twice triggers onChange
     e.target.value = "";
   };
 
-  return (
-    <div className="button-group file-actions" role="group" aria-label="Project file management">
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={onNew}
-        disabled={disabled}
-        title="Create a new story project"
-      >
-        New
-      </button>
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
+  return (
+    <div className="dropdown-menu-wrapper file-actions" ref={menuRef}>
       <button
         type="button"
-        className="btn btn-secondary"
-        onClick={handleOpenClick}
+        className="btn btn-secondary dropdown-toggle"
+        onClick={() => setIsOpen((prev) => !prev)}
         disabled={disabled}
-        title="Open a story project from JSON file"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        title="Story and project file operations"
       >
-        Open…
+        <span>Story</span>
+        <span className="dropdown-caret" aria-hidden="true">▾</span>
       </button>
 
       <input
@@ -70,45 +86,86 @@ export const FileActions: React.FC<FileActionsProps> = ({
         tabIndex={-1}
       />
 
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={onSave}
-        title="Save current project to a JSON file"
-      >
-        Save
-      </button>
+      {isOpen && (
+        <div className="dropdown-menu" role="menu" aria-label="Story operations">
+          <button
+            type="button"
+            className="dropdown-menu-item"
+            onClick={() => {
+              setIsOpen(false);
+              onNew();
+            }}
+          >
+            <span>+ New Story</span>
+          </button>
 
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={onSaveCloud}
-        disabled={disabled}
-        title="Save project to Lumio cloud"
-      >
-        Save to cloud
-      </button>
+          <button
+            type="button"
+            className="dropdown-menu-item"
+            onClick={() => {
+              setIsOpen(false);
+              onOpenCloud();
+            }}
+          >
+            <span>Browse Cloud Stories…</span>
+          </button>
 
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={onOpenCloud}
-        disabled={disabled}
-        title="Open a project from Lumio cloud"
-      >
-        Open from cloud…
-      </button>
+          {onOpenHistory && (
+            <button
+              type="button"
+              className="dropdown-menu-item"
+              onClick={() => {
+                setIsOpen(false);
+                onOpenHistory();
+              }}
+              disabled={!isHistoryEnabled}
+              title={historyTitle || "View version history"}
+            >
+              <span>Version History…</span>
+            </button>
+          )}
 
-      {onOpenHistory && (
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={onOpenHistory}
-          disabled={!isHistoryEnabled}
-          title={historyTitle || "View version history"}
-        >
-          History
-        </button>
+          <div className="dropdown-menu-divider" role="separator" />
+          <div className="dropdown-menu-header">File Backup</div>
+
+          <button
+            type="button"
+            className="dropdown-menu-item"
+            onClick={() => {
+              setIsOpen(false);
+              onSave();
+            }}
+            title="Download current story as JSON file"
+          >
+            <span>Export JSON File…</span>
+          </button>
+
+          <button
+            type="button"
+            className="dropdown-menu-item"
+            onClick={handleOpenClick}
+            title="Open story from local JSON file"
+          >
+            <span>Import JSON File…</span>
+          </button>
+
+          {onReset && (
+            <>
+              <div className="dropdown-menu-divider" role="separator" />
+              <button
+                type="button"
+                className="dropdown-menu-item danger"
+                onClick={() => {
+                  setIsOpen(false);
+                  onReset();
+                }}
+                title="Reset active story to default tutorial sample"
+              >
+                <span>Load Sample Story</span>
+              </button>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

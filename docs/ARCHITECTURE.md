@@ -79,7 +79,7 @@ tsconfig.base.json
 turbo.json
 apps/
   server/       Hono backend (`src/config.ts`, `src/app.ts`, `src/compose.ts`, `src/index.ts`), auth module (`src/auth/{email,password,token,rateLimiter,passwordHasher,repositories,fakes,drizzleRepos,service,routes}.ts`), projects module (`src/projects/{validate,repositories,fakes,drizzleProjectRepo,service,routes}.ts`), Drizzle ORM schema & migrations (`drizzle.config.ts`, `drizzle/`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/migrate.ts`, `src/db/migrate-cli.ts`, `src/db/errors.ts`), DB test safety (`src/db/testSafety.ts`), and integration tests (`src/db/*.int.test.ts`, `src/auth/*.int.test.ts`, `src/projects/*.int.test.ts`)
-  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), client router (`src/router/{types,router,useRouter,Link}.ts`), shell components (`src/components/shell/{AppHeader,LandingPage,LoginPage,RegisterPage,AuthCard,DashboardPage,CreateStoryDialog,DeleteStoryDialog,ProjectWorkspace,Placeholders,index}.tsx`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker}.ts`), pure playtest session & simulation engine (`src/playtest/{types,session,simulate,crossCheck}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), and UI components (`src/components/{HistoryDialog,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,PlaytestDialog,SimulationDialog,EntitiesPanel,InspectorPanel,IssuesPanel,RightPanel,...}`)
+  web/          React Flow story canvas, live checker diagnostics, pure editor state (`src/editor/`), pure persistence module (`src/persistence/` including `fixtures/v1-*.lumio.json`), client router (`src/router/{types,router,useRouter,Link}.ts`), shell components (`src/components/shell/{AppHeader,LandingPage,LoginPage,RegisterPage,AuthCard,AuthShowcase,authPresentation,SignedOutDashboard,DashboardPage,CreateStoryDialog,DeleteStoryDialog,dashboardPresentation,StoryThumbnailView,storyThumbnail,storyThumbnailLoader,projectThumbnailClient,ProjectWorkspace,Placeholders,index}.tsx`), pure API client & guards (`src/api/`), pure cloud outcomes & state (`src/cloud/`), pure lib utilities (`src/lib/{formatDate,initialViewport,layout,connections,draftCheck,keymap,decorate,snippet,defaults,entities,checker,markdown,diff}.ts`), pure playtest session & simulation engine (`src/playtest/{types,session,simulate,crossCheck}.ts`), benchmark suite (`src/benchmark/`), hooks (`src/hooks/{useCloud,useInitialViewport}.ts`), pure title helpers (`src/components/titleHelper.ts`), and UI components (`src/components/{EditableTitle,Toolbar,HistoryDialog,VersionDiffView,AuthDialog,ConflictDialog,CloudOpenDialog,SaveNotFoundDialog,PlaytestDialog,SimulationDialog,EntitiesPanel,InspectorPanel,MarkdownBodyField,IssuesPanel,RightPanel,...}`)
 packages/
   schema/       Zod types: FlowNode, FlowEdge, Project, Entity, Issue, Variable; pure migration chain (`migrate`), `countCodePoints`, `isReadableSchemaVersion`, derived shape keys
   checker/      Graph analysis (pure): unreachable, dead ends, invalid expression, typecheck rules + tests
@@ -738,5 +738,103 @@ Automated Monte Carlo story traversal engine and topological cross-checking anal
 | **Condition Handling** | Syntax & static type validation | Runtime truth evaluation on current state | Statistical sampling of dynamic branch availability |
 | **Output** | Strict compiler-style errors & warnings | Interactive UI step-by-step walkthrough | Coverage metrics, ending distributions, cross-check findings |
 | **Scope** | Global topological invariants | Single concrete narrative thread | Statistical path space coverage & condition bottlenecks |
+
+### Presentation System & Dialog Architecture (`SimulationDialog.tsx`) `DECIDED`
+- **Centered Scoped Modal:** Centered via `position: fixed; inset: 0; margin: auto; height: fit-content; max-height: 88vh; overflow: hidden;` scoped strictly to `.sim-dialog[open]`.
+- **Single Scroll Region:** Above 820px viewport width, the left configuration rail (~280px) is fixed while the results pane is the single scrolling container (`overflow-y: auto`). Below 820px, the rail stacks above results and the dialog shell body becomes the single scroll region.
+- **Visual Palette:** Surface `#0B0D12`, cards `#11141B`, 1px borders `rgba(255,255,255,0.08)`, radii 16/12/8px, and status colors (Success `#34D399`, Stuck `#FB7185`, Loop `#FBBF24`, Unreached `#A78BFA`).
+- **Accessible Presentation Helpers (`simulationPresentation.ts`):** Decouples verdict generation (`buildVerdict`), severity mapping (High, Medium, Low), and outcome distribution calculation (`computeOutcomeDistribution`) as pure tested functions.
+
+## 18. Story Dashboard & Presentation Architecture (`DashboardPage.tsx`) `DECIDED`
+
+Visual and presentational architecture for the Lumio story management hub at `/dashboard`.
+
+### Components & Presentation Layer
+1. **Unified Shell Navigation Header (`AppHeader.tsx`):**
+   - Renders a slim, responsive translucent navigation bar (`.shell-header`) with Lumio brand logo, active navigation links (`Landing`, `Stories`, `Editor Dev`), and an accessible avatar menu popup (`role="menu"`).
+   - Avatar popup includes user email, landing link, stories link, editor link, and a sign-out button executing `runAuthLogout({ client })`.
+   - Keyboard operable: `Escape` closes and restores focus to trigger button; click outside closes.
+   - Shared consistently across Landing, Dashboard, and shell routes without per-route header duplication or CSS suppression.
+2. **Page Header & Resume Banner:**
+   - Page header displays `<h1>Your stories</h1>` (28px weight 600) with subtitle quoting count and relative time of latest edit (`N stories · last edited <relative>`).
+   - Resume Card ("Continue where you left off"): Displays the most recently updated story when search query is empty and sort is `"last-updated"`.
+3. **Interactive Toolbar:**
+   - Substring search (case-insensitive, trimmed, with quick-clear button).
+   - Natural stable sorting: `"last-updated"` (default), `"created"`, and `"name"` (using `localeCompare` with `numeric: true`).
+   - Benchmark Stories toggle switch (`role="switch"`): In-memory toggle hiding benchmark stories by default with explicit hidden count indicator.
+   - Grid / List view toggle.
+4. **Pure Presentation Helpers (`dashboardPresentation.ts`):**
+   - `relativeTime(now, date, timeZone?)`: Pure relative time formatter with boundary assertions at 59s/60s, 59m/60m, 23h/24h, 47h/48h, 6d/7d, future date clamping, and non-throwing invalid date protection.
+   - `filterAndSort(stories, options)`: Search filtering, benchmark exclusion, and deterministic multi-tier tie-break sorting.
+   - `isBenchmarkStory(project)`: Predicate identifying benchmark projects via name prefix or ID pattern.
+
+5. **Real Story Thumbnails (`storyThumbnail.ts`, `storyThumbnailLoader.ts`, `StoryThumbnailView.tsx`, `projectThumbnailClient.ts`):**
+   - `buildStoryThumbnail(project, options)`: Pure down-sampling and layout normalization. Uses explicit `position` when finite, otherwise invokes `computeLayout(project)`. If `nodeCount > maxNodes`, applies spatial coarsening using a deterministic cell ladder, selecting cell representatives by priority (start > end > highest degree > lexicographical ID). Groups edges into 3 weight tiers rendered as single combined `<path>` elements.
+   - `formatThumbnailStats(stats)`: Formatter producing accessible summary strings with singular/plural handling, thousands separators, and sampled overview labels.
+   - `createPreviewLoader(options)`: In-memory bounded LRU cache (default 50) storing strictly `StoryThumbnailData` (dropping all raw document references after build), with concurrency limited to 2 and in-flight request deduplication across cards.
+   - `fetchProjectThumbnailDocument(params)`: Thin read-only fetch helper with AbortSignal pass-through to wire.
+   - `StoryThumbnailView`: Inline SVG presentation with dot-grid pattern, aria-hidden visualization, accessible stats text, shimmer skeleton, and retry button on error.
+
+### Technical Debts
+1. **Benchmark Story Detection Heuristic:**
+   - Detects benchmark stories via `name.trim().toLowerCase().startsWith("benchmark story")`. In the future, the backend `projects` table should store an explicit `is_benchmark` or `kind` column.
+2. **Server-Side Stored Previews:**
+   - Each card currently fetches the latest project document over the network to generate client-side down-sampled thumbnails. Future optimization should generate and store thumbnail vectors or summary statistics directly on the server.
+3. **Duplicated URL Construction in projectThumbnailClient:**
+   - `projectThumbnailClient.ts` mirrors minimal request options and error mapping from `client.ts:60-174` to support `AbortSignal` without modifying `ApiClient` contracts.
+4. **Shared Header Unification:**
+   - RESOLVED in W-045. Consolidated into a single router-aware `AppHeader` shared across all shell routes with no duplicate DOM or CSS hiding hacks.
+
+## 19. Editor Top Bar & Title Architecture (`Toolbar.tsx`, `EditableTitle.tsx`, `titleHelper.ts`) `DECIDED`
+
+Architecture for the editor top bar, 3-zone centering layout, and project title lifecycle.
+
+### 1. 3-Zone Grid Layout & Centering Realities
+- **CSS Grid Specification:** `.header-top-row` is styled with `display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, 640px) minmax(max-content, 1fr); align-items: center;`.
+- **Honest Grid Resolution & Centering Offset:**
+  - The title column (center track) is **physically centered** relative to the bar only when both side tracks expand equally to at least their respective content widths (i.e. `(W - 640px - 2 * gap) / 2 >= max(L_content, R_content)`).
+  - When the right cluster (Save, Playtest, Simulate, User Profile, Sidebar Toggle: ~438px to ~588px) exceeds the left cluster (Dashboard link + status badges: ~118px to ~325px) and available bar width is constrained, CSS Grid clamps the right track to its `max-content` minimum. Consequently, the center track shifts slightly toward the lighter (left) side by `(R_content - L_content) / 2`.
+  - At viewports below ~1100px, the bar falls back to a flexible layout (`display: flex`) where the title occupies available space left-aligned between the clusters.
+  - An 80-character title in normal mixed-case text (~560px) fits completely without truncation at 1280px when signed out and at 1440px across states, but will display an ellipsis when side clusters occupy substantial horizontal space.
+
+### 2. Title Limits & Lifecycle (`titleHelper.ts`)
+- **Universal Constant:** `TITLE_MAX = 80`. Stricter than the server database limit (`char_length between 1 and 200`, `apps/server/src/db/schema.ts:57`) and legacy dialog limit (120).
+- **Legacy Title Support:** Existing project titles longer than 80 characters (up to the server cap of 200) are never truncated upon loading or display. When edited, `editLimit = Math.max(TITLE_MAX, originalTitle.length)` is fixed for the session. Legacy titles can be saved unchanged or shortened, but typing past `editLimit` is prevented.
+- **Commit Validation (`validateTitleCommit`):** Empty or whitespace-only drafts are rejected with an inline alert. Lengths within `editLimit` are trimmed and accepted; drafts exceeding `editLimit` stay open in edit mode with an inline error tooltip.
+- **Counter State (`titleCounterState`):** Below 60 characters: hidden; 60..71: neutral visible; 72..79: warning visible; >= 80: danger visible.
+
+### 3. Accessible Title Component (`EditableTitle.tsx`)
+- **Display Mode:** Real `<button type="button" className="header-title-display-btn">` whose accessible name starts with the visible title (`aria-label="${name}, edit title"` per label-in-name rule), with full title in tooltip (`title={name}`) and inline SVG pencil icon. Click, `Enter`, or `F2` enters edit mode.
+- **Edit Mode:** Auto-sized `<input>` with `field-sizing: content` and ch-based fallback (`min 12ch`). `Enter` commits; `Escape` reverts; `blur` commits valid changes or reverts cleanly.
+- **Keyboard Isolation:** While editing, `Escape`, `Enter`, `Ctrl+Z`, and `Ctrl+Y` call `e.stopPropagation()` so native text undo/redo and dismissal are preserved without triggering editor canvas actions. Focus restores to the display button upon keyboard exit.
+
+## 20. Authentication & Signed-Out Product Architecture (`authPresentation.ts`, `AuthShowcase.tsx`, `SignedOutDashboard.tsx`, `AuthCard.tsx`) `DECIDED`
+
+Architecture for the premium authentication experience, product showcase panel, and signed-out dashboard.
+
+### 1. Pure Presentation Helpers (`authPresentation.ts`)
+- **Unicode Password Validation Parity:** `validatePasswordRequirements(password)` measures length via `Array.from(password).length` with limits `PASSWORD_MIN_LENGTH = 10` and `PASSWORD_MAX_LENGTH = 128`. Matches server validation (`apps/server/src/auth/password.ts:11-15`) exactly across Unicode code points and surrogate pairs (e.g. emojis). Client feedback is strictly for presentation and does not replace server-authoritative enforcement.
+- **Authoritative Feature Definitions (`AUTH_FEATURES`):** 4 stable capability items describing real Lumio functionality (`cloud-save`, `playtest`, `simulate`, `checker`) reused across the signed-out dashboard and auth showcase panels.
+- **Development Navigation Visibility (`isDevNavVisible`):** Pure deterministic predicate gating Developer route entry points in production builds.
+
+### 2. Two-Panel Responsive Auth Experience (`AuthCard.tsx`, `AuthShowcase.tsx`)
+- **Showcase Panel (>= 1024px):** Rendered on the left with a subtle obsidian/slate gradient, soft radial glow, faint dot grid, decorative 9-node animated SVG story graph (nodes, edges, traveling pulse animation inside `@media (prefers-reduced-motion: no-preference)`), headline *"Branch your story. Test every path."*, and 3 concise capability proof points from `AUTH_FEATURES`.
+- **Form Panel:** Centered authentication form (max-width ~400px) with titles *"Welcome back"* (login) and *"Create your account"* (register).
+- **Responsive Fallback (< 1024px):** Showcase panel is cleanly hidden (`display: none`), centering the form without clutter or horizontal overflow.
+- **Accessible Form Controls:** 13px labels, 44px inputs, accessible password visibility toggle with eye icon (`type="button"`, `aria-label`, `aria-pressed`, preventing accidental form submission), live green check indicator for minimum 10-character password requirement in registration, visible loading spinner during submission, and smoothly transitioning error banner with `role="alert"` and `aria-live="polite"`.
+
+### 3. Signed-Out Dashboard (`SignedOutDashboard.tsx`, `DashboardPage.tsx`)
+- **Session Gate Integration:** Renders when `!loading && isUnauthenticated` is true, replacing the generic session notice card.
+- **Product Experience Content:**
+  - Headline: *"Your stories live here"* with clear workspace explanation.
+  - Primary *"Sign in"* (`/login`) and secondary *"Create an account"* (`/register`) actions.
+  - Tertiary *"Try the editor without an account"* action pointing directly to `/editor`.
+  - 4 capability cards driven by `AUTH_FEATURES`.
+  - Non-interactive blurred story preview strip using `sampleProject` and `buildStoryThumbnail` (`aria-hidden="true"`, `tabIndex={-1}`, `pointer-events: none`).
+- **Data & Security Boundaries:** Signed-out users are completely isolated from user stories, header story counters, and creation dialogs. Authenticated story management remains 100% intact.
+
+### 4. Shell Navigation Integration (`App.tsx`, `AppHeader.tsx`)
+- **Route Shell Cleanliness:** `App.tsx` evaluates `isAuthRoute = route.kind === "login" || route.kind === "register"` to exclude `AppHeader`, giving authentication pages a focused layout with their own *"Back to home"* navigation.
+- **Editor Dev Link Gating:** The header's `Editor` `Dev` navigation link is gated by `isDevNavVisible(import.meta.env.DEV)`, hiding it in production while preserving direct `/editor` route access.
 
 

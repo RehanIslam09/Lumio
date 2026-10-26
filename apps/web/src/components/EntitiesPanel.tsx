@@ -28,6 +28,9 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
   onDeleteEntity,
   onSelectNode,
 }) => {
+  const [kindFilter, setKindFilter] = React.useState<"all" | EntityKind>("all");
+  const [searchQuery, setSearchQuery] = React.useState("");
+
   const projectEntities = project.entities;
   const projectNodes = project.nodes;
 
@@ -37,6 +40,24 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
   const entities = useMemo(() => sortedEntities(projectEntities), [projectEntities]);
   const usage = useMemo(() => speakerUsage(projectNodes), [projectNodes]);
   const duplicateIds = useMemo(() => duplicateNameIds(projectEntities), [projectEntities]);
+
+  const characterCount = useMemo(() => entities.filter((e) => e.kind === "character").length, [entities]);
+  const locationCount = useMemo(() => entities.filter((e) => e.kind === "location").length, [entities]);
+  const itemCount = useMemo(() => entities.filter((e) => e.kind === "item").length, [entities]);
+
+  const filteredEntities = useMemo(() => {
+    let list = entities;
+    if (kindFilter !== "all") {
+      list = list.filter((e) => e.kind === kindFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (e) => e.name.toLowerCase().includes(q) || (e.description && e.description.toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [entities, kindFilter, searchQuery]);
 
   const handleAdd = (kind: EntityKind) => {
     const existing = project.entities ?? [];
@@ -93,11 +114,86 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
         </div>
       </div>
 
+      {/* Kind Filter Tabs */}
+      {entities.length > 0 && (
+        <div className="entities-filter-bar">
+          <div className="issues-filter-tabs" role="tablist" aria-label="Filter entities by kind">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={kindFilter === "all"}
+              className={`filter-tab-btn ${kindFilter === "all" ? "active" : ""}`}
+              onClick={() => setKindFilter("all")}
+            >
+              All ({entities.length})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={kindFilter === "character"}
+              className={`filter-tab-btn ${kindFilter === "character" ? "active" : ""}`}
+              onClick={() => setKindFilter("character")}
+            >
+              Characters ({characterCount})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={kindFilter === "location"}
+              className={`filter-tab-btn ${kindFilter === "location" ? "active" : ""}`}
+              onClick={() => setKindFilter("location")}
+            >
+              Locations ({locationCount})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={kindFilter === "item"}
+              className={`filter-tab-btn ${kindFilter === "item" ? "active" : ""}`}
+              onClick={() => setKindFilter("item")}
+            >
+              Items ({itemCount})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {entities.length > 3 && (
+        <div className="issues-search-bar" style={{ padding: "0 16px" }}>
+          <input
+            type="text"
+            className="field-input issues-search-input"
+            placeholder="Search entities by name or description…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Filter entities"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear-btn"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear entity search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="entities-list">
         {entities.length === 0 ? (
-          <p className="empty-state">No entities in this project. Add characters, locations, or items to build your cast and world.</p>
+          <div className="empty-state-card">
+            <p className="empty-state">No entities in this story</p>
+            <p className="empty-substate">Add characters, locations, or items to build your cast and world lore.</p>
+          </div>
+        ) : filteredEntities.length === 0 ? (
+          <div className="empty-state-card">
+            <p className="empty-state">No matching entities</p>
+            <p className="empty-substate">Try clearing your search query or switching filters.</p>
+          </div>
         ) : (
-          entities.map((entity) => {
+          filteredEntities.map((entity) => {
             const isExpanded = entity.id === expandedEntityId;
             const nodeIds = usage.get(entity.id) ?? [];
             const isDuplicate = duplicateIds.has(entity.id);
@@ -224,17 +320,20 @@ export const EntitiesPanel: React.FC<EntitiesPanelProps> = ({
                       <div className="entity-used-by-section">
                         <span className="used-by-title">Used by nodes ({nodeIds.length}):</span>
                         <div className="used-by-list">
-                          {nodeIds.slice(0, 20).map((nid) => (
-                            <button
-                              key={nid}
-                              type="button"
-                              className="node-link-btn"
-                              onClick={() => onSelectNode(nid)}
-                              title={`Select node ${nid} on canvas`}
-                            >
-                              {nid}
-                            </button>
-                          ))}
+                          {nodeIds.slice(0, 20).map((nid) => {
+                            const node = project.nodes.find((n) => n.id === nid);
+                            return (
+                              <button
+                                key={nid}
+                                type="button"
+                                className="node-link-btn"
+                                onClick={() => onSelectNode(nid)}
+                                title={`Select node "${node?.title ?? nid}" on canvas`}
+                              >
+                                {node ? node.title : nid}
+                              </button>
+                            );
+                          })}
                           {nodeIds.length > 20 && (
                             <span className="used-by-more">
                               and {nodeIds.length - 20} more

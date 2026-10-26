@@ -174,10 +174,19 @@ describe("AuthPages — Dedicated Authentication Pages (W-035)", () => {
 
       expect(html).toContain('id="main-content"');
       expect(html).toContain("shell-main auth-page");
-      expect(html).toContain('<h1 class="auth-title">Sign In to Lumio</h1>');
+      expect(html).toContain('<h1 class="auth-title">Welcome back</h1>');
       // Assert exactly one h1 tag in markup
       const h1Count = (html.match(/<h1/g) ?? []).length;
       expect(h1Count).toBe(1);
+    });
+
+    it("LoginPage renders two-panel desktop layout and product showcase with 9-node graph", () => {
+      const html = renderToStaticMarkup(React.createElement(LoginPage, {}));
+
+      expect(html).toContain("auth-layout");
+      expect(html).toContain("auth-showcase-panel");
+      expect(html).toContain("Branch your story. Test every path.");
+      expect(html).toContain("auth-graph-svg");
     });
 
     it("LoginPage renders email and password fields with matching labels and autocomplete", () => {
@@ -194,33 +203,34 @@ describe("AuthPages — Dedicated Authentication Pages (W-035)", () => {
       expect(html).toContain('autoComplete="current-password"');
     });
 
-    it("LoginPage renders accessible password visibility toggle button", () => {
+    it("LoginPage renders accessible password visibility toggle button with type='button'", () => {
       const html = renderToStaticMarkup(React.createElement(LoginPage, {}));
 
       expect(html).toContain('class="auth-password-toggle"');
       expect(html).toContain('aria-label="Show password"');
       expect(html).toContain('aria-pressed="false"');
+      expect(html).toContain('type="button"');
     });
 
     it("LoginPage renders cross-links to /register and landing page /", () => {
       const html = renderToStaticMarkup(React.createElement(LoginPage, {}));
 
       expect(html).toContain('href="/register"');
-      expect(html).toContain("Create one →");
+      expect(html).toContain("Create an account");
       expect(html).toContain('href="/"');
-      expect(html).toContain("← Return to Home");
+      expect(html).toContain("Back to home");
     });
 
     it("RegisterPage renders single semantic h1 and password requirement hint", () => {
       const html = renderToStaticMarkup(React.createElement(RegisterPage, {}));
 
-      expect(html).toContain('<h1 class="auth-title">Create a Lumio Account</h1>');
+      expect(html).toContain('<h1 class="auth-title">Create your account</h1>');
       const h1Count = (html.match(/<h1/g) ?? []).length;
       expect(h1Count).toBe(1);
 
       // Password requirement hint
       expect(html).toContain('id="register-password-hint"');
-      expect(html).toContain("Must be between 10 and 128 characters");
+      expect(html).toContain("At least 10 characters");
 
       // Register autocomplete
       expect(html).toContain('autoComplete="new-password"');
@@ -232,9 +242,9 @@ describe("AuthPages — Dedicated Authentication Pages (W-035)", () => {
       const html = renderToStaticMarkup(React.createElement(RegisterPage, {}));
 
       expect(html).toContain('href="/login"');
-      expect(html).toContain("Sign in →");
+      expect(html).toContain("Sign in");
       expect(html).toContain('href="/"');
-      expect(html).toContain("← Return to Home");
+      expect(html).toContain("Back to home");
     });
   });
 
@@ -440,6 +450,45 @@ describe("AuthPages — Dedicated Authentication Pages (W-035)", () => {
 
       expect(matchPath("/login")).toEqual({ kind: "login" });
       expect(matchPath("/register")).toEqual({ kind: "register" });
+    });
+
+    it("App shell excludes AppHeader on login and register routes", async () => {
+      const { App } = await import("../../App.js");
+
+      const originalWindow = (globalThis as unknown as { window?: unknown }).window;
+      try {
+        (globalThis as unknown as { window: unknown }).window = {
+          location: { pathname: "/login" },
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        };
+        const loginAppHtml = renderToStaticMarkup(React.createElement(App, {}));
+        expect(loginAppHtml).not.toContain('role="banner"');
+        expect(loginAppHtml).toContain("auth-page");
+
+        (globalThis as unknown as { window: unknown }).window = {
+          location: { pathname: "/register" },
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        };
+        const registerAppHtml = renderToStaticMarkup(React.createElement(App, {}));
+        expect(registerAppHtml).not.toContain('role="banner"');
+        expect(registerAppHtml).toContain("auth-page");
+
+        (globalThis as unknown as { window: unknown }).window = {
+          location: { pathname: "/" },
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        };
+        const landingAppHtml = renderToStaticMarkup(React.createElement(App, {}));
+        expect(landingAppHtml).toContain('role="banner"');
+      } finally {
+        if (originalWindow) {
+          (globalThis as unknown as { window: unknown }).window = originalWindow;
+        } else {
+          delete (globalThis as unknown as { window?: unknown }).window;
+        }
+      }
     });
   });
 });

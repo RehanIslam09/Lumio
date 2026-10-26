@@ -191,6 +191,39 @@ describe("interpretKey", () => {
         }),
       ).toBeNull();
     });
+
+    it("identifies save with Ctrl+S or Cmd+S", () => {
+      expect(
+        interpretKey({
+          key: "s",
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+          targetIsEditable: false,
+        }),
+      ).toBe("save");
+
+      expect(
+        interpretKey({
+          key: "S",
+          ctrlKey: false,
+          metaKey: true,
+          shiftKey: false,
+          targetIsEditable: false,
+        }),
+      ).toBe("save");
+
+      // Shift+Ctrl+S is not save
+      expect(
+        interpretKey({
+          key: "s",
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: true,
+          targetIsEditable: false,
+        }),
+      ).toBeNull();
+    });
   });
 
   describe("isTargetEditable", () => {

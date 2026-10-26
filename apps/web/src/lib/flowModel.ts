@@ -28,22 +28,43 @@ export function projectToFlow(
 ): FlowModel {
   const grouped = issues ? groupIssues(project, issues) : null;
   const nodeIds = new Set(project.nodes.map((n) => n.id));
+  const entityMap = new Map((project.entities ?? []).map((e) => [e.id, e.name]));
 
-  const nodes: Node<StoryNodeData>[] = project.nodes.map((node) => ({
-    id: node.id,
-    type: "storyNode",
-    position: positions.get(node.id) ?? { x: 0, y: 0 },
-    initialWidth: STORY_NODE_WIDTH,
-    initialHeight: STORY_NODE_HEIGHT,
-    data: {
-      title: node.title,
-      nodeType: node.type,
-      issues: grouped?.byNode.get(node.id) ?? [],
-    },
-    selected: selection?.kind === "node" && selection.id === node.id,
-    selectable: true,
-    draggable: true,
-  }));
+  const nodes: Node<StoryNodeData>[] = project.nodes.map((node) => {
+    let speakerName: string | null = null;
+    if (node.speakerId) {
+      speakerName = entityMap.get(node.speakerId) ?? node.speakerId;
+    }
+
+    let bodySnippet: string | null = null;
+    if (node.body && node.body.trim().length > 0) {
+      const clean = node.body
+        .replace(/[*_#>`~]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (clean.length > 0) {
+        bodySnippet = clean.length > 60 ? clean.slice(0, 57) + "…" : clean;
+      }
+    }
+
+    return {
+      id: node.id,
+      type: "storyNode",
+      position: positions.get(node.id) ?? { x: 0, y: 0 },
+      initialWidth: STORY_NODE_WIDTH,
+      initialHeight: STORY_NODE_HEIGHT,
+      data: {
+        title: node.title,
+        nodeType: node.type,
+        issues: grouped?.byNode.get(node.id) ?? [],
+        speakerName,
+        bodySnippet,
+      },
+      selected: selection?.kind === "node" && selection.id === node.id,
+      selectable: true,
+      draggable: true,
+    };
+  });
 
   const edges: Edge<StoryEdgeData>[] = [];
   for (const edge of project.edges) {

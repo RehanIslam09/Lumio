@@ -355,6 +355,7 @@ export function MainStudio({
   const playtestTriggerRef = useRef<HTMLButtonElement>(null);
   const [isSimulationOpen, setIsSimulationOpen] = useState(false);
   const simulateTriggerRef = useRef<HTMLButtonElement>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const project = editorState.present;
   const dirty = isMarkerDirty(project, savedMarker);
@@ -557,6 +558,15 @@ export function MainStudio({
       } else if (action === "redo") {
         e.preventDefault();
         handleRedo();
+      } else if (
+        action === "save" ||
+        ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s")
+      ) {
+        e.preventDefault();
+        void cloud.saveToCloud(project);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
+        e.preventDefault();
+        setIsSidebarCollapsed((prev) => !prev);
       } else if (action === "delete") {
         if (effectiveSelection) {
           e.preventDefault();
@@ -572,7 +582,7 @@ export function MainStudio({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleUndo, handleRedo, effectiveSelection, dispatch]);
+  }, [handleUndo, handleRedo, effectiveSelection, dispatch, cloud, project]);
 
   const handleAddNode = useCallback(
     (type: FlowNodeType) => {
@@ -686,6 +696,8 @@ export function MainStudio({
         playtestTriggerRef={playtestTriggerRef}
         onSimulate={() => setIsSimulationOpen(true)}
         simulateTriggerRef={simulateTriggerRef}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
       <MessageBar
@@ -800,6 +812,8 @@ export function MainStudio({
         />
 
         <RightPanel
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           project={project}
@@ -864,9 +878,11 @@ export function App() {
     return <ProjectWorkspace projectId={route.projectId} />;
   }
 
+  const isAuthRoute = route.kind === "login" || route.kind === "register";
+
   return (
     <div className="app-shell">
-      <AppHeader currentRoute={route} />
+      {!isAuthRoute && <AppHeader currentRoute={route} />}
       <div className="shell-body">
         {route.kind === "landing" && <LandingPage />}
         {route.kind === "dashboard" && <DashboardPage />}

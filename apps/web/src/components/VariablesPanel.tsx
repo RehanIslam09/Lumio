@@ -37,7 +37,18 @@ export const VariablesPanel: React.FC<VariablesPanelProps> = ({
 
       <div className="variables-list">
         {variables.length === 0 ? (
-          <p className="empty-state">No variables declared in this project.</p>
+          <div className="empty-state-card">
+            <p className="empty-state">No variables declared</p>
+            <p className="empty-substate">Variables allow you to track narrative choices, inventory, and branch conditions.</p>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onAddVariable}
+              style={{ marginTop: 8 }}
+            >
+              + Create first variable
+            </button>
+          </div>
         ) : (
           variables.map((variable) => (
             <VariableRow
@@ -70,6 +81,7 @@ const VariableRow: React.FC<VariableRowProps> = ({
   onUpdate,
   onDelete,
 }) => {
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [nameDraft, setNameDraft] = useState(variable.name);
   const [numInitialDraft, setNumInitialDraft] = useState(
     typeof variable.initial === "number" ? String(variable.initial) : "0",
@@ -159,15 +171,39 @@ const VariableRow: React.FC<VariableRowProps> = ({
           </select>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-danger-outline btn-sm btn-var-delete"
-          onClick={() => onDelete(variable.id)}
-          title={`Delete variable ${variable.name}`}
-          aria-label={`Delete variable ${variable.name}`}
-        >
-          ×
-        </button>
+        {isConfirmingDelete ? (
+          <div className="var-delete-confirm">
+            <button
+              type="button"
+              className="btn btn-danger btn-xs"
+              onClick={() => {
+                setIsConfirmingDelete(false);
+                onDelete(variable.id);
+              }}
+              title="Confirm delete"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={() => setIsConfirmingDelete(false)}
+              title="Cancel"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-danger-outline btn-sm btn-var-delete"
+            onClick={() => setIsConfirmingDelete(true)}
+            title={`Delete variable ${variable.name}`}
+            aria-label={`Delete variable ${variable.name}`}
+          >
+            ×
+          </button>
+        )}
       </div>
 
       <div className="variable-row-bottom">

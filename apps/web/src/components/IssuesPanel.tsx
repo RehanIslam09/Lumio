@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import type { Issue, Project } from "@repo/schema";
 import { getIssueSnippet } from "../lib/snippet.js";
 
@@ -9,15 +9,66 @@ interface IssuesPanelProps {
   onSelectIssue: (issue: Issue) => void;
 }
 
+type SeverityFilter = "all" | "error" | "warning";
+
+const RULE_TITLES: Record<string, string> = {
+  "unreachable-from-start": "Unreachable Scene",
+  "cannot-reach-end": "Dead-End Scene",
+  "invalid-speaker": "Invalid Speaker Reference",
+  "speaker-without-text": "Speaker Without Dialogue",
+  "invalid-expression": "Invalid Condition / Effect Syntax",
+  "unused-variable": "Unused Variable",
+  "variable-never-written": "Variable Never Written",
+  "variable-never-read": "Variable Never Read",
+  "character-never-speaks": "Silent Character",
+  "duplicate-entity-name": "Duplicate Entity Name",
+  "duplicate-variable-name": "Duplicate Variable Name",
+  "undefined-variable": "Undefined Variable",
+  "type-mismatch": "Type Mismatch",
+  "cannot-mutate-in-condition": "Side Effect in Condition",
+};
+
+export function getFriendlyRuleTitle(ruleId: string): string {
+  if (RULE_TITLES[ruleId]) return RULE_TITLES[ruleId];
+  return ruleId
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export const IssuesPanel: React.FC<IssuesPanelProps> = ({
   project,
   issues,
   selectedIssue,
   onSelectIssue,
 }) => {
-  const errors = issues.filter((i) => i.severity === "error");
-  const warnings = issues.filter((i) => i.severity === "warning");
-  const variableIssues = issues.filter((i) => i.variableId !== undefined);
+  const [filter, setFilter] = useState<SeverityFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const errors = useMemo(() => issues.filter((i) => i.severity === "error"), [issues]);
+  const warnings = useMemo(() => issues.filter((i) => i.severity === "warning"), [issues]);
+
+  const filteredIssues = useMemo(() => {
+    let list = issues;
+    if (filter === "error") {
+      list = errors;
+    } else if (filter === "warning") {
+      list = warnings;
+    }
+
+    if (!searchQuery.trim()) {
+      return list;
+    }
+
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter((i) => {
+      const title = getFriendlyRuleTitle(i.ruleId).toLowerCase();
+      const msg = i.message.toLowerCase();
+      const rule = i.ruleId.toLowerCase();
+      const node = i.nodeId ? project.nodes.find((n) => n.id === i.nodeId)?.title.toLowerCase() : "";
+      return title.includes(q) || msg.includes(q) || rule.includes(q) || Boolean(node && node.includes(q));
+    });
+  }, [issues, errors, warnings, filter, searchQuery, project.nodes]);
 
   function isSelected(issue: Issue): boolean {
     if (!selectedIssue) return false;
@@ -34,6 +85,46 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
       issue.variableId === selectedIssue.variableId &&
       issue.entityId === selectedIssue.entityId
     );
+  }
+
+  function getTarget(issue: Issue): { type: string; label: string } | null {
+    if (issue.nodeId) {
+      const node = project.nodes.find((n) => n.id === issue.nodeId);
+      return {
+        type: "node",
+        label: node ? `"${node.title}"` : issue.nodeId,
+      };
+    }
+    if (issue.location?.edgeId) {
+      const edge = project.edges.find((e) => e.id === issue.location?.edgeId);
+      if (edge) {
+        const fromNode = project.nodes.find((n) => n.id === edge.from);
+        const toNode = project.nodes.find((n) => n.id === edge.to);
+        return {
+          type: "edge",
+          label: `${fromNode?.title ?? edge.from} → ${toNode?.title ?? edge.to}`,
+        };
+      }
+      return {
+        type: "edge",
+        label: issue.location.edgeId,
+      };
+    }
+    if (issue.variableId) {
+      const v = project.variables.find((v) => v.id === issue.variableId);
+      return {
+        type: "var",
+        label: v ? `$${v.name}` : issue.variableId,
+      };
+    }
+    if (issue.entityId) {
+      const ent = (project.entities ?? []).find((e) => e.id === issue.entityId);
+      return {
+        type: "entity",
+        label: ent ? `@${ent.name}` : issue.entityId,
+      };
+    }
+    return null;
   }
 
   function renderSnippet(issue: Issue) {
@@ -62,99 +153,127 @@ export const IssuesPanel: React.FC<IssuesPanelProps> = ({
   return (
     <aside className="issues-panel" aria-label="Consistency Checker Issues">
       <div className="issues-header">
-        <h2>Consistency Issues</h2>
-        <div className="issues-summary-badges">
-          <span className="badge badge-error">{errors.length} Errors</span>
-          <span className="badge badge-warning">{warnings.length} Warnings</span>
+        <div className="issues-header-top">
+          <h2 className="issues-title">Issues</h2>
+          <div className="issues-summary-badges">
+            <span className="badge badge-error" title={`${errors.length} error(s)`}>
+              {errors.length} {errors.length === 1 ? "Error" : "Errors"}
+            </span>
+            <span className="badge badge-warning" title={`${warnings.length} warning(s)`}>
+              {warnings.length} {warnings.length === 1 ? "Warning" : "Warnings"}
+            </span>
+          </div>
         </div>
+
+        {/* Filter Tabs */}
+        <div className="issues-filter-tabs" role="tablist" aria-label="Filter issues by severity">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "all"}
+            className={`filter-tab-btn ${filter === "all" ? "active" : ""}`}
+            onClick={() => setFilter("all")}
+          >
+            All ({issues.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "error"}
+            className={`filter-tab-btn ${filter === "error" ? "active" : ""}`}
+            onClick={() => setFilter("error")}
+          >
+            Errors ({errors.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "warning"}
+            className={`filter-tab-btn ${filter === "warning" ? "active" : ""}`}
+            onClick={() => setFilter("warning")}
+          >
+            Warnings ({warnings.length})
+          </button>
+        </div>
+
+        {/* Search */}
+        {issues.length > 3 && (
+          <div className="issues-search-bar">
+            <input
+              type="text"
+              className="field-input issues-search-input"
+              placeholder="Search issues, rules, or scenes…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Filter issues"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="search-clear-btn"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear issue search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="issues-scroll">
         {issues.length === 0 ? (
-          <div className="empty-state">No consistency issues found. All rules pass!</div>
+          <div className="empty-state-card issues-clean-card">
+            <span className="clean-icon" aria-hidden="true">✓</span>
+            <h4 className="clean-title">All Rules Passing</h4>
+            <p className="clean-desc">
+              No narrative dead ends, unreachable scenes, or DSL syntax errors found in this story.
+            </p>
+          </div>
+        ) : filteredIssues.length === 0 ? (
+          <div className="empty-state-card">
+            <p className="empty-state">No matching issues</p>
+            <p className="empty-substate">Try clearing your search query or switching filters.</p>
+          </div>
         ) : (
-          <>
-            {/* Errors */}
-            <section className="issue-section" aria-labelledby="heading-errors">
-              <h3 id="heading-errors" className="section-title text-error">
-                Errors ({errors.length})
-              </h3>
-              {errors.map((issue, idx) => (
+          <div className="issues-list" role="list">
+            {filteredIssues.map((issue, idx) => {
+              const target = getTarget(issue);
+              const friendlyTitle = getFriendlyRuleTitle(issue.ruleId);
+              const selected = isSelected(issue);
+
+              return (
                 <div
-                  key={`err-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.entityId ?? ""}-${issue.location?.edgeId ?? ""}-${idx}`}
-                  className={`issue-card severity-error ${isSelected(issue) ? "active" : ""}`}
+                  key={`issue-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.entityId ?? ""}-${issue.location?.edgeId ?? ""}-${idx}`}
+                  className={`issue-card severity-${issue.severity} ${selected ? "active" : ""}`}
                   onClick={() => onSelectIssue(issue)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => e.key === "Enter" && onSelectIssue(issue)}
+                  aria-label={`${issue.severity}: ${friendlyTitle}. ${issue.message}`}
                 >
                   <div className="issue-card-top">
-                    <span className="rule-tag tag-error">{issue.ruleId}</span>
-                    {issue.nodeId && <span className="target-tag">node: {issue.nodeId}</span>}
-                    {issue.entityId && <span className="target-tag">entity: {issue.entityId}</span>}
-                    {issue.location && <span className="target-tag">edge: {issue.location.edgeId}</span>}
-                  </div>
-                  <p className="issue-message">{issue.message}</p>
-                  {renderSnippet(issue)}
-                </div>
-              ))}
-            </section>
-
-            {/* Warnings */}
-            <section className="issue-section" aria-labelledby="heading-warnings">
-              <h3 id="heading-warnings" className="section-title text-warning">
-                Warnings ({warnings.length})
-              </h3>
-              {warnings.map((issue, idx) => (
-                <div
-                  key={`warn-${issue.ruleId}-${issue.nodeId ?? ""}-${issue.variableId ?? ""}-${issue.entityId ?? ""}-${idx}`}
-                  className={`issue-card severity-warning ${isSelected(issue) ? "active" : ""}`}
-                  onClick={() => onSelectIssue(issue)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && onSelectIssue(issue)}
-                >
-                  <div className="issue-card-top">
-                    <span className="rule-tag tag-warning">{issue.ruleId}</span>
-                    {issue.nodeId && <span className="target-tag">node: {issue.nodeId}</span>}
-                    {issue.variableId && <span className="target-tag">var: {issue.variableId}</span>}
-                    {issue.entityId && <span className="target-tag">entity: {issue.entityId}</span>}
-                  </div>
-                  <p className="issue-message">{issue.message}</p>
-                  {renderSnippet(issue)}
-                </div>
-              ))}
-            </section>
-
-            {/* Variables Section */}
-            <section className="issue-section" aria-labelledby="heading-variables">
-              <h3 id="heading-variables" className="section-title text-variable">
-                Variable Issues ({variableIssues.length})
-              </h3>
-              {variableIssues.length === 0 ? (
-                <div className="empty-substate">
-                  No variable issues (or suppressed due to syntax error).
-                </div>
-              ) : (
-                variableIssues.map((issue, idx) => (
-                  <div
-                    key={`var-issue-${issue.ruleId}-${issue.variableId}-${idx}`}
-                    className={`issue-card severity-variable ${isSelected(issue) ? "active" : ""}`}
-                    onClick={() => onSelectIssue(issue)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && onSelectIssue(issue)}
-                  >
-                    <div className="issue-card-top">
-                      <span className="rule-tag tag-variable">{issue.ruleId}</span>
-                      <span className="target-tag">id: {issue.variableId}</span>
+                    <div className="issue-title-group">
+                      <span className={`rule-tag tag-${issue.severity}`}>
+                        {issue.severity.toUpperCase()}
+                      </span>
+                      <strong className="issue-friendly-title">{friendlyTitle}</strong>
                     </div>
-                    <p className="issue-message">{issue.message}</p>
+                    {target && (
+                      <span className="target-tag" title={`${target.type}: ${target.label}`}>
+                        {target.label}
+                      </span>
+                    )}
                   </div>
-                ))
-              )}
-            </section>
-          </>
+                  <p className="issue-message">{issue.message}</p>
+                  <span className="issue-rule-code" title="Diagnostic rule ID">
+                    {issue.ruleId}
+                  </span>
+                  {renderSnippet(issue)}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </aside>

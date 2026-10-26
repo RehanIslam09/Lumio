@@ -48,7 +48,7 @@ describe("Story Dashboard (W-036)", () => {
       expect(html).toContain('role="status"');
       expect(html).toContain("Loading your stories…");
       expect(html).toContain("dashboard-loading-card");
-      expect(html).toContain("Your Story Workbench");
+      expect(html).toContain("Your stories");
     });
 
     it("renders authenticated user email badge when session is loaded", () => {
@@ -74,21 +74,21 @@ describe("Story Dashboard (W-036)", () => {
       );
 
       // Verify stories count and header
-      expect(html).toContain("2 Stories");
-      expect(html).toContain("Ordered by last updated");
+      expect(html).toContain("2 stories");
+      expect(html).toContain("Last updated");
 
       // Verify project 1 details
       expect(html).toContain("Chronicles of Aethelgard");
       expect(html).toContain("v4");
-      expect(html).toContain("proj-alp…");
+      expect(html).toContain("proj-alpha-001");
 
       // Verify project 2 details
       expect(html).toContain("Cyberpunk Neon Odyssey");
       expect(html).toContain("v1");
-      expect(html).toContain("proj-bet…");
+      expect(html).toContain("proj-beta-002");
 
       // Verify actions are present
-      expect(html).toContain("Open Story →");
+      expect(html).toContain("Open story");
       expect(html).toContain("Delete");
       expect(html).toContain('aria-label="Delete Chronicles of Aethelgard"');
       expect(html).toContain('aria-label="Delete Cyberpunk Neon Odyssey"');
@@ -113,7 +113,7 @@ describe("Story Dashboard (W-036)", () => {
       expect(html).toContain("dashboard-empty-card");
     });
 
-    it("renders unauthenticated session notice on 401 response and never converts to empty list", async () => {
+    it("renders unauthenticated product experience on 401 response and never converts to empty list", async () => {
       const mockClient: Partial<ApiClient> = {
         listProjects: vi.fn().mockResolvedValue({
           ok: false,
@@ -145,12 +145,32 @@ describe("Story Dashboard (W-036)", () => {
       });
       const html = renderToStaticMarkup(vdom);
 
-      // Verify that Session Notice / 401 UI is distinct from "No Stories Found"
-      expect(html).toContain("Authentication Required");
-      expect(html).toContain("Session Notice");
+      // Verify that SignedOutDashboard / 401 UI is distinct from "No Stories Found"
+      expect(html).toContain("Your stories live here");
+      expect(html).toContain("Sign in to access your saved narrative projects");
       expect(html).toContain('href="/login"');
+      expect(html).toContain("Sign in");
       expect(html).toContain('href="/register"');
+      expect(html).toContain("Create an account");
+      expect(html).toContain('href="/editor"');
+      expect(html).toContain("Try the editor without an account");
+
+      // Verify 4 truthful feature cards
+      expect(html).toContain("Save to the cloud");
+      expect(html).toContain("Playtest your branches");
+      expect(html).toContain("Simulate thousands of readers");
+      expect(html).toContain("Catch problems early");
+
+      // Decorative preview is non-interactive
+      expect(html).toContain('aria-hidden="true"');
+      expect(html).toContain('tabindex="-1"');
+      expect(html).toContain("Preview · Story Graph Architecture");
+
+      // Signed-out users do not see authenticated story list, header counters, or empty state
+      expect(html).not.toContain("Session Notice");
+      expect(html).not.toContain("Authentication Required");
       expect(html).not.toContain("No Stories Found");
+      expect(html).not.toContain("New story");
     });
 
     it("renders server/network error with retry action", () => {
@@ -179,7 +199,7 @@ describe("Story Dashboard (W-036)", () => {
       const validate = (title: string): string | null => {
         const trimmed = title.trim();
         if (!trimmed) return "Story title is required";
-        if (trimmed.length > 120) return "Story title must not exceed 120 characters";
+        if (trimmed.length > 80) return "Story title must not exceed 80 characters";
         return null;
       };
 
@@ -189,19 +209,19 @@ describe("Story Dashboard (W-036)", () => {
       expect(createCalled).toBe(false);
     });
 
-    it("validates story title: rejects titles exceeding 120 characters", () => {
+    it("validates story title: rejects titles exceeding 80 characters (TITLE_MAX)", () => {
       const validate = (title: string): string | null => {
         const trimmed = title.trim();
         if (!trimmed) return "Story title is required";
-        if (trimmed.length > 120) return "Story title must not exceed 120 characters";
+        if (trimmed.length > 80) return "Story title must not exceed 80 characters";
         return null;
       };
 
-      const title120 = "a".repeat(120);
-      expect(validate(title120)).toBeNull();
+      const title80 = "a".repeat(80);
+      expect(validate(title80)).toBeNull();
 
-      const title121 = "a".repeat(121);
-      expect(validate(title121)).toBe("Story title must not exceed 120 characters");
+      const title81 = "a".repeat(81);
+      expect(validate(title81)).toBe("Story title must not exceed 80 characters");
     });
 
     it("constructs new projects using CURRENT_SCHEMA_VERSION = 2 and makeEmptyProject", async () => {
@@ -365,7 +385,7 @@ describe("Story Dashboard (W-036)", () => {
       expect(html).toContain("<dialog");
       expect(html).toContain('aria-labelledby="create-story-dialog-title"');
       expect(html).toContain('id="create-story-title"');
-      expect(html).toContain('maxLength="120"');
+      expect(html).toContain('maxLength="80"');
       expect(html).toContain("Story Title");
       expect(html).toContain("Create Story");
       expect(html).toContain("Cancel");

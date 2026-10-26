@@ -64,4 +64,44 @@ describe("projectToFlow", () => {
     const run2 = projectToFlow(sampleProject, positions, null);
     expect(run1).toEqual(run2);
   });
+
+  it("derives speakerName from project entities and creates concise body snippet", () => {
+    const projectWithNarrative: Project = {
+      ...sampleProject,
+      entities: [
+        { id: "ent_hero", name: "Captain Varis", kind: "character" },
+      ],
+      nodes: [
+        {
+          id: "node_narrative",
+          title: "The Encounter",
+          type: "scene",
+          speakerId: "ent_hero",
+          body: "## Act I\n*The stars flickered silently.* We cannot turn back now.",
+        },
+        {
+          id: "node_empty",
+          title: "Silent Void",
+          type: "scene",
+        },
+      ],
+      edges: [],
+    };
+
+    const { nodes } = projectToFlow(
+      projectWithNarrative,
+      new Map([["node_narrative", { x: 0, y: 0 }], ["node_empty", { x: 10, y: 10 }]]),
+      null,
+    );
+
+    const narrativeNode = nodes.find((n) => n.id === "node_narrative");
+    expect(narrativeNode?.data.speakerName).toBe("Captain Varis");
+    expect(narrativeNode?.data.bodySnippet).toBe(
+      "Act I The stars flickered silently. We cannot turn back now.",
+    );
+
+    const emptyNode = nodes.find((n) => n.id === "node_empty");
+    expect(emptyNode?.data.speakerName).toBeNull();
+    expect(emptyNode?.data.bodySnippet).toBeNull();
+  });
 });

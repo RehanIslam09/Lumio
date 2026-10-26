@@ -7,7 +7,7 @@ export interface KeymapInput {
   targetIsEditable: boolean;
 }
 
-export type KeymapAction = "undo" | "redo" | "delete" | null;
+export type KeymapAction = "undo" | "redo" | "delete" | "save" | null;
 
 /**
  * Checks if a DOM event target is an editable input or contenteditable element.
@@ -51,6 +51,11 @@ export function interpretKey(input: KeymapInput): KeymapAction {
   // Delete / Backspace without modifiers
   if (!isModifier && !altKey && (key === "Delete" || key === "Backspace")) {
     return "delete";
+  }
+
+  // Save: Ctrl/Cmd+S
+  if (isModifier && !altKey && !shiftKey && key.toLowerCase() === "s") {
+    return "save";
   }
 
   // Redo: Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y

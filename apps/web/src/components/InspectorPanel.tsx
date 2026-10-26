@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import type { Project, Issue, FlowNodeType } from "@repo/schema";
 import type { Selection } from "../lib/flowModel.js";
 import { DraftField } from "./DraftField.js";
+import { MarkdownBodyField } from "./MarkdownBodyField.js";
 import { checkConditionDraft } from "../lib/draftCheck.js";
 import { ConnectionsSection } from "./ConnectionsSection.js";
 import { EdgeNavButtons } from "./EdgeNavButtons.js";
@@ -44,11 +45,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onSelectEdge,
   onConnectNodes,
 }) => {
+  const [confirmDeleteNodeId, setConfirmDeleteNodeId] = useState<string | null>(null);
+  const [confirmDeleteEdgeId, setConfirmDeleteEdgeId] = useState<string | null>(null);
+
   if (!selection) {
     return (
       <div className="inspector-panel empty-selection">
-        <p className="empty-state">No element selected.</p>
-        <p className="empty-substate">Click a node or edge on the canvas to inspect and edit its properties.</p>
+        <div className="empty-state-card">
+          <p className="empty-state">No element selected</p>
+          <p className="empty-substate">Click a story node or connection on the canvas to inspect and edit its properties.</p>
+        </div>
       </div>
     );
   }
@@ -82,18 +88,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         )}
 
         <div className="inspector-fields">
-          <div className="field-group">
-            <label htmlFor="inspect-node-id" className="field-label">Node ID</label>
-            <input
-              id="inspect-node-id"
-              type="text"
-              className="field-input field-readonly"
-              value={node.id}
-              readOnly
-              disabled
-            />
-          </div>
-
+          {/* 1. Title and Type */}
           <DraftField
             key={`node-title-${node.id}`}
             id="inspect-node-title"
@@ -107,19 +102,20 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           />
 
           <div className="field-group">
-            <label htmlFor="inspect-node-type" className="field-label">Type</label>
+            <label htmlFor="inspect-node-type" className="field-label">Node Type</label>
             <select
               id="inspect-node-type"
               className="field-select"
               value={node.type}
               onChange={(e) => onUpdateNode(node.id, { type: e.target.value as FlowNodeType })}
             >
-              <option value="scene">scene</option>
-              <option value="start">start</option>
-              <option value="end">end</option>
+              <option value="scene">Scene (Narrative Beat)</option>
+              <option value="start">Start (Entry Point)</option>
+              <option value="end">End (Resolution Point)</option>
             </select>
           </div>
 
+          {/* 2. Speaker */}
           <div className="field-group">
             <label htmlFor="inspect-node-speaker" className="field-label">Speaker</label>
             <select
@@ -131,7 +127,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 onUpdateNode(node.id, { speakerId: val === "" ? null : val });
               }}
             >
-              <option value="">(None)</option>
+              <option value="">(None / Narrator)</option>
               {speakerOpts.map((opt) => (
                 <option key={opt.id} value={opt.id}>
                   {opt.label}
@@ -140,41 +136,22 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             </select>
           </div>
 
-          <DraftField
+          {/* 3. Markdown Body */}
+          <MarkdownBodyField
             key={`node-body-${node.id}`}
             id="inspect-node-body"
-            label="Body"
+            nodeId={node.id}
+            label="Body (Markdown)"
             value={node.body ?? ""}
-            multiline
             rows={5}
-            placeholder="Scene body text or dialogue..."
-            showCounter={true}
+            placeholder="Scene body text or dialogue... (Markdown supported)"
             onCommit={(nextBody) => {
               const trimmed = nextBody.trim();
               onUpdateNode(node.id, { body: trimmed === "" ? null : nextBody });
             }}
           />
 
-          <div className="field-group">
-            <label className="field-label">Position</label>
-            <div className="position-row">
-              <span className="position-coords">
-                {node.position
-                  ? `x: ${Math.round(node.position.x)}, y: ${Math.round(node.position.y)}`
-                  : "auto (auto layout)"}
-              </span>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={!node.position}
-                onClick={() => onUpdateNode(node.id, { position: null })}
-                title="Clear explicit coordinates to use automatic layered layout"
-              >
-                Clear position
-              </button>
-            </div>
-          </div>
-
+          {/* 4. Connections */}
           <ConnectionsSection
             key={node.id}
             project={project}
@@ -183,14 +160,78 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             onConnect={(toId) => onConnectNodes(node.id, toId)}
           />
 
+          {/* 5. Advanced Details */}
+          <details className="inspector-advanced-details">
+            <summary className="advanced-summary">Advanced Details</summary>
+            <div className="advanced-fields">
+              <div className="field-group">
+                <label htmlFor="inspect-node-id" className="field-label">Node ID</label>
+                <input
+                  id="inspect-node-id"
+                  type="text"
+                  className="field-input field-readonly"
+                  value={node.id}
+                  readOnly
+                  disabled
+                />
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Canvas Position</label>
+                <div className="position-row">
+                  <span className="position-coords">
+                    {node.position
+                      ? `x: ${Math.round(node.position.x)}, y: ${Math.round(node.position.y)}`
+                      : "auto (auto layout)"}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!node.position}
+                    onClick={() => onUpdateNode(node.id, { position: null })}
+                    title="Clear explicit coordinates to use automatic layered layout"
+                  >
+                    Clear position
+                  </button>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          {/* Destructive Action with Confirmation Safeguard */}
           <div className="inspector-danger-zone">
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={() => onDeleteNode(node.id)}
-            >
-              Delete node
-            </button>
+            {confirmDeleteNodeId === node.id ? (
+              <div className="delete-confirm-box" role="alert">
+                <span className="delete-confirm-msg">Delete "{node.title}"?</span>
+                <div className="delete-confirm-actions">
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      setConfirmDeleteNodeId(null);
+                      onDeleteNode(node.id);
+                    }}
+                  >
+                    Confirm Delete
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setConfirmDeleteNodeId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-danger-outline"
+                onClick={() => setConfirmDeleteNodeId(node.id)}
+              >
+                Delete node
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -232,18 +273,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         />
 
         <div className="field-group">
-          <label htmlFor="inspect-edge-id" className="field-label">Edge ID</label>
-          <input
-            id="inspect-edge-id"
-            type="text"
-            className="field-input field-readonly"
-            value={edge.id}
-            readOnly
-            disabled
-          />
-        </div>
-
-        <div className="field-group">
           <label htmlFor="inspect-edge-from" className="field-label">Source Node (From)</label>
           <select
             id="inspect-edge-from"
@@ -253,7 +282,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           >
             {project.nodes.map((n) => (
               <option key={n.id} value={n.id}>
-                {n.title} ({n.id})
+                {n.title} [{n.type.toUpperCase()}]
               </option>
             ))}
           </select>
@@ -269,7 +298,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           >
             {project.nodes.map((n) => (
               <option key={n.id} value={n.id}>
-                {n.title} ({n.id})
+                {n.title} [{n.type.toUpperCase()}]
               </option>
             ))}
           </select>
@@ -296,14 +325,56 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           onUpdateEffects={(effects) => onUpdateEdge(edge.id, { effects })}
         />
 
+        <details className="inspector-advanced-details">
+          <summary className="advanced-summary">Advanced Details</summary>
+          <div className="advanced-fields">
+            <div className="field-group">
+              <label htmlFor="inspect-edge-id" className="field-label">Edge ID</label>
+              <input
+                id="inspect-edge-id"
+                type="text"
+                className="field-input field-readonly"
+                value={edge.id}
+                readOnly
+                disabled
+              />
+            </div>
+          </div>
+        </details>
+
         <div className="inspector-danger-zone">
-          <button
-            type="button"
-            className="btn btn-danger"
-            onClick={() => onDeleteEdge(edge.id)}
-          >
-            Delete edge
-          </button>
+          {confirmDeleteEdgeId === edge.id ? (
+            <div className="delete-confirm-box" role="alert">
+              <span className="delete-confirm-msg">Delete this connection?</span>
+              <div className="delete-confirm-actions">
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    setConfirmDeleteEdgeId(null);
+                    onDeleteEdge(edge.id);
+                  }}
+                >
+                  Confirm Delete
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setConfirmDeleteEdgeId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-danger-outline"
+              onClick={() => setConfirmDeleteEdgeId(edge.id)}
+            >
+              Delete edge
+            </button>
+          )}
         </div>
       </div>
     </div>

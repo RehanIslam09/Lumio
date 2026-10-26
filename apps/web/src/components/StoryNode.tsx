@@ -9,6 +9,8 @@ export interface StoryNodeData extends Record<string, unknown> {
   title: string;
   nodeType: "start" | "scene" | "end";
   issues: Issue[];
+  speakerName?: string | null;
+  bodySnippet?: string | null;
 }
 
 export const StoryNode = memo(({ data, selected }: NodeProps) => {
@@ -26,7 +28,14 @@ export const StoryNode = memo(({ data, selected }: NodeProps) => {
     >
       <Handle type="target" position={Position.Left} className="flow-handle handle-target" />
       <div className="story-node-header">
-        <span className={`node-type-chip chip-${nodeData.nodeType}`}>{nodeData.nodeType}</span>
+        <div className="node-header-left">
+          <span className={`node-type-chip chip-${nodeData.nodeType}`}>{nodeData.nodeType}</span>
+          {nodeData.speakerName && (
+            <span className="node-speaker-chip" title={`Speaker: ${nodeData.speakerName}`}>
+              {nodeData.speakerName}
+            </span>
+          )}
+        </div>
         <div className="node-badges">
           {errors.length > 0 && (
             <span className="badge badge-error" title={`${errors.length} error(s)`}>
@@ -41,6 +50,11 @@ export const StoryNode = memo(({ data, selected }: NodeProps) => {
         </div>
       </div>
       <div className="story-node-title">{nodeData.title}</div>
+      {nodeData.bodySnippet && (
+        <div className="story-node-body-snippet" title={nodeData.bodySnippet}>
+          {nodeData.bodySnippet}
+        </div>
+      )}
       <Handle type="source" position={Position.Right} className="flow-handle handle-source" />
     </div>
   );

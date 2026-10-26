@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { TITLE_MAX } from "../titleHelper.js";
 
 export interface CreateStoryDialogProps {
   isOpen: boolean;
@@ -57,8 +58,8 @@ export const CreateStoryDialog: React.FC<CreateStoryDialogProps> = ({
       setValidationError("Story title is required");
       return;
     }
-    if (Array.from(trimmed).length > 120) {
-      setValidationError("Story title must not exceed 120 characters");
+    if (Array.from(trimmed).length > TITLE_MAX) {
+      setValidationError(`Story title must not exceed ${TITLE_MAX} characters`);
       return;
     }
 
@@ -122,7 +123,7 @@ export const CreateStoryDialog: React.FC<CreateStoryDialogProps> = ({
                 if (serverError) setServerError(null);
               }}
               disabled={isPending}
-              maxLength={120}
+              maxLength={TITLE_MAX}
               placeholder="e.g. Prologue: Shadows of Monstadt"
               className={`dialog-input ${validationError ? "is-invalid" : ""}`}
               aria-invalid={validationError ? "true" : undefined}
@@ -140,7 +141,7 @@ export const CreateStoryDialog: React.FC<CreateStoryDialogProps> = ({
               </div>
             ) : (
               <div id="create-story-hint" className="auth-field-hint">
-                Up to 120 characters. You can rename your project at any time.
+                Up to {TITLE_MAX} characters. You can rename your project at any time.
               </div>
             )}
           </div>

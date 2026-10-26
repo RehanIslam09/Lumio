@@ -35,6 +35,7 @@ export const DeleteStoryDialog: React.FC<DeleteStoryDialogProps> = ({
 
   const handleClose = () => {
     if (isPending) return;
+    setIsPending(false);
     setErrorMessage(null);
     onClose();
   };
@@ -53,11 +54,10 @@ export const DeleteStoryDialog: React.FC<DeleteStoryDialogProps> = ({
       const result = await onConfirmDelete(project);
       if (!result.ok) {
         setErrorMessage(result.error ?? "Failed to delete story");
-        setIsPending(false);
       }
-      // On success, parent handles closing
     } catch {
       setErrorMessage("Network error: Unable to connect to server");
+    } finally {
       setIsPending(false);
     }
   };
