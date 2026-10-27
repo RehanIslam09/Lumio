@@ -197,7 +197,7 @@ describe("auth routes module", () => {
     expect(setCookie.toLowerCase().includes("domain")).toBe(false);
   });
 
-  it("Set-Cookie attributes in production: __Host-lumio_session, HttpOnly, SameSite=Lax, Path=/, Secure, NO Domain", async () => {
+  it("Set-Cookie attributes in production: __Host-lumio_session, HttpOnly, SameSite=None, Path=/, Secure, NO Domain", async () => {
     const { app } = setupTestApp(baseProdConfig);
 
     const res = await app.request("/api/auth/register", {
@@ -216,7 +216,7 @@ describe("auth routes module", () => {
 
     expect(setCookie.startsWith("__Host-lumio_session=")).toBe(true);
     expect(setCookie.includes("HttpOnly")).toBe(true);
-    expect(setCookie.includes("SameSite=Lax")).toBe(true);
+    expect(setCookie.includes("SameSite=None")).toBe(true);
     expect(setCookie.includes("Path=/")).toBe(true);
     expect(setCookie.includes("Secure")).toBe(true);
     expect(setCookie.includes("Max-Age=")).toBe(true);

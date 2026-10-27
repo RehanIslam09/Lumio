@@ -219,10 +219,10 @@ export function createAuthRoutes(
       }
     }
 
-    // Set cookie: HttpOnly, SameSite=Lax, Path=/, Max-Age=ttl, Secure in prod, NO Domain
+    // Set cookie: HttpOnly, SameSite=None in prod (Lax in dev), Path=/, Max-Age=ttl, Secure in prod, NO Domain
     setCookie(c, cookieName, result.token, {
       httpOnly: true,
-      sameSite: "Lax",
+      sameSite: isProd ? "None" : "Lax",
       path: "/",
       maxAge: config.sessionTtlDays * 24 * 60 * 60,
       secure: isProd,
@@ -284,7 +284,7 @@ export function createAuthRoutes(
 
     setCookie(c, cookieName, result.token, {
       httpOnly: true,
-      sameSite: "Lax",
+      sameSite: isProd ? "None" : "Lax",
       path: "/",
       maxAge: config.sessionTtlDays * 24 * 60 * 60,
       secure: isProd,
@@ -303,6 +303,7 @@ export function createAuthRoutes(
     deleteCookie(c, cookieName, {
       path: "/",
       secure: isProd,
+      sameSite: isProd ? "None" : "Lax",
     });
 
     return c.body(null, 204);
