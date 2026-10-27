@@ -8733,10 +8733,14 @@ dialog.story-dialog::backdrop {
   background: #111827;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dash-card:has(.dash-card-menu.is-open),
+.dash-list-row:has(.dash-card-menu.is-open) {
+  z-index: 25;
 }
 
 .dash-card:hover {
@@ -8750,6 +8754,8 @@ dialog.story-dialog::backdrop {
   aspect-ratio: 16 / 9;
   background: #0c111d;
   overflow: hidden;
+  border-top-left-radius: 13px;
+  border-top-right-radius: 13px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -8954,15 +8960,20 @@ dialog.story-dialog::backdrop {
   position: absolute;
   inset: 0;
   z-index: 1;
+  border-radius: 13px;
 }
 
 .dash-card-footer {
   margin-top: auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dash-card-footer .dash-overflow-wrap {
+  margin-left: auto;
 }
 
 .dash-card-id-hint {

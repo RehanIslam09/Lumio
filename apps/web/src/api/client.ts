@@ -58,7 +58,7 @@ function parseRetryAfter(headerValue: string | null | undefined): number | undef
 
 export function createApiClient(options: ApiClientOptions) {
   const fetchFn = options.fetch ?? globalThis.fetch.bind(globalThis);
-  const timeoutMs = options.timeoutMs ?? 30_000;
+  const timeoutMs = options.timeoutMs ?? 60_000;
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
 
   async function request<T>(params: {
