@@ -306,17 +306,26 @@ export function buildStoryThumbnail(
       };
     }
 
-    // General 2D case: ONE uniform scale to preserve aspect ratio
-    const scale = Math.min(drawWidth / spanX, drawHeight / spanY);
-    const scaledW = spanX * scale;
-    const scaledH = spanY * scale;
+    // General 2D case: base uniform scale ensures content fits within drawWidth x drawHeight
+    const baseScale = Math.min(drawWidth / spanX, drawHeight / spanY);
+    const scaleX = baseScale;
+
+    // When content aspect ratio is much wider than the frame (drawWidth / spanX < drawHeight / spanY),
+    // allow vertical stretch capped at 2.2x to better fill the frame vertically while preserving
+    // topological monotonic ordering and keeping coordinates bounded within [padding, height - padding].
+    const maxScaleY = baseScale * 2.2;
+    const targetScaleY = drawHeight / spanY;
+    const scaleY = Math.min(targetScaleY, maxScaleY);
+
+    const scaledW = spanX * scaleX;
+    const scaledH = spanY * scaleY;
     const offsetX = padding + (drawWidth - scaledW) / 2;
     const offsetY = padding + (drawHeight - scaledH) / 2;
 
     return {
       id: kn.id,
-      x: offsetX + (kn.origX - minX) * scale,
-      y: offsetY + (kn.origY - minY) * scale,
+      x: offsetX + (kn.origX - minX) * scaleX,
+      y: offsetY + (kn.origY - minY) * scaleY,
       kind: kn.kind,
       weight: kn.weight,
     };

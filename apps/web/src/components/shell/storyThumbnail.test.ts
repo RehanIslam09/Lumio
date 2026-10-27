@@ -142,9 +142,12 @@ describe("buildStoryThumbnail", () => {
     if (wideFirst && wideSecond) {
       const wideSpanX = Math.abs(wideSecond.x - wideFirst.x);
       expect(Math.round(wideSpanX)).toBe(292);
-      // Uniform aspect ratio: Y must NOT stretch to 152px, it must scale by the same factor (0.292 * 100 = 29px)
+      // Anisotropic vertical stretch: capped at 2.2x the uniform base scale (0.292 * 2.2 * 100 = 64px)
       const wideSpanY = Math.abs(wideSecond.y - wideFirst.y);
-      expect(Math.round(wideSpanY)).toBe(29);
+      const uniformSpanY = 29.2;
+      expect(wideSpanY).toBeGreaterThanOrEqual(uniformSpanY);
+      expect(wideSpanY / uniformSpanY).toBeCloseTo(2.2, 5);
+      expect(Math.round(wideSpanY)).toBe(64);
     }
 
     // Tall project touches top/bottom padding boundaries (152px span)
@@ -155,9 +158,48 @@ describe("buildStoryThumbnail", () => {
     if (tallFirst && tallSecond) {
       const tallSpanY = Math.abs(tallSecond.y - tallFirst.y);
       expect(Math.round(tallSpanY)).toBe(152);
-      // Uniform aspect ratio: X must NOT stretch to 292px, it must scale by the same factor (0.152 * 100 = 15px)
+      // Tall projects preserve isotropic uniform fit (0.152 * 100 = 15px)
       const tallSpanX = Math.abs(tallSecond.x - tallFirst.x);
       expect(Math.round(tallSpanX)).toBe(15);
+    }
+  });
+
+  it("preserves vertical monotonic ordering and strictly stays within padded bounds under stretch", () => {
+    const wideMultiNodeProj: Project = {
+      id: "wide-multi",
+      name: "Wide Multi Node",
+      nodes: [
+        { id: "n1", type: "start", title: "N1", position: { x: 0, y: 10 } },
+        { id: "n2", type: "scene", title: "N2", position: { x: 500, y: 40 } },
+        { id: "n3", type: "scene", title: "N3", position: { x: 800, y: 70 } },
+        { id: "n4", type: "end", title: "N4", position: { x: 1000, y: 90 } },
+      ],
+      edges: [
+        { id: "e1", from: "n1", to: "n2" },
+        { id: "e2", from: "n2", to: "n3" },
+        { id: "e3", from: "n3", to: "n4" },
+      ],
+      variables: [],
+    };
+
+    const res = buildStoryThumbnail(wideMultiNodeProj, { width: 320, height: 180, padding: 14 });
+    expect(res.nodes).toHaveLength(4);
+
+    // Verify coordinates stay within [padding, dimension - padding] = [14, 306] and [14, 166]
+    for (const node of res.nodes) {
+      expect(node.x).toBeGreaterThanOrEqual(14);
+      expect(node.x).toBeLessThanOrEqual(306);
+      expect(node.y).toBeGreaterThanOrEqual(14);
+      expect(node.y).toBeLessThanOrEqual(166);
+    }
+
+    // Verify monotonic Y ordering is strictly preserved
+    for (let i = 0; i < res.nodes.length - 1; i++) {
+      const curr = res.nodes[i];
+      const next = res.nodes[i + 1];
+      if (curr && next) {
+        expect(curr.y).toBeLessThan(next.y);
+      }
     }
   });
 

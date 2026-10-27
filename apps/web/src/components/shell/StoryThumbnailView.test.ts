@@ -152,4 +152,52 @@ describe("StoryThumbnailView component (B, C, D, A8)", () => {
     expect(html).toContain("Overview of 3,000 nodes");
     expect(html).toContain('title="Showing 250 of 3,000 nodes"');
   });
+
+  it("clamps node radius to max 5px even for high weight nodes and uses thinner edges for dense graphs", () => {
+    const denseData: StoryThumbnailData = {
+      width: 320,
+      height: 180,
+      nodes: [
+        { id: "heavy", x: 160, y: 90, kind: "start", weight: 999999 },
+        ...Array.from({ length: 81 }, (_, i) => ({
+          id: `node-${i}`,
+          x: 200 + (i % 10) * 10,
+          y: 50 + (i % 8) * 10,
+          kind: "scene" as const,
+          weight: 1,
+        })),
+      ],
+      // 81 edges to trigger isDense > 80
+      edges: Array.from({ length: 81 }, (_, i) => ({
+        from: "heavy",
+        to: `node-${i}`,
+        weight: 1,
+      })),
+      stats: {
+        nodeCount: 82,
+        edgeCount: 81,
+        startCount: 1,
+        endCount: 1,
+        sampled: false,
+        shownNodes: 1,
+        shownEdges: 81,
+      },
+    };
+    const loader = createMockLoader({ status: "ready", data: denseData });
+    const html = renderToStaticMarkup(
+      React.createElement(StoryThumbnailView, {
+        projectId: "p-dense",
+        latestVersion: 1,
+        loader,
+        variant: "card",
+      }),
+    );
+
+    // Node radius must be clamped to r="5"
+    expect(html).toContain('r="5"');
+    expect(html).not.toMatch(/r="[6-9]"/);
+
+    // Dense graph uses 0.8 strokeWidth for tier 1
+    expect(html).toContain('stroke-width="0.8"');
+  });
 });

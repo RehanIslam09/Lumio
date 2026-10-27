@@ -64,7 +64,7 @@ function createPrng(seed: number) {
 }
 
 const DEFAULT_RUNS = 500;
-const MAX_RUNS = 5000;
+export const MAX_RUNS = 5000;
 const MIN_RUNS = 1;
 
 const DEFAULT_MAX_STEPS = 200;

@@ -173,7 +173,7 @@ export const StoryThumbnailView: React.FC<StoryThumbnailViewProps> = ({
             d={pathTier1}
             fill="none"
             stroke="rgba(148, 163, 184, 0.28)"
-            strokeWidth="1.2"
+            strokeWidth={data.edges.length > 80 ? "0.8" : "1.2"}
             strokeLinecap="round"
           />
         )}
@@ -182,7 +182,7 @@ export const StoryThumbnailView: React.FC<StoryThumbnailViewProps> = ({
             d={pathTier2}
             fill="none"
             stroke="rgba(99, 102, 241, 0.45)"
-            strokeWidth="1.8"
+            strokeWidth={data.edges.length > 80 ? "1.2" : "1.8"}
             strokeLinecap="round"
           />
         )}
@@ -191,7 +191,7 @@ export const StoryThumbnailView: React.FC<StoryThumbnailViewProps> = ({
             d={pathTier3}
             fill="none"
             stroke="rgba(129, 140, 248, 0.75)"
-            strokeWidth="2.5"
+            strokeWidth={data.edges.length > 80 ? "1.8" : "2.5"}
             strokeLinecap="round"
           />
         )}
@@ -202,8 +202,9 @@ export const StoryThumbnailView: React.FC<StoryThumbnailViewProps> = ({
           if (node.kind === "start") fill = "#10b981"; // start: emerald
           else if (node.kind === "end") fill = "#a855f7"; // end: violet
 
-          const baseR = 2.6;
-          const r = Math.min(6, baseR + Math.log2(node.weight) * 0.7);
+          const baseR = 2.4;
+          // Clamp node radius to max 5px in 320x180 thumbnail frame
+          const r = Math.min(5, baseR + Math.log2(node.weight) * 0.6);
 
           return (
             <circle
@@ -230,19 +231,21 @@ export const StoryThumbnailView: React.FC<StoryThumbnailViewProps> = ({
       className={`dash-thumb-container dash-thumb-${variant}`}
       data-testid={`story-thumb-${projectId}`}
     >
-      <div className="dash-thumb-media">{renderContent()}</div>
+      <div className="dash-thumb-media">
+        {renderContent()}
+        {formattedStats?.overviewLabel && (
+          <span
+            className="dash-thumb-sampled-pill"
+            title={formattedStats.overviewTooltip}
+          >
+            {formattedStats.overviewLabel}
+          </span>
+        )}
+      </div>
 
-      {formattedStats && !isList && (
+      {formattedStats && !isList && variant !== "resume" && (
         <div className="dash-thumb-caption" aria-label={formattedStats.summary}>
           <span className="dash-thumb-counts">{formattedStats.summary}</span>
-          {formattedStats.overviewLabel && (
-            <span
-              className="dash-thumb-sampled-pill"
-              title={formattedStats.overviewTooltip}
-            >
-              {formattedStats.overviewLabel}
-            </span>
-          )}
         </div>
       )}
     </div>

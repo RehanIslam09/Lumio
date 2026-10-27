@@ -161,16 +161,41 @@ describe("Story Dashboard (W-036)", () => {
       expect(html).toContain("Simulate thousands of readers");
       expect(html).toContain("Catch problems early");
 
-      // Decorative preview is non-interactive
+      // Decorative preview is non-interactive single wide card labelled 'Example story'
       expect(html).toContain('aria-hidden="true"');
       expect(html).toContain('tabindex="-1"');
-      expect(html).toContain("Preview · Story Graph Architecture");
+      expect(html).toContain("Example story");
+      expect(html).toContain("Prologue: The Outlander Who Caught the Wind");
 
       // Signed-out users do not see authenticated story list, header counters, or empty state
       expect(html).not.toContain("Session Notice");
       expect(html).not.toContain("Authentication Required");
       expect(html).not.toContain("No Stories Found");
       expect(html).not.toContain("New story");
+    });
+
+    it("gates benchmark switch based on isDevEnv prop (hidden in prod, visible in dev)", () => {
+      // In production (isDevEnv = false)
+      const prodHtml = renderToStaticMarkup(
+        React.createElement(DashboardPage, {
+          skipAutoFetch: true,
+          initialProjects: mockProjects,
+          isDevEnv: false,
+        }),
+      );
+      expect(prodHtml).not.toContain("dash-benchmark-switch");
+      expect(prodHtml).not.toContain("Show benchmark stories");
+
+      // In development (isDevEnv = true)
+      const devHtml = renderToStaticMarkup(
+        React.createElement(DashboardPage, {
+          skipAutoFetch: true,
+          initialProjects: mockProjects,
+          isDevEnv: true,
+        }),
+      );
+      expect(devHtml).toContain("dash-benchmark-switch");
+      expect(devHtml).toContain("Show benchmark stories");
     });
 
     it("renders server/network error with retry action", () => {

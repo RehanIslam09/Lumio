@@ -17,12 +17,14 @@ import {
   type SortOption,
 } from "./dashboardPresentation.js";
 import { StoryThumbnailView } from "./StoryThumbnailView.js";
+import { formatThumbnailStats } from "./storyThumbnail.js";
 import {
   createPreviewLoader,
   type PreviewLoader,
 } from "./storyThumbnailLoader.js";
 import { fetchProjectThumbnailDocument } from "./projectThumbnailClient.js";
 import { SignedOutDashboard } from "./SignedOutDashboard.js";
+import { isDevNavVisible } from "./authPresentation.js";
 
 export interface DashboardPageProps {
   readonly client?: ApiClient;
@@ -32,6 +34,7 @@ export interface DashboardPageProps {
   readonly initialErrorMessage?: string | null;
   readonly skipAutoFetch?: boolean;
   readonly previewLoader?: PreviewLoader;
+  readonly isDevEnv?: boolean;
 }
 
 function generateUUID(): string {
@@ -135,7 +138,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   initialErrorMessage = null,
   skipAutoFetch = false,
   previewLoader: injectedPreviewLoader,
+  isDevEnv,
 }) => {
+  const devMode = isDevNavVisible(isDevEnv ?? import.meta.env.DEV);
   const client = useMemo(() => {
     return injectedClient ?? createApiClient({ baseUrl: getApiBaseUrl() });
   }, [injectedClient]);
@@ -377,6 +382,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return visibleStories[0] ?? null;
   }, [query, sortOption, visibleStories]);
 
+  const [resumeStatsSummary, setResumeStatsSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!resumeStory) return;
+    const unsubscribe = previewLoader.subscribe(
+      resumeStory.id,
+      resumeStory.latestVersion,
+      (state) => {
+        if (state.status === "ready") {
+          setResumeStatsSummary(formatThumbnailStats(state.data.stats).summary);
+        } else {
+          setResumeStatsSummary(null);
+        }
+      },
+    );
+    return () => {
+      unsubscribe();
+    };
+  }, [resumeStory, previewLoader]);
+
   // Derive relative time of most recently edited story overall
   const latestRelativeTime = useMemo(() => {
     if (projects.length === 0) return "";
@@ -452,6 +477,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <h2 className="dash-resume-title">{resumeStory.name}</h2>
                       <div className="dash-resume-meta">
                         <span className="dash-chip-version">v{resumeStory.latestVersion}</span>
+                        {resumeStatsSummary && (
+                          <span className="dash-resume-stats">{resumeStatsSummary}</span>
+                        )}
                         <time dateTime={resumeStory.updatedAt}>
                           Edited {relativeTime(currentTime, resumeStory.updatedAt)}
                         </time>
@@ -526,27 +554,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
 
               <div className="dash-toolbar-right">
-                {/* Benchmark Stories Switch */}
-                <div className="dash-switch-wrapper">
-                  <button
-                    type="button"
-                    role="switch"
-                    id="dash-benchmark-switch"
-                    aria-checked={showBenchmarks}
-                    className={`dash-switch-btn ${showBenchmarks ? "is-active" : ""}`}
-                    onClick={() => setShowBenchmarks((prev) => !prev)}
-                  >
-                    <span className="dash-switch-thumb" aria-hidden="true" />
-                  </button>
-                  <label htmlFor="dash-benchmark-switch" className="dash-switch-label">
-                    Show benchmark stories
-                  </label>
-                  {!showBenchmarks && hiddenBenchmarkCount > 0 && (
-                    <span className="dash-benchmark-hint" title="Heuristic detection">
-                      (Hidden: {hiddenBenchmarkCount})
-                    </span>
-                  )}
-                </div>
+                {/* Benchmark Stories Switch (DEV only) */}
+                {devMode && (
+                  <div className="dash-switch-wrapper">
+                    <button
+                      type="button"
+                      role="switch"
+                      id="dash-benchmark-switch"
+                      aria-checked={showBenchmarks}
+                      className={`dash-switch-btn ${showBenchmarks ? "is-active" : ""}`}
+                      onClick={() => setShowBenchmarks((prev) => !prev)}
+                    >
+                      <span className="dash-switch-thumb" aria-hidden="true" />
+                    </button>
+                    <label htmlFor="dash-benchmark-switch" className="dash-switch-label">
+                      Show benchmark stories
+                    </label>
+                    {!showBenchmarks && hiddenBenchmarkCount > 0 && (
+                      <span className="dash-benchmark-hint" title="Heuristic detection">
+                        (Hidden: {hiddenBenchmarkCount})
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* View Mode Toggle */}
                 <div className="dash-view-toggle" role="group" aria-label="View layout">
@@ -692,10 +722,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         </h3>
 
                         <div className="dash-card-footer">
-                          <span className="dash-card-id-hint" title={story.id}>
-                            ID: {story.id.slice(0, 8)}…
-                          </span>
-
                           {/* 3-Dot Overflow Menu */}
                           <div className="dash-overflow-wrap">
                             <button

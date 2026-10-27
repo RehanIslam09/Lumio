@@ -2,17 +2,15 @@
   /* ==========================================================================
      Typography Stacks & Scale (W-041)
      ========================================================================== */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 18px;
-  --text-2xl: 24px;
-  --text-3xl: 32px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 28px;
   --text-hero: 40px;
 
   /* ==========================================================================
@@ -120,6 +118,33 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+dialog,
+.shell-dialog,
+.dash-modal {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
 body {
@@ -129,6 +154,26 @@ body {
   overflow: hidden;
   height: 100vh;
   width: 100vw;
+}
+
+h1, h2, h3, h4, h5, h6,
+.landing-hero-title,
+.landing-section-title,
+.dash-page-title,
+.auth-title,
+.auth-showcase-heading {
+  letter-spacing: -0.02em;
+}
+
+.dash-thumb-counts,
+.dash-card-badge,
+.dash-chip-version,
+.workbench-metric,
+.workflow-step-num,
+.dash-resume-stats,
+time,
+[data-tabular-nums] {
+  font-variant-numeric: tabular-nums;
 }
 
 #root {
@@ -6336,18 +6381,19 @@ dialog.playtest-dialog {
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  align-items: center;
   min-height: 100vh;
+  padding: 32px 24px;
   background: radial-gradient(circle at 50% 15%, rgba(99, 102, 241, 0.08) 0%, transparent 65%),
               var(--bg-base);
 }
 
-.auth-top-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 24px 32px 0 32px;
-  max-width: 1200px;
-  width: 100%;
-  margin: 0 auto;
+.auth-corner-nav {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  z-index: 10;
 }
 
 .auth-back-home {
@@ -6376,23 +6422,33 @@ dialog.playtest-dialog {
   border-color: var(--border-focus);
 }
 
+/* Single Split Container at >= 1024px */
 .auth-layout {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
   width: 100%;
-  max-width: 1100px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 32px 24px 48px 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--bg-surface);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  align-items: stretch;
 }
 
-@media (min-width: 1024px) {
+@media (max-width: 1023px) {
   .auth-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
-    gap: 56px;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    max-width: 440px;
+    padding: 32px 24px;
+  }
+
+  .auth-corner-nav {
+    position: static;
+    margin-bottom: 20px;
+    align-self: flex-start;
   }
 }
 
@@ -6401,12 +6457,15 @@ dialog.playtest-dialog {
   display: flex;
   flex-direction: column;
   position: relative;
-  border-radius: 16px;
-  background: linear-gradient(145deg, rgba(22, 30, 48, 0.8), rgba(11, 15, 25, 0.9));
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  padding: 40px 36px;
-  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(145deg, rgba(22, 30, 48, 0.85), rgba(11, 15, 25, 0.95));
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  padding: 44px 40px;
+  box-shadow: none;
   overflow: hidden;
+  height: 100%;
+  justify-content: center;
 }
 
 @media (max-width: 1023px) {
@@ -6555,22 +6614,25 @@ dialog.playtest-dialog {
 /* --- Right Form Panel --- */
 .auth-form-panel {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
+  position: relative;
+  padding: 44px 36px;
 }
 
 .auth-card {
   max-width: 400px;
   width: 100%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  padding: 36px 32px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 22px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
 }
 
 .auth-header {
@@ -8718,41 +8780,47 @@ dialog.story-dialog::backdrop {
 }
 
 .dash-thumb-caption {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 6px 10px;
-  background: linear-gradient(to top, rgba(12, 17, 29, 0.94) 0%, rgba(12, 17, 29, 0.72) 70%, transparent 100%);
+  position: static;
+  padding: 8px 12px 4px;
+  background: transparent;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
-  font-size: 11px;
-  color: #94a3b8;
-  pointer-events: none;
+  font-size: 11.5px;
+  color: var(--text-muted, #94a3b8);
+  pointer-events: auto;
 }
 
 .dash-thumb-counts {
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .dash-thumb-sampled-pill {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  background: rgba(99, 102, 241, 0.18);
-  border: 1px solid rgba(99, 102, 241, 0.35);
+  padding: 2px 7px;
+  background: rgba(99, 102, 241, 0.22);
+  border: 1px solid rgba(99, 102, 241, 0.4);
   border-radius: 9999px;
-  color: #a5b4fc;
+  color: #c7d2fe;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
   pointer-events: auto;
   cursor: help;
+}
+
+.dash-resume-stats {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Skeleton shimmer */

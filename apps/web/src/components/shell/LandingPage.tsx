@@ -1,8 +1,54 @@
 import React from "react";
 import { Link } from "../../router/Link.js";
+import { MAX_RUNS } from "../../playtest/simulate.js";
+
+// Consistent inline SVGs for capabilities
+const IconNodes: React.FC = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </svg>
+);
+
+const IconShieldCheck: React.FC = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
+
+const IconRules: React.FC = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 21v-7" />
+    <path d="M4 10V3" />
+    <path d="M12 21v-9" />
+    <path d="M12 8V3" />
+    <path d="M20 21v-5" />
+    <path d="M20 12V3" />
+    <circle cx="4" cy="12" r="2" />
+    <circle cx="12" cy="10" r="2" />
+    <circle cx="20" cy="14" r="2" />
+  </svg>
+);
+
+const IconPlay: React.FC = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polygon points="5 3 19 12 5 21 5 3" />
+  </svg>
+);
+
+const IconSimulate: React.FC = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polygon points="13 19 22 12 13 5 13 19" />
+    <polygon points="2 19 11 12 2 5 2 19" />
+  </svg>
+);
 
 /**
- * LandingPage component for Lumio (W-034).
+ * LandingPage component for Lumio (W-034, W-047).
  * Introduces Lumio as a narrative-engineering workbench for branching game stories.
  * All preview values are grounded in Lumio's verified sample fixture (sampleProject.ts).
  */
@@ -20,8 +66,8 @@ export const LandingPage: React.FC = () => {
         </h1>
 
         <p className="landing-hero-lead">
-          Lumio combines visual branching graph authoring, deterministic static consistency
-          diagnostics, a typed narrative DSL, interactive playtesting, and Monte Carlo story
+          Lumio combines visual branching graph authoring, automated story consistency checks,
+          reliable branch conditions and effects, interactive playtesting, and automated playthrough
           simulation into a unified workbench for game writers and narrative designers.
         </p>
 
@@ -36,16 +82,16 @@ export const LandingPage: React.FC = () => {
 
         <div className="landing-hero-badges" aria-label="Core Technical Highlights">
           <span className="landing-hero-badge">
-            <span className="badge-dot dot-green" /> Deterministic Static Analysis
+            <span className="badge-dot dot-green" /> Automated Story Checks
           </span>
           <span className="landing-hero-badge">
-            <span className="badge-dot dot-blue" /> Pure AST Narrative DSL
+            <span className="badge-dot dot-blue" /> Reliable Branch Rules
           </span>
           <span className="landing-hero-badge">
-            <span className="badge-dot dot-purple" /> Live Playtest Runtime
+            <span className="badge-dot dot-purple" /> Interactive Playtesting
           </span>
           <span className="landing-hero-badge">
-            <span className="badge-dot dot-cyan" /> Monte Carlo Path Coverage
+            <span className="badge-dot dot-cyan" /> High-Speed Path Simulation
           </span>
         </div>
       </section>
@@ -206,14 +252,14 @@ export const LandingPage: React.FC = () => {
           </h2>
           <p className="landing-section-desc">
             Standard writing tools lack structural verification; general diagramming software lacks
-            game runtime semantics. Lumio bridges narrative design with compiler-grade static analysis.
+            game runtime semantics. Lumio bridges narrative design with automated consistency checks.
           </p>
         </div>
 
         <div className="capabilities-grid">
           <article className="capability-card">
             <div className="capability-icon-wrap icon-purple">
-              <span className="capability-icon">&loz;</span>
+              <IconNodes />
             </div>
             <h3 className="capability-title">Visual Branching Authoring</h3>
             <p className="capability-desc">
@@ -225,49 +271,44 @@ export const LandingPage: React.FC = () => {
 
           <article className="capability-card">
             <div className="capability-icon-wrap icon-red">
-              <span className="capability-icon">&Delta;</span>
+              <IconShieldCheck />
             </div>
             <h3 className="capability-title">Automated Consistency Checker</h3>
             <p className="capability-desc">
-              Deterministic forward and reverse BFS algorithms instantly flag unreachable nodes,
-              trapped cycles, dead ends, orphan characters, and unused variables before you export
-              to your game engine.
+              Continuous background checks instantly flag unreachable scenes, trapped cycles,
+              dead ends, orphan characters, and unused variables before you export to your game engine.
             </p>
           </article>
 
           <article className="capability-card">
             <div className="capability-icon-wrap icon-blue">
-              <span className="capability-icon">&lambda;</span>
+              <IconRules />
             </div>
-            <h3 className="capability-title">Typed Narrative DSL</h3>
+            <h3 className="capability-title">Conditions and effects that can't silently break</h3>
             <p className="capability-desc">
-              A pure hand-written recursive descent parser and typechecker powers conditions and
-              atomic effects. Evaluate arithmetic, boolean logic, and state mutations with precise
-              source error spans.
+              Attach conditions and atomic effects directly to choices. Guard branches with player stats
+              and inventory items without worrying about silent syntax or type errors.
             </p>
           </article>
 
           <article className="capability-card">
             <div className="capability-icon-wrap icon-green">
-              <span className="capability-icon">&bull;</span>
+              <IconPlay />
             </div>
-            <h3 className="capability-title">Interactive Playtesting</h3>
+            <h3 className="capability-title">Play your story as a reader</h3>
             <p className="capability-desc">
-              Step through choices as a player directly in the browser. Evaluate conditional choice
-              availability, inspect state variable transformations, and step backward with full
-              state-restoring history.
+              Step through choices directly in your browser. Inspect state variables as they change,
+              test conditional branch availability, and step backward with full state-restoring history.
             </p>
           </article>
 
           <article className="capability-card capability-card-wide">
             <div className="capability-icon-wrap icon-cyan">
-              <span className="capability-icon">&Sigma;</span>
+              <IconSimulate />
             </div>
-            <h3 className="capability-title">Monte Carlo Story Simulation</h3>
+            <h3 className="capability-title">Test thousands of playthroughs in seconds</h3>
             <p className="capability-desc">
-              Simulate up to 10,000 randomized playthroughs with seeded PRNG execution. Cross-check
-              topological reachability against dynamic coverage to detect unreachable branches,
-              verify ending distributions, and eliminate player soft-locks.
+              {`Simulate up to ${MAX_RUNS.toLocaleString()} randomized playthroughs. Uncover dead ends, verify ending distributions, and eliminate player soft-locks before release.`}
             </p>
           </article>
         </div>
@@ -278,14 +319,14 @@ export const LandingPage: React.FC = () => {
         <div className="landing-section-intro">
           <span className="landing-section-kicker">Authoring Pipeline</span>
           <h2 id="workflow-heading" className="landing-section-title">
-            From narrative concept to mathematically verified graph
+            From first idea to a story that works
           </h2>
         </div>
 
         <div className="workflow-steps">
           <div className="workflow-step">
             <span className="workflow-step-num">01</span>
-            <h3 className="workflow-step-title">Draft &amp; Structure</h3>
+            <h3 className="workflow-step-title">Draft &amp; structure</h3>
             <p className="workflow-step-desc">
               Plot scenes and choices on an infinite canvas with color-coded nodes, character speaker
               entities, and fluid handle-based connections.
@@ -294,28 +335,27 @@ export const LandingPage: React.FC = () => {
 
           <div className="workflow-step">
             <span className="workflow-step-num">02</span>
-            <h3 className="workflow-step-title">Script Logic</h3>
+            <h3 className="workflow-step-title">Add logic</h3>
             <p className="workflow-step-desc">
-              Attach typed conditions (<code>gold &gt;= 50</code>) and atomic state effects
-              (<code>reputation += 10</code>) directly to branch edges using the narrative DSL.
+              Attach clear conditions (<code>gold &gt;= 50</code>) and atomic state effects
+              (<code>reputation += 10</code>) directly to branch edges.
             </p>
           </div>
 
           <div className="workflow-step">
             <span className="workflow-step-num">03</span>
-            <h3 className="workflow-step-title">Verify Invariants</h3>
+            <h3 className="workflow-step-title">Check as you write</h3>
             <p className="workflow-step-desc">
-              Continuous background diagnostics catch dead ends, broken speaker references, and
+              Continuous background checks catch dead ends, broken speaker references, and
               type mismatches without breaking your creative flow.
             </p>
           </div>
 
           <div className="workflow-step">
             <span className="workflow-step-num">04</span>
-            <h3 className="workflow-step-title">Simulate &amp; Validate</h3>
+            <h3 className="workflow-step-title">Playtest and simulate</h3>
             <p className="workflow-step-desc">
-              Execute Monte Carlo simulations across thousands of runs to ensure all endings are
-              reachable and choice distributions remain balanced.
+              {`Walk through your story interactively and run automated simulations across up to ${MAX_RUNS.toLocaleString()} runs to ensure all endings are reachable.`}
             </p>
           </div>
         </div>

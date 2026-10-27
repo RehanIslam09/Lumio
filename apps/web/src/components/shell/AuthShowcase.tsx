@@ -154,13 +154,6 @@ export const AuthShowcase: React.FC = () => {
     <aside className="auth-showcase-panel" aria-label="Product Showcase">
       <div className="auth-showcase-glow" aria-hidden="true" />
       <div className="auth-showcase-content">
-        <div className="auth-showcase-badge">
-          <span className="auth-brand-glyph" aria-hidden="true">
-            ◆
-          </span>
-          <span>Lumio Narrative Studio</span>
-        </div>
-
         <h2 className="auth-showcase-heading">Branch your story. Test every path.</h2>
         <p className="auth-showcase-tagline">
           The visual narrative workbench designed for game writers, narrative designers, and technical directors.

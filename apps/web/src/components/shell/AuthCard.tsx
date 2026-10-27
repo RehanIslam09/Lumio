@@ -254,19 +254,18 @@ export const AuthCard: React.FC<AuthCardProps> = ({
 
   return (
     <main className="shell-main auth-page" id="main-content">
-      {/* Top Bar with Home navigation */}
-      <div className="auth-top-bar">
-        <Link href="/" className="auth-back-home" aria-label="Back to home">
-          <span aria-hidden="true">←</span> Back to home
-        </Link>
-      </div>
-
       <div className="auth-layout">
         {/* Left Showcase Panel (>=1024px) */}
         <AuthShowcase />
 
         {/* Right Form Panel */}
         <div className="auth-form-panel">
+          <div className="auth-corner-nav">
+            <Link href="/" className="auth-back-home" aria-label="Back to home">
+              <span aria-hidden="true">←</span> Back to home
+            </Link>
+          </div>
+
           <div className="auth-card">
             <header className="auth-header">
               <h1 className="auth-title">

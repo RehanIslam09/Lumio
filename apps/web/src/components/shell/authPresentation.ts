@@ -59,7 +59,7 @@ export const AUTH_FEATURES: readonly AuthFeatureItem[] = [
   {
     id: "cloud-save",
     title: "Save to the cloud",
-    description: "Every save becomes a versioned snapshot you can inspect, diff, and restore at any time.",
+    description: "Every save creates a versioned snapshot you can inspect, download, and restore at any time.",
     iconName: "cloud",
   },
   {
@@ -71,7 +71,7 @@ export const AUTH_FEATURES: readonly AuthFeatureItem[] = [
   {
     id: "simulate",
     title: "Simulate thousands of readers",
-    description: "Run Monte Carlo path traversals to uncover unreachable endings and measure narrative coverage.",
+    description: "Test thousands of playthroughs in seconds to uncover unreachable endings and measure story coverage.",
     iconName: "activity",
   },
   {

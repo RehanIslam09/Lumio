@@ -39,32 +39,14 @@ const FeatureIcon: React.FC<{ id: string }> = ({ id }) => {
 };
 
 export const SignedOutDashboard: React.FC = () => {
-  // Pre-calculate thumbnail for the decorative preview strip using sampleProject
+  // Pre-calculate thumbnail for the single wide preview using sampleProject
   const thumbnailData = useMemo(() => {
     return buildStoryThumbnail(sampleProject, {
-      width: 300,
-      height: 150,
-      padding: 12,
+      width: 560,
+      height: 220,
+      padding: 16,
     });
   }, []);
-
-  const sampleCards = [
-    {
-      title: sampleProject.name,
-      version: "v4",
-      updated: "Sample Story",
-    },
-    {
-      title: "Act I: Whispers in the Windrise Woods",
-      version: "v2",
-      updated: "Sample Architecture",
-    },
-    {
-      title: "Act II: The Falcon's Forgotten Perch",
-      version: "v1",
-      updated: "Sample Branching",
-    },
-  ];
 
   return (
     <div className="dash-signed-out-container">
@@ -102,7 +84,7 @@ export const SignedOutDashboard: React.FC = () => {
         </div>
       </section>
 
-      {/* Blurred, Non-Interactive Story Preview Strip */}
+      {/* Non-Interactive Single Wide Story Preview: Real Sample Project */}
       <section
         className="dash-signed-out-preview-section"
         aria-hidden="true"
@@ -110,66 +92,64 @@ export const SignedOutDashboard: React.FC = () => {
       >
         <div className="dash-preview-strip-header">
           <span className="dash-preview-strip-label">
-            Preview · Story Graph Architecture
+            Example story · {sampleProject.name}
           </span>
         </div>
-        <div className="dash-preview-strip" tabIndex={-1}>
-          {sampleCards.map((card, i) => (
-            <div key={`preview-card-${i}`} className="dash-preview-card" tabIndex={-1}>
-              <div className="dash-preview-card-media" tabIndex={-1}>
-                <svg
-                  viewBox={`0 0 ${thumbnailData.width} ${thumbnailData.height}`}
-                  className="dash-preview-svg"
-                  tabIndex={-1}
-                >
-                  <defs>
-                    <linearGradient id={`preview-edge-grad-${i}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity="0.5" />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.4" />
-                    </linearGradient>
-                  </defs>
-                  {/* Edges */}
-                  {thumbnailData.edges.map((edge, edgeIdx) => {
-                    const fromNode = thumbnailData.nodes.find((n) => n.id === edge.from);
-                    const toNode = thumbnailData.nodes.find((n) => n.id === edge.to);
-                    if (!fromNode || !toNode) return null;
-                    return (
-                      <line
-                        key={`line-${edgeIdx}`}
-                        x1={fromNode.x}
-                        y1={fromNode.y}
-                        x2={toNode.x}
-                        y2={toNode.y}
-                        stroke={`url(#preview-edge-grad-${i})`}
-                        strokeWidth="1.5"
-                      />
-                    );
-                  })}
-                  {/* Nodes */}
-                  {thumbnailData.nodes.map((node) => (
-                    <circle
-                      key={node.id}
-                      cx={node.x}
-                      cy={node.y}
-                      r={node.kind === "start" || node.kind === "end" ? 5 : 3.5}
-                      fill={node.kind === "start" ? "#10b981" : node.kind === "end" ? "#f43f5e" : "#818cf8"}
-                      stroke="#0d1117"
+        <div className="dash-preview-single-wrap" tabIndex={-1}>
+          <div className="dash-preview-card dash-preview-card-wide" tabIndex={-1}>
+            <div className="dash-preview-card-media" tabIndex={-1}>
+              <svg
+                viewBox={`0 0 ${thumbnailData.width} ${thumbnailData.height}`}
+                className="dash-preview-svg"
+                tabIndex={-1}
+              >
+                <defs>
+                  <linearGradient id="preview-edge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.5" />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity="0.4" />
+                  </linearGradient>
+                </defs>
+                {/* Edges */}
+                {thumbnailData.edges.map((edge, edgeIdx) => {
+                  const fromNode = thumbnailData.nodes.find((n) => n.id === edge.from);
+                  const toNode = thumbnailData.nodes.find((n) => n.id === edge.to);
+                  if (!fromNode || !toNode) return null;
+                  return (
+                    <line
+                      key={`line-${edgeIdx}`}
+                      x1={fromNode.x}
+                      y1={fromNode.y}
+                      x2={toNode.x}
+                      y2={toNode.y}
+                      stroke="url(#preview-edge-grad)"
                       strokeWidth="1.5"
                     />
-                  ))}
-                </svg>
+                  );
+                })}
+                {/* Nodes */}
+                {thumbnailData.nodes.map((node) => (
+                  <circle
+                    key={node.id}
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.kind === "start" || node.kind === "end" ? 5 : 3.5}
+                    fill={node.kind === "start" ? "#10b981" : node.kind === "end" ? "#a855f7" : "#6366f1"}
+                    stroke="#0d1117"
+                    strokeWidth="1.5"
+                  />
+                ))}
+              </svg>
+            </div>
+            <div className="dash-preview-card-body" tabIndex={-1}>
+              <div className="dash-preview-meta" tabIndex={-1}>
+                <span className="dash-chip-version">v1</span>
+                <span className="dash-preview-tag">Example story</span>
               </div>
-              <div className="dash-preview-card-body" tabIndex={-1}>
-                <div className="dash-preview-meta" tabIndex={-1}>
-                  <span className="dash-chip-version">{card.version}</span>
-                  <span className="dash-preview-tag">{card.updated}</span>
-                </div>
-                <div className="dash-preview-title" tabIndex={-1}>
-                  {card.title}
-                </div>
+              <div className="dash-preview-title" tabIndex={-1}>
+                {sampleProject.name}
               </div>
             </div>
-          ))}
+          </div>
         </div>
         <div className="dash-preview-blur-overlay" tabIndex={-1} />
       </section>

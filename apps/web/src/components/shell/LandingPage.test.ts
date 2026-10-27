@@ -109,23 +109,33 @@ describe("LandingPage component (W-034)", () => {
 
     expect(h3Titles).toContain("Visual Branching Authoring");
     expect(h3Titles).toContain("Automated Consistency Checker");
-    expect(h3Titles).toContain("Typed Narrative DSL");
-    expect(h3Titles).toContain("Interactive Playtesting");
-    expect(h3Titles).toContain("Monte Carlo Story Simulation");
+    expect(h3Titles).toContain("Conditions and effects that can't silently break");
+    expect(h3Titles).toContain("Play your story as a reader");
+    expect(h3Titles).toContain("Test thousands of playthroughs in seconds");
   });
 
-  it("renders the 4-step authoring workflow pipeline", () => {
+  it("renders truthful simulation limit derived from MAX_RUNS simulation configuration", async () => {
+    const { MAX_RUNS } = await import("../../playtest/simulate.js");
     const vdom = LandingPage({});
     const allText = collectText(vdom);
 
+    expect(allText).toContain(`Simulate up to ${MAX_RUNS.toLocaleString()} randomized playthroughs.`);
+    expect(allText).not.toContain("10,000 randomized playthroughs");
+  });
+
+  it("renders the 4-step authoring workflow pipeline with approved writer-friendly steps", () => {
+    const vdom = LandingPage({});
+    const allText = collectText(vdom);
+
+    expect(allText).toContain("From first idea to a story that works");
     expect(allText).toContain("01");
-    expect(allText).toContain("Draft & Structure");
+    expect(allText).toContain("Draft & structure");
     expect(allText).toContain("02");
-    expect(allText).toContain("Script Logic");
+    expect(allText).toContain("Add logic");
     expect(allText).toContain("03");
-    expect(allText).toContain("Verify Invariants");
+    expect(allText).toContain("Check as you write");
     expect(allText).toContain("04");
-    expect(allText).toContain("Simulate & Validate");
+    expect(allText).toContain("Playtest and simulate");
   });
 
   it("renders semantic footer with technical stack and navigation links", () => {

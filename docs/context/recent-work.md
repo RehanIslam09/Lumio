@@ -22,61 +22,54 @@
 
 ---
 
-### W-047 | 2026-10-27 | Premium Auth Experience & Signed-Out Dashboard
+### W-047 | 2026-10-27 | Visual Polish Sprint & Premium Shell Presentation
 - **Status:** DONE
-- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): premium auth experience, signed-out dashboard, and presentation layer`
-- **Goal:** Transform Lumio's sign-in, registration, and signed-out dashboard experiences into a polished, responsive, and cohesive product experience without weakening authentication, server-authoritative validation, security, or editor functionality.
+- **Git:** uncommitted (user commits manually). Suggested message: `feat(web): visual polish sprint, typography scale, truthful landing copy, thumbnail scaling, and auth split layout`
+- **Goal:** Raise perceived visual quality across landing, auth, dashboard, and signed-out gate through polished system typography, global dark scrollbars, writer-friendly truthful copy, anisotropic thumbnail scaling, single split auth container, and DEV gating.
 - **Files changed:**
-  - `apps/web/src/components/shell/authPresentation.ts`: created pure presentation helpers exporting `PASSWORD_MIN_LENGTH = 10`, `PASSWORD_MAX_LENGTH = 128`, `validatePasswordRequirements(password)` matching server Unicode code point rules, `AUTH_FEATURES` describing 4 real Lumio capabilities, and `isDevNavVisible(isDevEnv)`.
-  - `apps/web/src/components/shell/authPresentation.test.ts`: 11 unit tests covering password boundary checks (9, 10, 128, 129 code points, emoji surrogate pairs), feature item metadata and uniqueness, and dev nav visibility in dev vs prod.
-  - `apps/web/src/components/shell/AuthShowcase.tsx`: created product showcase panel for desktop viewports (>=1024px) featuring soft gradient glow, faint dot grid, decorative 9-node animated SVG story graph with reduced-motion fallback, headline "Branch your story. Test every path.", and 3 concise capability proof points.
-  - `apps/web/src/components/shell/AuthCard.tsx`: upgraded to two-panel desktop layout (showcase + max-400px centered form panel); updated copy to "Welcome back" (login) and "Create your account" (register); added accessible password visibility eye icon button (`aria-label`, `aria-pressed`, `type="button"`); added live green check indicator for minimum 10-character password requirement in registration; added submit button loading spinner and disabled state; updated cross-links and "Back to home" navigation.
-  - `apps/web/src/components/shell/SignedOutDashboard.tsx`: created deliberate, product-oriented signed-out dashboard experience with headline "Your stories live here", primary "Sign in", secondary "Create an account", tertiary "Try the editor without an account" (/editor), 4 capability cards driven by `AUTH_FEATURES`, and a non-interactive blurred story preview strip using `sampleProject` and `buildStoryThumbnail` (`aria-hidden="true"`, `tabIndex={-1}`, pointer-events disabled).
-  - `apps/web/src/components/shell/DashboardPage.tsx`: wired `SignedOutDashboard` for unauthenticated sessions (`!loading && isUnauthenticated`), isolating signed-out users from project data, header counters, and new-story controls while preserving 100% of authenticated story management.
-  - `apps/web/src/App.tsx`: updated shell routing to exclude shared `AppHeader` on login and register routes while preserving it on landing, dashboard, and other views.
-  - `apps/web/src/components/shell/AppHeader.tsx`: gated the `Editor` `Dev` navigation item with `isDevNavVisible(import.meta.env.DEV)` and optional `isDevEnv` prop, hiding it in production while preserving direct `/editor` route access.
-  - `apps/web/src/components/shell/AuthPages.test.ts`: updated copy assertions ("Welcome back", "Create your account", cross-links, "At least 10 characters") and added tests for two-panel showcase rendering, button type, and AppHeader exclusion on auth routes (36 tests passing).
-  - `apps/web/src/components/shell/DashboardPage.test.ts`: updated unauthenticated session test to verify "Your stories live here", CTA destinations, 4 feature cards, and non-interactive preview strip (19 tests passing).
-  - `apps/web/src/components/shell/AppHeader.test.ts`: added tests verifying Editor Dev nav item is hidden in production (`isDevEnv: false`) and visible in development (`isDevEnv: true`) (15 tests passing).
-  - `apps/web/src/index.css`: added scoped styles for `.auth-` layout, showcase panel, 9-node graph pulse animation, eye toggle, password check indicator, loading spinner, and `.dash-signed-out-` hero, preview strip, and feature cards with full `prefers-reduced-motion` support.
-  - `docs/context/work-archive.md`: archived full W-039 entry per 8-entry rolling window cap.
-  - `docs/context/recent-work.md`: recorded entry W-047, rotated W-039 to older work, maintaining exactly 8 full entries.
-  - `docs/ARCHITECTURE.md`: updated Section 3 Repo map with new presentation and shell components.
+  - `apps/web/src/playtest/simulate.ts`: exported `MAX_RUNS = 5000` constant as truthful single source of truth for simulation capability copy.
+  - `apps/web/src/components/shell/storyThumbnail.ts`: implemented anisotropic vertical stretch capped at 2.2x base uniform scale for wide aspect-ratio graphs, preserving monotonic vertical ordering and coordinate bounds within padding; centered vertically.
+  - `apps/web/src/components/shell/StoryThumbnailView.tsx`: clamped node radius to max 5px (`Math.min(5, baseR + log2(weight) * 0.6)`); reduced stroke width to 0.8 / 1.2 / 1.8 for dense graphs (>80 edges); moved overview chip inside media container top-right; rendered caption outside media drawing.
+  - `apps/web/src/components/shell/storyThumbnail.test.ts`: updated wide-project scaling test to assert 2.2x vertical stretch cap; added tests for monotonic Y ordering and strict coordinate bounds under stretch (18 tests passing).
+  - `apps/web/src/components/shell/StoryThumbnailView.test.ts`: added test asserting 5px radius clamping under high weight (999,999) and 0.8px stroke on dense graphs (6 tests passing).
+  - `apps/web/src/components/shell/LandingPage.tsx`: imported `MAX_RUNS`; replaced all compiler jargon with writer-friendly copy; updated section heading to "From first idea to a story that works"; updated capability titles and descriptions; replaced glyph icons with 5 clean inline SVGs; updated 4-step pipeline (Draft & structure, Add logic, Check as you write, Playtest and simulate).
+  - `apps/web/src/components/shell/LandingPage.test.ts`: updated tests to assert writer-friendly capability titles, pipeline steps, and dynamic `MAX_RUNS` display (8 tests passing).
+  - `apps/web/src/components/shell/authPresentation.ts`: removed "diff" and "Monte Carlo" from feature copy; verified `AUTH_FEATURES` and `isDevNavVisible`.
+  - `apps/web/src/components/shell/SignedOutDashboard.tsx`: replaced 3 identical cards with ONE wide preview card using `sampleProject` labelled "Example story".
+  - `apps/web/src/components/shell/DashboardPage.tsx`: gated "Show benchmark stories" switch with `devMode = isDevNavVisible(isDevEnv ?? import.meta.env.DEV)`; added `resumeStatsSummary` subscription to display thumbnail statistics in resume card meta row; removed `ID: ...` hint from story card footer.
+  - `apps/web/src/components/shell/DashboardPage.test.ts`: updated unauthenticated test for single "Example story" preview; added tests verifying benchmark switch is hidden in prod and visible in dev (20 tests passing).
+  - `apps/web/src/components/shell/AuthShowcase.tsx`: removed "Lumio Narrative Studio" badge pill; maintained 9-node animated graph and 3 proof points.
+  - `apps/web/src/components/shell/AuthCard.tsx`: updated layout to render single split container; moved "Back to home" link inside container's top corner (`.auth-corner-nav`).
+  - `apps/web/src/components/shell/AuthPages.test.ts`: verified split layout, home link, form controls, and validation (36 tests passing).
+  - `apps/web/src/index.css`: defined polished system font stack (`Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`); updated type scale tokens (12, 13, 14, 16, 20, 28, 40px); applied heading letter-spacing `-0.02em`; added global thin dark scrollbar styling across all elements and dialogs; set `tabular-nums` on counts, badges, and timestamps; styled `.auth-layout` as single split container at >= 1024px with 1px border, 16px radius, subtle vertical divider, and equal height.
 - **New/changed public APIs:**
-  - `apps/web/src/components/shell/authPresentation.ts`:
-    - `PASSWORD_MIN_LENGTH: 10`
-    - `PASSWORD_MAX_LENGTH: 128`
-    - `validatePasswordRequirements(password: string): PasswordRequirementState`
-    - `AUTH_FEATURES: readonly AuthFeatureItem[]`
-    - `isDevNavVisible(isDevEnv: boolean | undefined): boolean`
-  - `apps/web/src/components/shell/AuthShowcase.tsx`:
-    - `AuthShowcase: React.FC`
-  - `apps/web/src/components/shell/SignedOutDashboard.tsx`:
-    - `SignedOutDashboard: React.FC`
-  - `apps/web/src/components/shell/AppHeader.tsx`:
-    - `AppHeaderProps.isDevEnv?: boolean`
+  - `apps/web/src/playtest/simulate.ts`:
+    - `MAX_RUNS: 5000` (exported)
+  - `apps/web/src/components/shell/DashboardPage.tsx`:
+    - `DashboardPageProps.isDevEnv?: boolean` (added)
 - **Decisions and why:**
-  - Exact Unicode password validation parity (Scope A): Password length validation in `validatePasswordRequirements` uses `Array.from(password).length`, identical to `apps/server/src/auth/password.ts:11-15`. Correctly handles surrogate pairs (e.g. emojis). Client feedback is strictly for presentation and does not bypass server-authoritative validation.
-  - Clean separation of showcase and form (Scope B): At >=1024px, a two-panel CSS grid layout provides a rich narrative engineering atmosphere with the 9-node decorative SVG story graph on the left and a focused 400px form on the right. Below 1024px, the showcase panel is cleanly hidden (`display: none`), centering the form without clutter or horizontal overflow.
-  - Keyboard and accessibility safety (Scope B): Password toggle button is explicitly `type="button"` with `aria-label` and `aria-pressed`, preventing accidental form submission when toggling visibility. The error banner includes `role="alert"` and `aria-live="polite"`.
-  - Truthful signed-out dashboard (Scope C): Replacing the generic session notice with `SignedOutDashboard` showcases Lumio's capabilities using `AUTH_FEATURES` and a non-interactive blurred story preview based on `sampleProject`. No fake session state or mock dashboard data is added to authenticated workflows.
-  - Non-interactive preview isolation (Scope C): The preview strip is marked `aria-hidden="true"` with `tabIndex={-1}` and CSS `pointer-events: none`, ensuring screen readers and keyboard navigation completely skip decorative preview cards.
-  - Shell header exclusion on auth routes (Scope D): `App.tsx` evaluates `isAuthRoute = route.kind === "login" || route.kind === "register"` to omit `AppHeader`, giving the auth pages a dedicated, distraction-free layout with their own "Back to home" navigation.
-  - Environment-gated Editor Dev nav (Scope D): `isDevNavVisible(import.meta.env.DEV)` gates the header's Editor Dev link in production builds without gating or restricting direct access to `/editor`.
+  - Deferred bundled font (Pre-flight): Pre-flight established `apps/web/public/fonts/InterVariable.woff2` and `apps/web/public/` are absent. Per user authorization, deferred bundled asset and used polished system fallback stack `Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`.
+  - Anisotropic stretch cap 2.2x: Wide graphs expand vertically up to `baseScale * 2.2` to eliminate excessive vertical letterboxing while preserving topological monotonic ordering and strict coordinate bounds `[padding, height - padding]`.
+  - Truthful numbers: Replaced arbitrary "10,000" claim on landing page with real simulation cap `MAX_RUNS = 5000` directly exported from `simulate.ts`.
+  - Clean card aesthetics: Removed noisy "ID: ..." label from story card footer; ID remains accessible via 3-dot overflow menu "Copy ID" action.
+  - Single auth container: At >= 1024px, showcase and form are united into a single container with one outer border and 16px radius, divided by an interior 1px border.
 - **Assumptions / UNVERIFIED:**
-  - Manual browser testing in dev server (`pnpm dev`) is UNVERIFIED until physical user review.
+  - Font rendering: Inter is not bundled; rendered font depends on system availability with system-font fallback stack.
+  - Browser appearance: Visual layout verified via unit tests, DOM static markup rendering, CSS tokens, and build bundle; physical visual verification across browsers is UNVERIFIED until user manual inspection.
 - **Verification:**
-  - `pnpm --filter @repo/web test src/components/shell/authPresentation.test.ts` -> pass (11/11 tests passed in 12ms).
-  - `pnpm --filter @repo/web test src/components/shell/AuthPages.test.ts` -> pass (36/36 tests passed in 637ms).
-  - `pnpm --filter @repo/web test src/components/shell/DashboardPage.test.ts` -> pass (19/19 tests passed in 113ms).
-  - `pnpm --filter @repo/web test src/components/shell/AppHeader.test.ts` -> pass (15/15 tests passed in 55ms).
-  - `pnpm --filter @repo/web test` -> pass (50 test files, 650 passed in 2.25s).
+  - `pnpm --filter @repo/web test src/components/shell/storyThumbnail.test.ts src/components/shell/StoryThumbnailView.test.ts` -> pass (24/24 tests passed).
+  - `pnpm --filter @repo/web test src/components/shell/LandingPage.test.ts` -> pass (8/8 tests passed).
+  - `pnpm --filter @repo/web test src/components/shell/DashboardPage.test.ts` -> pass (20/20 tests passed).
+  - `pnpm --filter @repo/web test src/components/shell/AuthPages.test.ts` -> pass (36/36 tests passed).
+  - `pnpm --filter @repo/web test src/components/shell/authPresentation.test.ts` -> pass (11/11 tests passed).
+  - 4 mutation checks executed, confirmed failing, and restored (stretch cap 2.2 -> 3; radius clamp removed; landing number hardcoded; DEV helper inverted).
+  - `pnpm --filter @repo/web test` -> pass (50 test files, 654 passed in 2.16s).
   - `pnpm --filter @repo/web typecheck` -> pass (`tsc --noEmit` exited 0).
   - `pnpm --filter @repo/web lint` -> pass (`eslint .` exited 0).
-  - `pnpm --filter @repo/web build` -> pass (360 modules transformed, dist built cleanly in 343ms).
-  - `pnpm exec turbo run typecheck lint test --force --continue` -> pass (14/14 turbo tasks successful, 0 errors across 5 workspaces in 14.33s).
-  - Root gate `pnpm check` -> pass (14/14 turbo tasks successful, 0 errors across 5 workspaces in 7.65s).
-- **Known issues / debt:** none
+  - `pnpm --filter @repo/web build` -> pass (built in 338ms).
+  - Root gate `pnpm check` -> pass (14/14 turbo tasks successful, 808 total tests passed across 5 packages in 10.71s).
+- **Known issues / debt:**
+  - Bundled Inter variable font asset and license deferred until approved font files are provided.
 - **Next steps:**
   - User to review changes and commit manually.
 
