@@ -7,10 +7,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "start": "tsx src/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file=.env src/db/migrate-cli.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate-cli.ts"
   },
 
   "dependencies": {
